@@ -6,7 +6,7 @@ let pollTimer = null;
 
 const sessionList = document.getElementById("session-list");
 const messagesEl = document.getElementById("messages");
-const emptyState = document.getElementById("empty-state");
+const welcome = document.getElementById("welcome");
 const sessionTitle = document.getElementById("session-title");
 const sessionMeta = document.getElementById("session-meta");
 const commandInput = document.getElementById("command-input");
@@ -16,7 +16,8 @@ const btnClose = document.getElementById("btn-close");
 const dialog = document.getElementById("new-dialog");
 const machineSelect = document.getElementById("machine-select");
 const machineHint = document.getElementById("machine-hint");
-const sessionNameInput = document.getElementById("session-name");
+
+const AVATAR = { system: "⚓", command: "›", output: "⌘", error: "!", user: "U" };
 
 function fmtTime(ts) {
   return new Date(ts * 1000).toLocaleTimeString([], {
@@ -26,33 +27,46 @@ function fmtTime(ts) {
 }
 
 function escapeHtml(s) {
-  return s
+  return String(s)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
 
 function renderMarkdownLite(text) {
-  return text
+  return escapeHtml(text)
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/`([^`]+)`/g, "<code>$1</code>");
 }
 
-function renderMessages(msgs, append = false) {
-  if (!append) {
-    messagesEl.innerHTML = "";
-    if (!msgs.length) {
-      messagesEl.appendChild(emptyState.cloneNode(true));
-      return;
+function showWelcome(show) {
+  if (show) {
+    if (!document.getElementById("welcome-clone")) {
+      const w = welcome.cloneNode(true);
+      w.id = "welcome-clone";
+      messagesEl.innerHTML = "";
+      messagesEl.appendChild(w);
     }
   }
+}
+
+function renderMessages(msgs, append = false) {
+  if (!append) messagesEl.innerHTML = "";
+  if (!msgs.length && !append) {
+    showWelcome(true);
+    return;
+  }
   for (const m of msgs) {
-    const div = document.createElement("div");
-    div.className = `msg ${m.role}`;
-    div.innerHTML =
-      renderMarkdownLite(escapeHtml(m.content)) +
-      `<div class="msg-time">${fmtTime(m.created_at)}</div>`;
-    messagesEl.appendChild(div);
+    const row = document.createElement("div");
+    row.className = `msg-row ${m.role}`;
+    const av = AVATAR[m.role] || "·";
+    row.innerHTML = `
+      <div class="msg-avatar">${av}</div>
+      <div>
+        <div class="msg-bubble">${renderMarkdownLite(m.content)}</div>
+        <div class="msg-time">${fmtTime(m.created_at)}</div>
+      </div>`;
+    messagesEl.appendChild(row);
   }
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
@@ -60,55 +74,66 @@ function renderMessages(msgs, append = false) {
 function renderSidebar() {
   sessionList.innerHTML = "";
   if (!sessions.length) {
-    const li = document.createElement("li");
-    li.className = "conv-preview";
-    li.style.padding = "1rem";
-    li.style.color = "var(--muted)";
-    li.style.fontSize = "0.85rem";
-    li.textContent = "No sessions yet";
-    sessionList.appendChild(li);
+    sessionList.innerHTML =
+      '<li class="session-empty">No sessions yet.<br>Start one with <strong>+ New session</strong>.</li>';
     return;
   }
   for (const s of sessions) {
     const li = document.createElement("li");
-    li.className = "conv-item" + (s.id === activeId ? " active" : "");
+    li.className = "session-item" + (s.id === activeId ? " active" : "");
     li.innerHTML = `
-      <div class="conv-name">${escapeHtml(s.name)}</div>
-      <div class="conv-preview">${escapeHtml(s.hostname)} · ${escapeHtml(s.preview || "")}</div>`;
+      <div class="session-item-name">${escapeHtml(s.name)}</div>
+      <div class="session-item-sub"><span class="machine-tag">${escapeHtml(s.hostname)}</span>${escapeHtml(truncate(s.preview, 40))}</div>`;
     li.onclick = () => openSession(s.id);
     sessionList.appendChild(li);
   }
 }
 
+function truncate(s, n) {
+  if (!s) return "";
+  const t = s.replace(/\n/g, " ");
+  return t.length > n ? t.slice(0, n) + "…" : t;
+}
+
 async function loadSessions() {
   const res = await fetch("/api/v1/sessions");
-  const data = await res.json();
-  sessions = data.sessions || [];
+  sessions = (await res.json()).sessions || [];
   renderSidebar();
+  if (activeId) {
+    const s = sessions.find((x) => x.id === activeId);
+    if (s) {
+      sessionTitle.textContent = s.name;
+      sessionMeta.textContent = `${s.hostname} · ${s.tailscale_ip}`;
+    }
+  }
 }
 
 async function loadPeers() {
   const res = await fetch("/api/v1/peers");
-  const data = await res.json();
-  peers = data.peers || [];
-  machineSelect.innerHTML = '<option value="">Choose a machine…</option>';
-  for (const p of peers) {
+  peers = (await res.json()).peers || [];
+  machineSelect.innerHTML = "";
+  const online = peers.filter((p) => p.online);
+  const offline = peers.filter((p) => !p.online);
+  for (const p of [...online, ...offline]) {
     const opt = document.createElement("option");
     opt.value = p.id;
     opt.disabled = !p.online;
-    opt.textContent = `${p.hostname}${p.is_self ? " (hub)" : ""}${p.online ? "" : " — offline"}`;
+    opt.textContent = `${p.hostname}${p.is_self ? " · hub" : ""}${p.online ? "" : " (offline)"}`;
     machineSelect.appendChild(opt);
   }
+  if (online.length) machineSelect.value = online[0].id;
+  updateHint();
 }
 
-machineSelect.addEventListener("change", () => {
+function updateHint() {
   const p = peers.find((x) => x.id === machineSelect.value);
-  if (!p) {
-    machineHint.textContent = "";
-    return;
-  }
-  machineHint.textContent = `${p.dns_name || p.tailscale_ip} · ${p.os}${p.online ? "" : " (offline)"}`;
-});
+  machineHint.className = "field-hint";
+  machineHint.textContent = p
+    ? `${p.dns_name || p.tailscale_ip} · ${p.os}`
+    : "";
+}
+
+machineSelect.addEventListener("change", updateHint);
 
 async function openSession(id) {
   activeId = id;
@@ -117,23 +142,22 @@ async function openSession(id) {
   if (!s) return;
 
   sessionTitle.textContent = s.name;
-  sessionMeta.textContent = `${s.hostname} · ${s.tailscale_ip} · tmux ${s.tmux_name}`;
+  sessionMeta.textContent = `${s.hostname} · ${s.tailscale_ip} · ${s.tmux_name}`;
   btnClose.classList.remove("hidden");
   commandInput.disabled = false;
   sendBtn.disabled = false;
-  emptyState.classList.add("hidden");
 
-  messagesEl.innerHTML = '<div class="loading" style="color:var(--muted)">Loading…</div>';
+  messagesEl.innerHTML = '<div class="session-empty">Loading…</div>';
   renderSidebar();
   await refreshMessages(true);
   startPolling();
+  commandInput.focus();
 }
 
 async function refreshMessages(full = false) {
   if (!activeId) return;
   const res = await fetch(`/api/v1/sessions/${activeId}/messages?since=${since}`);
-  const data = await res.json();
-  const msgs = data.messages || [];
+  const msgs = (await res.json()).messages || [];
   if (full) {
     renderMessages(msgs);
     if (msgs.length) since = msgs[msgs.length - 1].created_at;
@@ -145,28 +169,25 @@ async function refreshMessages(full = false) {
 
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
-  pollTimer = setInterval(() => refreshMessages(false), 2000);
+  pollTimer = setInterval(() => refreshMessages(false), 1500);
 }
 
 function closeUi() {
   activeId = null;
   since = 0;
   if (pollTimer) clearInterval(pollTimer);
-  sessionTitle.textContent = "No session open";
-  sessionMeta.textContent = "Create a session and pick a machine";
+  sessionTitle.textContent = "Welcome";
+  sessionMeta.textContent = "Open a session on any Tailscale machine";
   btnClose.classList.add("hidden");
   commandInput.disabled = true;
   sendBtn.disabled = true;
-  messagesEl.innerHTML = "";
-  messagesEl.appendChild(emptyState);
+  showWelcome(true);
   renderSidebar();
 }
 
 document.getElementById("btn-new").onclick = async () => {
   await loadPeers();
-  sessionNameInput.value = "";
-  machineSelect.value = "";
-  machineHint.textContent = "";
+  machineHint.className = "field-hint";
   dialog.showModal();
 };
 
@@ -184,22 +205,22 @@ document.getElementById("new-form").onsubmit = async (e) => {
     const res = await fetch("/api/v1/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: sessionNameInput.value.trim(),
-        peer_id,
-      }),
+      body: JSON.stringify({ peer_id }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "failed to create session");
+    if (!res.ok) {
+      const detail = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+      throw new Error(detail || "Connection failed");
+    }
     dialog.close();
     await loadSessions();
     await openSession(data.session.id);
   } catch (err) {
     machineHint.textContent = err.message;
-    machineHint.style.color = "var(--bad)";
+    machineHint.className = "field-hint err";
   } finally {
     btn.disabled = false;
-    btn.textContent = "Open session";
+    btn.textContent = "Connect";
   }
 };
 
@@ -209,20 +230,23 @@ composer.addEventListener("submit", async (e) => {
   if (!cmd || !activeId) return;
   commandInput.value = "";
   sendBtn.disabled = true;
-  await fetch(`/api/v1/sessions/${activeId}/run`, {
+
+  const res = await fetch(`/api/v1/sessions/${activeId}/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ command: cmd }),
   });
+  const data = await res.json();
   since = Math.max(0, since - 0.001);
-  await refreshMessages(false);
+  await refreshMessages(true);
+  await loadSessions();
+  if (data.name) sessionTitle.textContent = data.name;
   sendBtn.disabled = false;
   commandInput.focus();
 });
 
 btnClose.onclick = async () => {
-  if (!activeId) return;
-  if (!confirm("End this session? (tmux on remote machine will be closed)")) return;
+  if (!activeId || !confirm("End session and close remote tmux?")) return;
   await fetch(`/api/v1/sessions/${activeId}?kill=true`, { method: "DELETE" });
   await loadSessions();
   closeUi();

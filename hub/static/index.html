@@ -4,64 +4,66 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>The Ark</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
   <div class="app">
     <aside class="sidebar">
-      <div class="sidebar-header">
-        <span class="logo">⚓ The Ark</span>
+      <div class="brand">
+        <span class="brand-icon">⚓</span>
+        <div>
+          <div class="brand-title">The Ark</div>
+          <div class="brand-sub">Mission control</div>
+        </div>
       </div>
-      <button type="button" class="btn-new" id="btn-new">+ New session</button>
-      <ul class="conv-list" id="session-list"></ul>
+      <button type="button" class="btn-new" id="btn-new">
+        <span class="btn-new-icon">+</span> New session
+      </button>
+      <div class="sidebar-label">Sessions</div>
+      <ul class="session-list" id="session-list"></ul>
     </aside>
 
-    <main class="chat">
-      <header class="chat-header" id="chat-header">
-        <div>
-          <h1 id="session-title">No session open</h1>
-          <p class="conv-meta" id="session-meta">Create a session and pick a machine</p>
+    <main class="main">
+      <header class="topbar" id="topbar">
+        <div class="topbar-info">
+          <h1 id="session-title">Welcome</h1>
+          <p id="session-meta">Open a session on any Tailscale machine</p>
         </div>
-        <button type="button" class="btn-ghost hidden" id="btn-close" title="End session">✕</button>
+        <button type="button" class="btn-icon hidden" id="btn-close" title="End session">×</button>
       </header>
 
-      <div class="messages" id="messages">
-        <div class="empty-state" id="empty-state">
-          <p><strong>Start a session</strong></p>
-          <p>Click <em>+ New session</em>, choose a machine from your Tailscale network, and The Ark will SSH in and spin up tmux for you.</p>
+      <div class="feed" id="messages">
+        <div class="welcome" id="welcome">
+          <div class="welcome-icon">⚓</div>
+          <h2>Start working anywhere</h2>
+          <p>Pick a machine, run commands in chat. SSH and tmux are handled for you — session names update from what you do.</p>
         </div>
       </div>
 
       <form class="composer" id="composer">
-        <input
-          type="text"
-          id="command-input"
-          placeholder="Command runs in this session's tmux…"
-          autocomplete="off"
-          disabled
-        />
-        <button type="submit" id="send-btn" disabled>Run</button>
+        <input type="text" id="command-input" placeholder="Run a command…" disabled />
+        <button type="submit" id="send-btn" disabled aria-label="Run">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
       </form>
     </main>
   </div>
 
-  <dialog id="new-dialog" class="dialog">
-    <form method="dialog" id="new-form">
+  <dialog id="new-dialog" class="modal">
+    <form id="new-form">
       <h2>New session</h2>
-      <label>
-        <span>Name (optional)</span>
-        <input type="text" id="session-name" placeholder="e.g. minecraft goal" />
-      </label>
-      <label>
+      <p class="modal-lead">Choose a machine on your tailnet. Name is set automatically from your first command.</p>
+      <label class="field">
         <span>Machine</span>
-        <select id="machine-select" required>
-          <option value="">Loading tailnet…</option>
-        </select>
+        <select id="machine-select" required></select>
       </label>
-      <p class="hint" id="machine-hint"></p>
-      <div class="dialog-actions">
-        <button type="button" class="btn-ghost" id="btn-cancel">Cancel</button>
-        <button type="submit" class="btn-primary" id="btn-create">Open session</button>
+      <p class="field-hint" id="machine-hint"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" id="btn-cancel">Cancel</button>
+        <button type="submit" class="btn-primary" id="btn-create">Connect</button>
       </div>
     </form>
   </dialog>

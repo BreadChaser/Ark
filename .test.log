@@ -1,0 +1,114 @@
+=== health ===
+{"ok":true,"hostname":"tony-gaming"}
+=== peers ===
+{
+    "peers": [
+        {
+            "id": "air",
+            "hostname": "Air",
+            "dns_name": "air.tail4a0ae5.ts.net",
+            "tailscale_ip": "100.78.119.9",
+            "online": true,
+            "os": "linux",
+            "is_self": false
+        },
+        {
+            "id": "jelly-optiplex7010",
+            "hostname": "jelly-optiplex7010",
+            "dns_name": "jelly-optiplex7010.tail4a0ae5.ts.net",
+            "tailscale_ip": "100.64.250.16",
+            "online": true,
+            "os": "linux",
+            "is_self": false
+        },
+        {
+            "id": "minecraftserver",
+            "hostname": "MinecraftServer",
+            "dns_name": "minecraftserver.tail4a0ae5.ts.net",
+            "tailscale_ip": "100.65.77.45",
+            "online": true,
+            "os": "linux",
+            "is_self": false
+        },
+        {
+            "id": "hp-laptop",
+            "hostname": "Tony",
+            "dns_name": "hp-laptop.tail4a0ae5.ts.net",
+            "tailscale_ip": "100.94.206.66",
+            "online": true,
+            "os": "linux",
+            "is_self": false
+        },
+        {
+            "id": "tony-gaming-pc",
+            "hostname": "tony-gaming",
+            "dns_name": "tony-gaming-pc.tail4a0ae5.ts.net",
+            "tailscale_ip": "100.114.148.108",
+            "online": true,
+            "os": "linux",
+            "is_self": true
+        },
+        {
+            "id": "debian",
+            "hostname": "debian",
+=== create session on hub (self) ===
+peer_id=tony-gaming-pc
+{
+    "session": {
+        "id": "d90681f2e8",
+        "name": "tony-gaming",
+        "peer_id": "tony-gaming-pc",
+        "hostname": "tony-gaming",
+        "tailscale_ip": "100.114.148.108",
+        "tmux_name": "ark-d90681f2e8",
+        "created_at": 1783107877.4980812,
+        "updated_at": 1783107877.4980812,
+        "preview": "Connected to **tony-gaming** (`100.114.148.108`)\ntmux `ark-d90681f2e8` ready \u2014 c"
+    }
+}
+=== create session laptop ===
+laptop_peer=hp-laptop
+{
+    "session": {
+        "id": "e71cb29a78",
+        "name": "Tony",
+        "peer_id": "hp-laptop",
+        "hostname": "Tony",
+        "tailscale_ip": "100.94.206.66",
+        "tmux_name": "ark-e71cb29a78",
+        "created_at": 1783107877.830429,
+        "updated_at": 1783107877.830429,
+        "preview": "Connected to **Tony** (`100.94.206.66`)\ntmux `ark-e71cb29a78` ready \u2014 commands r"
+    }
+}
+=== run hostname ===
+{
+    "ok": true,
+    "exit_code": 0
+}
+=== messages ===
+{
+    "messages": [
+        {
+            "id": "4b4e739b7c57",
+            "session_id": "e71cb29a78",
+            "role": "system",
+            "content": "Connected to **Tony** (`100.94.206.66`)\ntmux `ark-e71cb29a78` ready \u2014 commands run automatically over Tailscale SSH",
+            "created_at": 1783107877.849681
+        },
+        {
+            "id": "3b10392b1988",
+            "session_id": "e71cb29a78",
+            "role": "command",
+            "content": "$ hostname",
+            "created_at": 1783107878.0066154
+        },
+        {
+            "id": "5cf9c6a10c28",
+            "session_id": "e71cb29a78",
+            "role": "output",
+            "content": "tony@tony-hp435g8:~$ hostname\ntony-hp435g8\ntony@tony-hp435g8:~$",
+            "created_at": 1783107878.781277
+        }
+    ]
+}

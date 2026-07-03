@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from ark_common.tailscale import TailscalePeer, list_peers
+from naming import clean_tmux_output, infer_name, should_auto_rename
 from remote import capture_tmux, ensure_tmux, kill_tmux, run_in_tmux
 from store import ArkStore
 
@@ -39,7 +40,6 @@ app = FastAPI(title="The Ark", version="0.3.0")
 
 
 class CreateSession(BaseModel):
-    name: str = ""
     peer_id: str
 
 
@@ -86,7 +86,7 @@ def api_create_session(body: CreateSession):
     if code != 0:
         raise HTTPException(500, f"tmux setup failed: {out}")
 
-    name = body.name.strip() or peer.hostname
+    name = f"New on {peer.hostname}"
     session = store.create_session(
         session_id=session_id,
         name=name,
@@ -98,8 +98,8 @@ def api_create_session(body: CreateSession):
     store.add_message(
         session.id,
         "system",
-        f"Connected to **{peer.hostname}** (`{peer.tailscale_ip}`)\n"
-        f"tmux `{tmux_name}` ready — commands run automatically over Tailscale SSH",
+        f"Connected to **{peer.hostname}** · tmux `{tmux_name}`\n"
+        f"Run a command — session name updates automatically.",
     )
     return {
         "session": {**session.to_dict(), "preview": store.last_message_preview(session.id)}
@@ -137,9 +137,15 @@ def api_run_command(session_id: str, body: RunCommand):
             session.tmux_name, cmd, session.tailscale_ip, local=local
         )
 
+    out = clean_tmux_output(out)
     role = "output" if code == 0 else "error"
     store.add_message(session_id, role, out[:20000] or f"(exit {code})")
-    return {"ok": code == 0, "exit_code": code}
+
+    new_name = infer_name(cmd, session.hostname)
+    if new_name and should_auto_rename(session.name, session.hostname):
+        store.rename_session(session_id, new_name)
+
+    return {"ok": code == 0, "exit_code": code, "name": store.get_session(session_id).name}
 
 
 @app.delete("/api/v1/sessions/{session_id}")

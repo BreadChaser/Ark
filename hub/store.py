@@ -139,11 +139,11 @@ class ArkStore:
             ).fetchone()
         return self._row_session(r) if r else None
 
-    def touch_session(self, session_id: str) -> None:
+    def rename_session(self, session_id: str, name: str) -> None:
         with self._conn() as c:
             c.execute(
-                "UPDATE sessions SET updated_at=? WHERE id=?",
-                (time.time(), session_id),
+                "UPDATE sessions SET name=?, updated_at=? WHERE id=?",
+                (name.strip(), time.time(), session_id),
             )
 
     def delete_session(self, session_id: str) -> bool:
