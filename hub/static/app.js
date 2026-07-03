@@ -1,80 +1,156 @@
-const REFRESH_MS = 15_000;
+let conversations = [];
+let activeId = null;
+let pollTimer = null;
+let since = 0;
 
-function fmtParams(n) {
-  if (!n) return "—";
-  if (n >= 1e9) return (n / 1e9).toFixed(1) + "B";
-  if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
-  return String(n);
+const convList = document.getElementById("conv-list");
+const messagesEl = document.getElementById("messages");
+const convTitle = document.getElementById("conv-title");
+const convMeta = document.getElementById("conv-meta");
+const convStatus = document.getElementById("conv-status");
+const commandInput = document.getElementById("command-input");
+const sendBtn = document.getElementById("send-btn");
+const composer = document.getElementById("composer");
+
+function fmtTime(ts) {
+  return new Date(ts * 1000).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
-function renderLaunch(services) {
-  const el = document.getElementById("launch-tiles");
-  el.innerHTML = "";
-  for (const svc of services || []) {
-    if (!svc.url) continue;
-    const a = document.createElement("a");
-    a.className = "tile";
-    a.href = svc.url;
-    a.target = "_blank";
-    a.rel = "noopener";
-    a.textContent = svc.name || svc.id;
-    el.appendChild(a);
-  }
+function renderMarkdownLite(text) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
 }
 
-function renderGaming(gp) {
-  const body = document.getElementById("gaming-body");
-  if (!gp) {
-    body.innerHTML = '<p class="placeholder">Not hub host</p>';
-    return;
+function renderMessages(msgs) {
+  if (!msgs.length && !activeId) return;
+  messagesEl.innerHTML = "";
+  for (const m of msgs) {
+    const div = document.createElement("div");
+    div.className = `msg ${m.role}`;
+    div.innerHTML =
+      renderMarkdownLite(escapeHtml(m.content)) +
+      `<div class="msg-time">${fmtTime(m.created_at)}</div>`;
+    messagesEl.appendChild(div);
   }
-
-  const gpu = gp.gpu || {};
-  const llama = gp.llama || {};
-  const docker = gp.docker || [];
-
-  let html = "";
-
-  if (gpu.error) {
-    html += `<div class="error">GPU: ${gpu.error}</div>`;
-  } else {
-    html += `
-      <div class="stat-row"><span class="stat-label">VRAM</span><span class="stat-value">${gpu.memory_used_mib ?? "—"} MiB</span></div>
-      <div class="stat-row"><span class="stat-label">GPU util</span><span class="stat-value">${gpu.utilization_pct ?? "—"}%</span></div>
-      <div class="stat-row"><span class="stat-label">Temp</span><span class="stat-value">${gpu.temperature_c ?? "—"}°C</span></div>`;
-  }
-
-  if (llama.reachable) {
-    html += `
-      <div class="stat-row"><span class="stat-label">Model</span><span class="stat-value">${llama.model_id || "local"}</span></div>
-      <div class="stat-row"><span class="stat-label">Context</span><span class="stat-value">${llama.n_ctx ? (llama.n_ctx / 1024).toFixed(0) + "k" : "—"}</span></div>
-      <div class="stat-row"><span class="stat-label">Params</span><span class="stat-value">${fmtParams(llama.n_params)}</span></div>`;
-  } else {
-    html += `<div class="error">llama: ${llama.error || "unreachable"}</div>`;
-  }
-
-  for (const c of docker) {
-    const cls = c.status?.toLowerCase().includes("up") ? "ok" : "bad";
-    html += `<div class="stat-row"><span class="stat-label">${c.name}</span><span class="badge ${cls}">${c.status?.split(" ")[0] || "?"}</span></div>`;
-  }
-
-  body.innerHTML = html;
+  messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-async function refresh() {
-  try {
-    const res = await fetch("/api/v1/status");
-    const data = await res.json();
-    document.getElementById("host-meta").textContent =
-      `${data.hostname} · ${new Date().toLocaleTimeString()}`;
-    const services = data.config?.services || [];
-    renderLaunch(services);
-    renderGaming(data.gaming_pc);
-  } catch (e) {
-    document.getElementById("gaming-body").innerHTML =
-      `<div class="error">${e.message}</div>`;
+function escapeHtml(s) {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function renderSidebar() {
+  convList.innerHTML = "";
+  for (const c of conversations) {
+    const li = document.createElement("li");
+    li.className = "conv-item" + (c.id === activeId ? " active" : "");
+    li.dataset.id = c.id;
+    li.innerHTML = `
+      <div class="conv-name">
+        <span class="dot ${c.online ? "on" : "off"}"></span>
+        ${escapeHtml(c.hostname)}${c.is_self ? " (you)" : ""}
+      </div>
+      <div class="conv-preview">${escapeHtml(c.preview || "")}</div>`;
+    li.onclick = () => selectConversation(c.id);
+    convList.appendChild(li);
   }
 }
 
-refresh();
-setInterval(refresh, REFRESH_MS);
+async function loadConversations() {
+  const res = await fetch("/api/v1/conversations");
+  const data = await res.json();
+  conversations = data.conversations || [];
+  renderSidebar();
+  if (activeId && !conversations.find((c) => c.id === activeId)) {
+    activeId = null;
+  }
+}
+
+async function loadMessages() {
+  if (!activeId) return;
+  const res = await fetch(
+    `/api/v1/conversations/${activeId}/messages?since=${since}`
+  );
+  const data = await res.json();
+  const msgs = data.messages || [];
+  if (msgs.length) {
+    since = msgs[msgs.length - 1].created_at;
+    const existing = messagesEl.querySelectorAll(".msg").length;
+    if (existing === 0) {
+      renderMessages(msgs);
+    } else {
+      for (const m of msgs) {
+        const div = document.createElement("div");
+        div.className = `msg ${m.role}`;
+        div.innerHTML =
+          renderMarkdownLite(escapeHtml(m.content)) +
+          `<div class="msg-time">${fmtTime(m.created_at)}</div>`;
+        messagesEl.appendChild(div);
+      }
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+  }
+}
+
+function selectConversation(id) {
+  activeId = id;
+  since = 0;
+  const c = conversations.find((x) => x.id === id);
+  if (!c) return;
+
+  convTitle.textContent = c.hostname + (c.is_self ? " (this machine)" : "");
+  convMeta.textContent = `${c.dns_name || c.tailscale_ip} · ${c.os}`;
+  convStatus.textContent = c.online ? "online" : "offline";
+  convStatus.className = "status-pill" + (c.online ? " online" : "");
+
+  commandInput.disabled = false;
+  sendBtn.disabled = false;
+  commandInput.placeholder = c.is_self
+    ? "Run a command locally…"
+    : `ssh tony@${c.tailscale_ip} — type command…`;
+
+  messagesEl.innerHTML = '<div class="loading">Loading…</div>';
+  renderSidebar();
+  loadMessages();
+  startPolling();
+}
+
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(loadMessages, 2000);
+}
+
+composer.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const cmd = commandInput.value.trim();
+  if (!cmd || !activeId) return;
+  commandInput.value = "";
+  sendBtn.disabled = true;
+
+  await fetch(`/api/v1/conversations/${activeId}/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ command: cmd }),
+  });
+
+  since = 0;
+  messagesEl.innerHTML = "";
+  await loadMessages();
+  sendBtn.disabled = false;
+  commandInput.focus();
+});
+
+document.getElementById("btn-refresh").onclick = async () => {
+  await loadConversations();
+  if (activeId) selectConversation(activeId);
+};
+
+loadConversations();
+setInterval(loadConversations, 30000);

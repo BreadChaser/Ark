@@ -7,35 +7,41 @@
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <header class="header">
-    <div class="logo">⚓ The Ark</div>
-    <div class="meta" id="host-meta">loading…</div>
-  </header>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <span class="logo">⚓ The Ark</span>
+        <button class="icon-btn" id="btn-refresh" title="Refresh tailnet">↻</button>
+      </div>
+      <div class="sidebar-sub">Tailscale network</div>
+      <ul class="conv-list" id="conv-list"></ul>
+    </aside>
 
-  <section class="quick-launch" id="quick-launch">
-    <h2>Quick launch</h2>
-    <div class="tiles" id="launch-tiles"></div>
-  </section>
+    <main class="chat">
+      <header class="chat-header" id="chat-header">
+        <div>
+          <h1 id="conv-title">Select a machine</h1>
+          <p class="conv-meta" id="conv-meta"></p>
+        </div>
+        <span class="status-pill" id="conv-status"></span>
+      </header>
 
-  <main class="grid" id="cards">
-    <article class="card" id="gaming-card">
-      <h2>Gaming PC</h2>
-      <div class="card-body" id="gaming-body">Collecting…</div>
-    </article>
-    <article class="card muted">
-      <h2>Laptop</h2>
-      <p class="placeholder">Probe coming in Phase 2</p>
-    </article>
-    <article class="card muted">
-      <h2>MacBook Air</h2>
-      <p class="placeholder">Probe coming in Phase 3</p>
-    </article>
-  </main>
+      <div class="messages" id="messages">
+        <div class="empty-state">Pick a conversation on the left — machines auto-populate from your Tailscale tailnet.</div>
+      </div>
 
-  <footer class="footer">
-    <span>Tailscale only · refresh 15s</span>
-  </footer>
-
+      <form class="composer" id="composer">
+        <input
+          type="text"
+          id="command-input"
+          placeholder="Run a command on this machine… (Enter to send)"
+          autocomplete="off"
+          disabled
+        />
+        <button type="submit" id="send-btn" disabled>Run</button>
+      </form>
+    </main>
+  </div>
   <script src="/static/app.js"></script>
 </body>
 </html>

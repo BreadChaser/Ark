@@ -8,3 +8,4 @@ build/
 .DS_Store
 .deploy.log
 .deploy-test
+.tailscale-sample.json
