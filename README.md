@@ -5,6 +5,19 @@ A Tailscale-only mission control dashboard for your homelab — **all Linux**: g
 ## Docs
 
 - **[Master plan](docs/PLAN.md)** — architecture, phases, UI mockup, deployment
+- **[Deploy hub](docs/DEPLOY.md)** — gaming PC install
+- **[tmux workflow](docs/TMUX.md)** — when to use tmux vs systemd
+
+## tmux vs systemd
+
+| systemd | tmux |
+|---------|------|
+| ark-hub, llama, probes | opencode, codex CLI |
+| always-on services | detach/resume from any machine |
+
+```bash
+~/ark/scripts/ark-attach laptop agents/opencode
+```
 
 ## Quick summary
 
@@ -17,4 +30,4 @@ A Tailscale-only mission control dashboard for your homelab — **all Linux**: g
 
 ## Status
 
-Planning phase — Phase 0 not started yet.
+Phase 0 in progress — hub code on `main`, deploy to gaming PC with `scripts/install-hub.sh`.

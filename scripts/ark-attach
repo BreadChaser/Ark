@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Attach to a named tmux session on an Ark fleet host.
+# Usage: ark-attach <host> [session]
+#   host: gaming | laptop | mba  (or full tailscale hostname)
+#   session: default agents/opencode
+
+set -euo pipefail
+
+HOST_KEY="${1:?usage: ark-attach <gaming|laptop|mba|hostname> [session]}"
+SESSION="${2:-agents/opencode}"
+
+case "$HOST_KEY" in
+  gaming|gaming-pc|pc) HOST="tony-gaming" ;;
+  laptop|hp)           HOST="tony-hp435g8" ;;
+  mba|macbook|air)     HOST="tony-mba" ;;
+  *)                   HOST="$HOST_KEY" ;;
+esac
+
+exec ssh -t "tony@${HOST}" "tmux new -A -s ${SESSION}"

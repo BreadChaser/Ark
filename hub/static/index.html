@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>The Ark</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="logo">⚓ The Ark</div>
+    <div class="meta" id="host-meta">loading…</div>
+  </header>
+
+  <section class="quick-launch" id="quick-launch">
+    <h2>Quick launch</h2>
+    <div class="tiles" id="launch-tiles"></div>
+  </section>
+
+  <main class="grid" id="cards">
+    <article class="card" id="gaming-card">
+      <h2>Gaming PC</h2>
+      <div class="card-body" id="gaming-body">Collecting…</div>
+    </article>
+    <article class="card muted">
+      <h2>Laptop</h2>
+      <p class="placeholder">Probe coming in Phase 2</p>
+    </article>
+    <article class="card muted">
+      <h2>MacBook Air</h2>
+      <p class="placeholder">Probe coming in Phase 3</p>
+    </article>
+  </main>
+
+  <footer class="footer">
+    <span>Tailscale only · refresh 15s</span>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
