@@ -2,6 +2,10 @@
 # Install shared tmux config on any Ark fleet machine.
 set -euo pipefail
 ARK_DIR="${ARK_DIR:-$HOME/ark}"
+# fallback: dev clone on laptop
+if [[ ! -f "$ARK_DIR/config/tmux.conf" && -f "$HOME/Projects/ark/config/tmux.conf" ]]; then
+  ARK_DIR="$HOME/Projects/ark"
+fi
 CONF="$ARK_DIR/config/tmux.conf"
 if [[ ! -f "$CONF" ]]; then
   echo "missing $CONF — clone Ark first" >&2

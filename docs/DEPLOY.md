@@ -4,7 +4,13 @@
 
 - Tailscale connected
 - Docker + llama-ornith running
-- `git`, `python3`, `python3-venv`, `tmux` (optional, for dev)
+- `git`, `curl` — **no sudo required** (install script uses [uv](https://github.com/astral-sh/uv))
+
+Optional (sudo, cleaner system packages):
+
+```bash
+sudo apt install -y tmux python3-venv
+```
 
 ## Install
 
