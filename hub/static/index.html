@@ -11,30 +11,32 @@
     <aside class="sidebar">
       <div class="sidebar-header">
         <span class="logo">⚓ The Ark</span>
-        <button class="icon-btn" id="btn-refresh" title="Refresh tailnet">↻</button>
       </div>
-      <div class="sidebar-sub">Tailscale network</div>
-      <ul class="conv-list" id="conv-list"></ul>
+      <button type="button" class="btn-new" id="btn-new">+ New session</button>
+      <ul class="conv-list" id="session-list"></ul>
     </aside>
 
     <main class="chat">
       <header class="chat-header" id="chat-header">
         <div>
-          <h1 id="conv-title">Select a machine</h1>
-          <p class="conv-meta" id="conv-meta"></p>
+          <h1 id="session-title">No session open</h1>
+          <p class="conv-meta" id="session-meta">Create a session and pick a machine</p>
         </div>
-        <span class="status-pill" id="conv-status"></span>
+        <button type="button" class="btn-ghost hidden" id="btn-close" title="End session">✕</button>
       </header>
 
       <div class="messages" id="messages">
-        <div class="empty-state">Pick a conversation on the left — machines auto-populate from your Tailscale tailnet.</div>
+        <div class="empty-state" id="empty-state">
+          <p><strong>Start a session</strong></p>
+          <p>Click <em>+ New session</em>, choose a machine from your Tailscale network, and The Ark will SSH in and spin up tmux for you.</p>
+        </div>
       </div>
 
       <form class="composer" id="composer">
         <input
           type="text"
           id="command-input"
-          placeholder="Run a command on this machine… (Enter to send)"
+          placeholder="Command runs in this session's tmux…"
           autocomplete="off"
           disabled
         />
@@ -42,6 +44,28 @@
       </form>
     </main>
   </div>
+
+  <dialog id="new-dialog" class="dialog">
+    <form method="dialog" id="new-form">
+      <h2>New session</h2>
+      <label>
+        <span>Name (optional)</span>
+        <input type="text" id="session-name" placeholder="e.g. minecraft goal" />
+      </label>
+      <label>
+        <span>Machine</span>
+        <select id="machine-select" required>
+          <option value="">Loading tailnet…</option>
+        </select>
+      </label>
+      <p class="hint" id="machine-hint"></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn-ghost" id="btn-cancel">Cancel</button>
+        <button type="submit" class="btn-primary" id="btn-create">Open session</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="/static/app.js"></script>
 </body>
 </html>
