@@ -1,0 +1,9 @@
+# Goal tests and watchers registered with The Ark
+
+tests:
+  - id: minecraft-python-goal
+    name: Qwen3.6 Minecraft Python /goal
+    project_dir: /home/tony/Tests/2026-07-03_qwen36-35b_minecraft-python-goal
+    device: laptop
+    watch_log: /home/tony/minecraft_goal_watch.log
+    prompt_file: /home/tony/Tests/_prompts/2026-07-03_minecraft-python-goal.md

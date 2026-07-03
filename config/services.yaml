@@ -1,0 +1,50 @@
+# The Ark — service registry (edit as you add machines)
+
+devices:
+  gaming-pc:
+    name: Gaming PC
+    hostname: tony-gaming
+    tailscale_ip: 100.114.148.108
+    probe_url: http://100.114.148.108:9100
+    is_hub_host: true
+    os: linux
+
+  laptop:
+    name: Laptop (HP ProBook)
+    hostname: tony-hp435g8  # tailscale set --hostname if needed
+    probe_url: null  # fill laptop tailscale IP when known
+    os: linux
+
+  macbook-air:
+    name: MacBook Air (Linux)
+    hostname: tony-mba  # tailscale set --hostname when on tailnet
+    probe_url: null  # fill Air tailscale IP when known
+    os: linux
+
+services:
+  - id: llama-panel
+    name: Llama Panel
+    device: gaming-pc
+    url: http://100.114.148.108:8090
+    health_url: null
+    category: ai
+
+  - id: llama-api
+    name: llama-server
+    device: gaming-pc
+    url: http://100.114.148.108:8080
+    health_url: http://100.114.148.108:8080/health
+    category: ai
+
+  - id: moonlight
+    name: Moonlight (Sunshine)
+    device: gaming-pc
+    url: null  # moonlight:// or app link
+    note: Connect to 100.114.148.108
+    category: remote
+
+  - id: opencode-laptop
+    name: opencode (laptop)
+    device: laptop
+    url: null  # probe reports when opencode web is running
+    category: agents
