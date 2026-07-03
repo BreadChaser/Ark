@@ -29,7 +29,8 @@ def infer_name(command: str, hostname: str) -> str | None:
         return None
 
     # cd [path] — most common "what I'm doing" signal
-    m = re.match(r"cd\s+(.+)$", cmd)
+    first_part = cmd.split("&&")[0].strip()
+    m = re.match(r"cd\s+(.+)$", first_part)
     if m:
         path = m.group(1).strip().strip('"').strip("'")
         path = path.replace("~/", "").rstrip("/")
@@ -37,7 +38,7 @@ def infer_name(command: str, hostname: str) -> str | None:
         if base and base not in (".", "..", "~"):
             return f"{hostname} · {base}"
 
-    # compound: cd somewhere && tool
+    # compound without leading cd on first part — try any segment
     if "&&" in cmd:
         parts = [p.strip() for p in cmd.split("&&")]
         for part in parts:

@@ -106,6 +106,19 @@ def api_create_session(body: CreateSession):
     }
 
 
+@app.get("/api/v1/sessions/{session_id}")
+def api_get_session(session_id: str):
+    session = store.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "session not found")
+    return {
+        "session": {
+            **session.to_dict(),
+            "preview": store.last_message_preview(session_id),
+        }
+    }
+
+
 @app.get("/api/v1/sessions/{session_id}/messages")
 def api_messages(session_id: str, since: float = 0):
     if not store.get_session(session_id):
