@@ -56,6 +56,12 @@ const COLLAPSE_KEY = "ark-collapsed-machines";
 const SIDEBAR_KEY = "ark-sidebar-open";
 const SSH_USER_KEY = "ark-ssh-user";
 const THEME_KEY = "ark-theme";
+const SESSION_UI_KEY = "ark-session-ui-state";
+
+const AGENT_PROVIDERS = {
+  codex: { command: "codex", structured: true, label: "Codex" },
+  opencode: { command: "opencode", structured: false, label: "OpenCode" },
+};
 
 const SUGGESTIONS = [
   "/model", "/status", "/help", "/clear", "/compact", "/diff", "/new", "/exit",
@@ -117,6 +123,29 @@ btnSettings.onclick = async () => {
 };
 btnScrollBottom.onclick = scrollFeedBottom;
 messagesEl.addEventListener("scroll", updateScrollButton);
+
+function loadSessionUiState() {
+  try { return JSON.parse(localStorage.getItem(SESSION_UI_KEY) || "{}"); }
+  catch { return {}; }
+}
+
+function saveSessionUiState(patch) {
+  if (!activeId) return;
+  const state = loadSessionUiState();
+  state[activeId] = { ...(state[activeId] || {}), ...patch };
+  localStorage.setItem(SESSION_UI_KEY, JSON.stringify(state));
+}
+
+function getSessionUiState(id) {
+  return loadSessionUiState()[id] || {};
+}
+
+function setTerminalMode(next, { auto = false, persist = !auto } = {}) {
+  terminalMode = next;
+  autoTerminalMode = auto;
+  if (persist) saveSessionUiState({ terminalMode: next });
+  updateInputMode();
+}
 
 function updateInputMode() {
   document.body.classList.toggle("terminal-mode", terminalMode);
@@ -337,7 +366,13 @@ function stripAnsi(s) {
 }
 
 function isAgentCommand(cmd) {
-  return /^(codex|opencode)\b/.test(String(cmd || "").trim());
+  const command = String(cmd || "").trim().split(/\s+/, 1)[0];
+  return !!AGENT_PROVIDERS[command];
+}
+
+function agentProviderForCommand(cmd) {
+  const command = String(cmd || "").trim().split(/\s+/, 1)[0];
+  return AGENT_PROVIDERS[command] || null;
 }
 
 function extractAgentLines(text) {
@@ -506,7 +541,7 @@ async function openSession(id) {
   liveStartedAt = 0;
   adoptedLive = false;
   codexMode = false;
-  terminalMode = false;
+  terminalMode = !!getSessionUiState(id).terminalMode;
   autoTerminalMode = false;
   liveCommand = "";
   liveBubble = null;
@@ -528,6 +563,7 @@ async function openSession(id) {
   const state = await refreshState();
   await restoreCodexFromState();
   restoreLiveFromState(state);
+  if (terminalMode && !runningTag && !codexMode) startTerminalPoll();
   startMsgPolling();
   commandInput.focus();
 }
@@ -729,8 +765,7 @@ async function pollLive() {
       liveStartedAt = 0;
       adoptedLive = false;
       if (autoTerminalMode) {
-        terminalMode = false;
-        autoTerminalMode = false;
+        setTerminalMode(false, { persist: false });
       }
       liveCommand = "";
       if (liveBubble) { liveBubble.remove(); liveBubble = null; }
@@ -746,8 +781,7 @@ async function pollLive() {
       liveStartedAt = 0;
       adoptedLive = false;
       if (autoTerminalMode) {
-        terminalMode = false;
-        autoTerminalMode = false;
+        setTerminalMode(false, { persist: false });
       }
       liveCommand = "";
       updateInputMode();
@@ -756,7 +790,9 @@ async function pollLive() {
 }
 
 function isLiveCommand(cmd) {
-  return /^(codex|opencode|htop|top|btop|vim|vi|nano|less|man|ssh|python3?\s+-i|node\s+-i)\b/.test(String(cmd || "").trim());
+  const provider = agentProviderForCommand(cmd);
+  if (provider && !provider.structured) return true;
+  return /^(htop|top|btop|vim|vi|nano|less|man|ssh|python3?\s+-i|node\s+-i)\b/.test(String(cmd || "").trim());
 }
 
 function isTerminalCommand(cmd) {
@@ -802,7 +838,7 @@ function closeUi() {
   liveStartedAt = 0;
   adoptedLive = false;
   codexMode = false;
-  terminalMode = false;
+  setTerminalMode(false, { persist: false });
   autoTerminalMode = false;
   liveCommand = "";
   liveBubble = null;
@@ -826,8 +862,7 @@ function closeUi() {
 
 function toggleTerminalMode() {
   if (!activeId) return;
-  terminalMode = !terminalMode;
-  autoTerminalMode = false;
+  setTerminalMode(!terminalMode);
   if (terminalMode) {
     liveCommand = liveCommand || "terminal";
     if (runningTag) startLivePoll();
@@ -911,12 +946,13 @@ async function sendCommand(cmd) {
     return;
   }
 
-  if (!runningTag && cmd === "codex") {
+  const provider = agentProviderForCommand(cmd);
+  if (!runningTag && provider?.structured && provider.command === "codex") {
     runningTag = "codex-api";
     codexMode = true;
     liveStartedAt = Date.now();
-    liveCommand = "codex";
-    setCodexBubble("", "starting codex app-server");
+    liveCommand = provider.command;
+    setCodexBubble("", `starting ${provider.label} app-server`);
     const res = await fetch(`/api/v1/sessions/${activeId}/codex/start`, { method: "POST" });
     const data = await res.json().catch(() => ({}));
     if (data.ok) {
@@ -972,8 +1008,7 @@ async function sendCommand(cmd) {
       runningTag = data.tag;
       liveStartedAt = Date.now();
       adoptedLive = false;
-      terminalMode = isTerminalCommand(cmd);
-      autoTerminalMode = terminalMode;
+      setTerminalMode(isTerminalCommand(cmd), { auto: isTerminalCommand(cmd) });
       liveCommand = cmd;
       startLivePoll(); // monitor for completion (stores output server-side)
     } else {
@@ -1085,8 +1120,7 @@ async function stopLiveApp() {
   runningTag = null;
   liveStartedAt = 0;
   adoptedLive = false;
-  terminalMode = false;
-  autoTerminalMode = false;
+  setTerminalMode(false, { persist: false });
   liveCommand = "";
   stopLivePoll();
   if (liveBubble) { liveBubble.remove(); liveBubble = null; }
