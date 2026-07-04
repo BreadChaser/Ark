@@ -1028,6 +1028,7 @@ document.getElementById("btn-new").onclick = async () => {
   machineHint.className = "field-hint";
   dialog.showModal();
 };
+document.getElementById("btn-welcome-new").onclick = document.getElementById("btn-new").onclick;
 document.getElementById("btn-cancel").onclick = () => dialog.close();
 
 document.getElementById("new-form").onsubmit = async (e) => {

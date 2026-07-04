@@ -767,7 +767,7 @@ def api_delete_session(session_id: str, kill: bool = True):
 
 @app.get("/")
 def index():
-    return FileResponse(STATIC / "index.html")
+    return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-store"})
 
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
