@@ -7,6 +7,7 @@ let liveTimer = null;
 let runningTag = null;
 let liveStartedAt = 0;
 let adoptedLive = false;
+let codexMode = false;
 let liveCommand = "";
 let liveBubble = null;
 let currentSession = null;
@@ -440,6 +441,7 @@ async function openSession(id) {
   runningTag = null;
   liveStartedAt = 0;
   adoptedLive = false;
+  codexMode = false;
   liveCommand = "";
   liveBubble = null;
   stopLivePoll();
@@ -456,6 +458,7 @@ async function openSession(id) {
   messagesEl.innerHTML = '<div class="session-empty">Loading…</div>';
   await refreshMessages(true);
   const state = await refreshState();
+  await restoreCodexFromState();
   restoreLiveFromState(state);
   startMsgPolling();
   commandInput.focus();
@@ -481,6 +484,20 @@ function restoreLiveFromState(state) {
   liveCommand = state.live.command || "";
   createLiveBubble();
   startLivePoll();
+}
+
+async function restoreCodexFromState() {
+  try {
+    const d = await (await fetch(`/api/v1/sessions/${activeId}/codex/state`)).json();
+    if (!d.active) return;
+    runningTag = "codex-api";
+    codexMode = true;
+    liveStartedAt = Date.now();
+    liveCommand = "codex";
+    createLiveBubble();
+    renderCodexState(d);
+    startCodexPoll();
+  } catch {}
 }
 
 async function refreshMessages(full = false) {
@@ -514,6 +531,34 @@ function startLivePoll() {
 function stopLivePoll() {
   if (liveTimer) clearInterval(liveTimer);
   liveTimer = null;
+}
+
+function startCodexPoll() {
+  if (liveTimer) clearInterval(liveTimer);
+  liveTimer = setInterval(pollCodex, 900);
+  pollCodex();
+}
+
+async function pollCodex() {
+  if (!activeId || !codexMode) return;
+  try {
+    const d = await (await fetch(`/api/v1/sessions/${activeId}/codex/state`)).json();
+    if (!d.active) {
+      codexMode = false;
+      runningTag = null;
+      stopLivePoll();
+      if (liveBubble) { liveBubble.remove(); liveBubble = null; }
+      await refreshMessages(true);
+      return;
+    }
+    renderCodexState(d);
+  } catch {}
+}
+
+function renderCodexState(d) {
+  if (!liveBubble) createLiveBubble();
+  const text = d.transcript || d.status || "Codex app-server";
+  setLiveContent(`<span class="output-ok">${escapeHtml(d.status || "ready")}</span>`, text);
 }
 
 async function pollLive() {
@@ -609,6 +654,7 @@ function closeUi() {
   runningTag = null;
   liveStartedAt = 0;
   adoptedLive = false;
+  codexMode = false;
   liveCommand = "";
   liveBubble = null;
   if (msgTimer) clearInterval(msgTimer);
@@ -685,6 +731,30 @@ async function sendCommand(cmd) {
   }
   const headers = { "Content-Type": "application/json" };
 
+  if (!runningTag && cmd === "codex") {
+    runningTag = "codex-api";
+    codexMode = true;
+    liveStartedAt = Date.now();
+    liveCommand = "codex";
+    createLiveBubble();
+    setLiveContent(`<span class="output-ok">starting codex app-server…</span>`, "Starting Codex app-server…");
+    const res = await fetch(`/api/v1/sessions/${activeId}/codex/start`, { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    if (data.ok) {
+      since = Math.max(0, since - 0.001);
+      await refreshMessages(false);
+      renderCodexState(data.state || {});
+      startCodexPoll();
+      await refreshState();
+      await loadSessions();
+      return;
+    }
+    runningTag = null;
+    codexMode = false;
+    liveCommand = "";
+    if (liveBubble) { liveBubble.remove(); liveBubble = null; }
+  }
+
   if (runningTag) {
     freezeLiveSnapshot();
     const now = Date.now() / 1000;
@@ -693,6 +763,13 @@ async function sendCommand(cmd) {
     since = now;
     scrollFeedBottom();
     createLiveBubble();
+    if (codexMode) {
+      fetch(`/api/v1/sessions/${activeId}/codex/send`, {
+        method: "POST", headers, body: JSON.stringify({ text: cmd }),
+      }).then(() => pollCodex()).catch(() => {});
+      setTimeout(() => pollCodex(), 300);
+      return;
+    }
     fetch(`/api/v1/sessions/${activeId}/type`, {
       method: "POST", headers, body: JSON.stringify({ text: cmd }),
     }).then(() => pollLive()).catch(() => {});
@@ -779,6 +856,19 @@ document.addEventListener("keydown", (e) => {
 
 async function stopLiveApp() {
   if (!activeId) return;
+  if (codexMode) {
+    await fetch(`/api/v1/sessions/${activeId}/codex/stop`, { method: "POST" });
+    codexMode = false;
+    runningTag = null;
+    liveStartedAt = 0;
+    liveCommand = "";
+    stopLivePoll();
+    if (liveBubble) { liveBubble.remove(); liveBubble = null; }
+    since = Math.max(0, since - 0.001);
+    await refreshMessages(true);
+    await refreshState();
+    return;
+  }
   await fetch(`/api/v1/sessions/${activeId}/stop`, { method: "POST" });
   runningTag = null;
   liveStartedAt = 0;

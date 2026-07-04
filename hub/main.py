@@ -16,6 +16,9 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from codex_bridge import get_app as get_codex_app
+from codex_bridge import start_app as start_codex_app
+from codex_bridge import stop_app as stop_codex_app
 from ark_common.tailscale import TailscalePeer, list_peers
 from naming import infer_name, should_auto_rename
 from remote import (
@@ -81,6 +84,10 @@ class TypeText(BaseModel):
 
 class SendKey(BaseModel):
     key: str
+
+
+class CodexInput(BaseModel):
+    text: str = ""
 
 
 _pending: dict[str, bool] = {}
@@ -350,6 +357,58 @@ def api_type(session_id: str, body: TypeText):
     ensure_tmux(session.tmux_name, session.tailscale_ip, local=local, user=user)
     store.add_message(session_id, "user", text)
     send_text_line(session.tmux_name, text, session.tailscale_ip, local=local, user=user)
+    return {"ok": True}
+
+
+@app.post("/api/v1/sessions/{session_id}/codex/start")
+def api_codex_start(session_id: str):
+    session = store.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "session not found")
+    _peer, local = _session_peer_local(session)
+    user = _session_ssh_user(session)
+    code, cwd = pane_current_path(session.tmux_name, session.tailscale_ip, local=local, user=user)
+    ok, error = start_codex_app(
+        session_id,
+        session.tailscale_ip,
+        cwd if code == 0 else "",
+        local=local,
+        user=user,
+    )
+    if not ok:
+        return {"ok": False, "error": error}
+    store.add_message(session_id, "user", "codex")
+    return {"ok": True, "state": get_codex_app(session_id).state()}
+
+
+@app.post("/api/v1/sessions/{session_id}/codex/send")
+def api_codex_send(session_id: str, body: CodexInput):
+    app = get_codex_app(session_id)
+    if not app:
+        raise HTTPException(404, "codex app-server is not running")
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(400, "empty text")
+    store.add_message(session_id, "user", text)
+    app.send(text)
+    return {"ok": True, "state": app.state()}
+
+
+@app.get("/api/v1/sessions/{session_id}/codex/state")
+def api_codex_state(session_id: str):
+    app = get_codex_app(session_id)
+    if not app:
+        return {"active": False}
+    for text in app.drain_completed():
+        store.add_message(session_id, "output", text[:20000])
+    return app.state()
+
+
+@app.post("/api/v1/sessions/{session_id}/codex/stop")
+def api_codex_stop(session_id: str):
+    stop_codex_app(session_id)
+    if store.get_session(session_id):
+        store.add_message(session_id, "system", "Stopped Codex app-server.")
     return {"ok": True}
 
 
