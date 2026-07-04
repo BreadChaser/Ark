@@ -79,6 +79,10 @@ class RunCommand(BaseModel):
     command: str
 
 
+class RenameSession(BaseModel):
+    name: str
+
+
 class TypeText(BaseModel):
     text: str
     store: bool = True
@@ -255,6 +259,19 @@ def api_get_session(session_id: str):
             "preview": store.last_message_preview(session_id),
         }
     }
+
+
+@app.patch("/api/v1/sessions/{session_id}")
+def api_rename_session(session_id: str, body: RenameSession):
+    session = store.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "session not found")
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(400, "empty session name")
+    store.rename_session(session_id, name[:80])
+    updated = store.get_session(session_id)
+    return {"session": {**updated.to_dict(), "preview": store.last_message_preview(session_id)}}
 
 
 def _session_peer_local(session):

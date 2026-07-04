@@ -19,6 +19,8 @@ let pendingLocalUsers = [];
 let suggestIndex = -1;
 let suggestAbort = null;
 let terminalTypeQueue = Promise.resolve();
+let terminalSending = false;
+let terminalPollInFlight = false;
 let terminalTextBuffer = "";
 let terminalFlushTimer = null;
 
@@ -31,6 +33,7 @@ const commandInput = document.getElementById("command-input");
 const sendBtn = document.getElementById("send-btn");
 const composer = document.getElementById("composer");
 const btnClose = document.getElementById("btn-close");
+const btnRename = document.getElementById("btn-rename");
 const dialog = document.getElementById("new-dialog");
 const machineSelect = document.getElementById("machine-select");
 const tmuxSelect = document.getElementById("tmux-select");
@@ -266,7 +269,7 @@ function removeCodexBubble() {
 }
 
 function setCodexBubble(text, status = "working") {
-  const keepBottom = isNearBottom(messagesEl, 80);
+  const feedTop = messagesEl.scrollTop;
   if (!codexBubble) {
     codexBubble = document.createElement("div");
     codexBubble.className = "msg-row output codex-chat";
@@ -280,20 +283,23 @@ function setCodexBubble(text, status = "working") {
   }
   codexBubble.querySelector(".msg-bubble").innerHTML = text ? twinkleText(text) : `<span class="output-ok">${escapeHtml(status)}</span>`;
   codexBubble.querySelector(".msg-time").textContent = status;
-  if (keepBottom) scrollFeedBottom();
-  else updateScrollButton();
+  messagesEl.scrollTop = feedTop;
+  updateScrollButton();
 }
 
 function renderMessages(msgs, append = false) {
-  const keepBottom = !append || isNearBottom(messagesEl, 80);
+  const feedTop = messagesEl.scrollTop;
   if (!append) messagesEl.innerHTML = "";
   if (!append) pendingLocalUsers = [];
   const shown = append ? filterPendingUserEchoes(msgs) : msgs;
   if (!shown.length && !append) { showWelcome(true); return; }
   showWelcome(false);
   for (const m of shown) addBubble(m);
-  if (keepBottom) scrollFeedBottom();
-  else updateScrollButton();
+  if (!append) scrollFeedBottom();
+  else {
+    messagesEl.scrollTop = feedTop;
+    updateScrollButton();
+  }
 }
 
 function filterPendingUserEchoes(msgs) {
@@ -331,6 +337,7 @@ function createLiveBubble() {
   if (liveBubble) liveBubble.remove();
   liveBubble = document.createElement("div");
   liveBubble.className = "msg-row output live";
+  liveBubble.dataset.firstPaint = "1";
   liveBubble.innerHTML = `
     <div class="msg-avatar">⌘</div>
     <div class="msg-body">
@@ -339,7 +346,6 @@ function createLiveBubble() {
           <span><span class="live-dot"></span><span class="live-title">Live app</span></span>
           <button type="button" class="btn-stop" id="btn-stop-live">Stop</button>
         </div>
-        <div class="agent-chat hidden"></div>
         <div class="live-terminal"><span class="output-ok">running…</span></div>
       </div>
       <div class="msg-time">live</div>
@@ -354,18 +360,20 @@ function createLiveBubble() {
 function setLiveContent(html, rawText = null) {
   if (!liveBubble) return;
   const feedTop = messagesEl.scrollTop;
+  const firstPaint = liveBubble.dataset.firstPaint === "1";
   const b = liveBubble.querySelector(".live-terminal");
   const bubble = liveBubble.querySelector(".msg-bubble");
   const bubbleTop = bubble.scrollTop;
   b.innerHTML = html || `<span class="output-ok">running…</span>`;
-  if (rawText !== null) renderAgentChat(rawText);
-  bubble.scrollTop = bubbleTop;
-  messagesEl.scrollTop = feedTop;
+  if (firstPaint) {
+    delete liveBubble.dataset.firstPaint;
+    bubble.scrollTop = bubble.scrollHeight;
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  } else {
+    bubble.scrollTop = bubbleTop;
+    messagesEl.scrollTop = feedTop;
+  }
   updateScrollButton();
-}
-
-function stripAnsi(s) {
-  return String(s || "").replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
 }
 
 function isAgentCommand(cmd) {
@@ -376,43 +384,6 @@ function isAgentCommand(cmd) {
 function agentProviderForCommand(cmd) {
   const command = String(cmd || "").trim().split(/\s+/, 1)[0];
   return AGENT_PROVIDERS[command] || null;
-}
-
-function extractAgentLines(text) {
-  const noise = /^(model:|directory:|tip:|heads up|to change|gpt-|tab to queue|[0-9]+% context|booting mcp|esc to interrupt|ctrl-|press |run \/status|included in your plan)/i;
-  return stripAnsi(text).split(/\r?\n/)
-    .map((l) => l.replace(/[│╭╮╰╯─]/g, "").trim())
-    .filter((l) => l && !l.startsWith("›") && !noise.test(l) && !isPromptEcho(l))
-    .slice(-8);
-}
-
-function isPromptEcho(line) {
-  return pendingLocalUsers.some((p) => {
-    const content = p.content.trim();
-    return content && (content.includes(line) || line.includes(content.slice(0, 40)));
-  });
-}
-
-function renderAgentChat(rawText) {
-  const chat = liveBubble?.querySelector(".agent-chat");
-  const title = liveBubble?.querySelector(".live-title");
-  if (!chat) return;
-  if (title) title.textContent = terminalMode ? "Terminal" : (isAgentCommand(liveCommand) ? "Agent live" : "Live app");
-  if (!isAgentCommand(liveCommand)) {
-    chat.classList.add("hidden");
-    chat.innerHTML = "";
-    return;
-  }
-  const lines = extractAgentLines(rawText);
-  if (!lines.length) {
-    chat.classList.add("hidden");
-    chat.innerHTML = "";
-    return;
-  }
-  chat.classList.remove("hidden");
-  chat.innerHTML = `<div class="agent-label">Agent</div><div class="agent-text">${twinkleText(lines.join("\n"))}</div>`;
-  const text = chat.querySelector(".agent-text");
-  text.scrollTop = text.scrollHeight;
 }
 
 function freezeLiveSnapshot(label = "Snapshot") {
@@ -476,7 +447,16 @@ function renderSidebar() {
     for (const s of group.sessions) {
       const li = document.createElement("li");
       li.className = "session-item" + (s.id === activeId ? " active" : "");
-      li.innerHTML = `<div class="session-item-name">${escapeHtml(s.name)}</div><div class="session-item-sub">${escapeHtml(previewText(s))}</div>`;
+      li.innerHTML = `
+        <div class="session-item-top">
+          <div class="session-item-name">${escapeHtml(s.name)}</div>
+          <button type="button" class="session-rename" title="Rename" aria-label="Rename">✎</button>
+        </div>
+        <div class="session-item-sub">${escapeHtml(previewText(s))}</div>`;
+      li.querySelector(".session-rename").onclick = (e) => {
+        e.stopPropagation();
+        renameSession(s.id, s.name);
+      };
       li.onclick = (e) => { e.stopPropagation(); openSession(s.id); if (isMobile()) setSidebarOpen(false); };
       ul.appendChild(li);
     }
@@ -556,6 +536,7 @@ async function openSession(id) {
   sessionTitle.textContent = s.name;
   sessionMeta.textContent = `${s.hostname} · ${s.tailscale_ip}`;
   btnClose.classList.remove("hidden");
+  btnRename.classList.remove("hidden");
   commandInput.disabled = false;
   sendBtn.disabled = false;
   keybar.classList.add("visible");
@@ -703,29 +684,41 @@ function startTerminalPoll() {
 
 async function pollTerminal() {
   if (!activeId || !terminalMode) return;
+  if (terminalPollInFlight) return;
+  terminalPollInFlight = true;
   try {
     const pane = await (await fetch(`/api/v1/sessions/${activeId}/pane`)).json();
     if (!terminalMode) return;
     if (!liveBubble) createLiveBubble();
     const text = String(pane.text || "").split("\n").slice(-1200).join("\n").trim();
     setLiveContent(text ? ansiToHtml(text) : "", text);
-  } catch {}
+  } catch {
+  } finally {
+    terminalPollInFlight = false;
+  }
 }
 
 function flushTerminalText() {
   if (terminalFlushTimer) clearTimeout(terminalFlushTimer);
   terminalFlushTimer = null;
+  drainTerminalText();
+  return terminalTypeQueue.then(() => terminalTextBuffer ? flushTerminalText() : undefined);
+}
+
+function drainTerminalText() {
+  if (terminalSending) return terminalTypeQueue;
   const text = terminalTextBuffer;
   terminalTextBuffer = "";
   if (!activeId || !text) return terminalTypeQueue;
-  terminalTypeQueue = terminalTypeQueue.then(async () => {
-    await fetch(`/api/v1/sessions/${activeId}/type`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, store: false, submit: false }),
-    });
-    pollTerminal();
-  }).catch(() => {});
+  terminalSending = true;
+  terminalTypeQueue = fetch(`/api/v1/sessions/${activeId}/type`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, store: false, submit: false }),
+  }).catch(() => {}).finally(() => {
+    terminalSending = false;
+    if (terminalTextBuffer) setTimeout(drainTerminalText, 0);
+  });
   return terminalTypeQueue;
 }
 
@@ -733,7 +726,7 @@ function sendTerminalText(text) {
   if (!text) return;
   terminalTextBuffer += text;
   if (terminalFlushTimer) clearTimeout(terminalFlushTimer);
-  terminalFlushTimer = setTimeout(flushTerminalText, 12);
+  if (!terminalSending) terminalFlushTimer = setTimeout(drainTerminalText, 8);
 }
 
 function readBlobAsDataUrl(blob) {
@@ -940,6 +933,7 @@ function closeUi() {
   sessionTitle.textContent = "Welcome";
   sessionMeta.textContent = "Open a session on any machine";
   btnClose.classList.add("hidden");
+  btnRename.classList.add("hidden");
   commandInput.disabled = true;
   sendBtn.disabled = true;
   keybar.classList.remove("visible");
@@ -966,6 +960,32 @@ function toggleTerminalMode() {
   }
 }
 btnTerminal.onclick = toggleTerminalMode;
+
+async function renameSession(id, currentName) {
+  const name = prompt("Rename chat", currentName || sessionTitle.textContent);
+  if (name === null) return;
+  const next = name.trim();
+  if (!next) return;
+  const res = await fetch(`/api/v1/sessions/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: next }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    alert(data.detail || "Rename failed");
+    return;
+  }
+  if (id === activeId) {
+    currentSession = data.session;
+    sessionTitle.textContent = data.session.name;
+  }
+  await loadSessions();
+}
+
+btnRename.onclick = () => {
+  if (activeId && currentSession) renameSession(activeId, currentSession.name);
+};
 
 document.getElementById("btn-new").onclick = async () => {
   await loadPeers();
