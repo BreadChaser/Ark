@@ -415,14 +415,14 @@ function renderAgentChat(rawText) {
   text.scrollTop = text.scrollHeight;
 }
 
-function freezeLiveSnapshot() {
+function freezeLiveSnapshot(label = "Snapshot") {
   if (!liveBubble) return;
   setLiveContent(liveBubble.querySelector(".live-terminal")?.innerHTML || "");
   const snapshot = liveBubble.cloneNode(true);
   snapshot.classList.remove("live");
   snapshot.classList.add("snapshot");
   const head = snapshot.querySelector(".live-head span");
-  if (head) head.textContent = "Snapshot";
+  if (head) head.textContent = label;
   snapshot.querySelector("#btn-stop-live")?.remove();
   snapshot.querySelector(".msg-time").textContent = fmtTime(Date.now() / 1000);
   messagesEl.insertBefore(snapshot, liveBubble);
@@ -627,7 +627,7 @@ function startMsgPolling() {
 
 function startLivePoll() {
   if (liveTimer) clearInterval(liveTimer);
-  liveTimer = setInterval(pollLive, 700);
+  liveTimer = setInterval(pollLive, 500);
   if (isLiveCommand(liveCommand) || terminalMode) {
     createLiveBubble();
     pollLive();
@@ -695,7 +695,7 @@ async function pollCommand(tag, tries = 80) {
 
 function startTerminalPoll() {
   if (liveTimer) clearInterval(liveTimer);
-  liveTimer = setInterval(pollTerminal, 700);
+  liveTimer = setInterval(pollTerminal, 350);
   createLiveBubble();
   pollTerminal();
   updateInputMode();
@@ -733,7 +733,7 @@ function sendTerminalText(text) {
   if (!text) return;
   terminalTextBuffer += text;
   if (terminalFlushTimer) clearTimeout(terminalFlushTimer);
-  terminalFlushTimer = setTimeout(flushTerminalText, 45);
+  terminalFlushTimer = setTimeout(flushTerminalText, 12);
 }
 
 function readBlobAsDataUrl(blob) {
@@ -787,6 +787,7 @@ async function addPastedImage(file) {
 }
 
 async function handlePaste(e) {
+  if (e.defaultPrevented) return;
   const itemFiles = [...(e.clipboardData?.items || [])]
     .filter((i) => i.type.startsWith("image/"))
     .map((i) => i.getAsFile())
@@ -796,10 +797,21 @@ async function handlePaste(e) {
   if (!files.length) return;
   e.preventDefault();
   e.stopPropagation();
-  for (const file of files.slice(0, 4)) {
-    await addPastedImage(file).catch((err) => {
-      addBubble({ role: "system", content: err.message || "image paste failed", created_at: Date.now() / 1000 });
-    });
+  const wasSending = sending;
+  try {
+    for (const file of files.slice(0, 4)) {
+      await addPastedImage(file).catch((err) => {
+        addBubble({ role: "system", content: err.message || "image paste failed", created_at: Date.now() / 1000 });
+      });
+    }
+  } finally {
+    if (!wasSending) {
+      sending = false;
+      commandInput.disabled = false;
+      sendBtn.disabled = false;
+      updateInputMode();
+      commandInput.focus();
+    }
   }
 }
 
@@ -827,7 +839,7 @@ async function pollLive() {
         adoptedLive = false;
         liveStartedAt = 0;
         liveCommand = "";
-        if (liveBubble && !paneRendered) liveBubble.remove();
+        if (liveBubble) freezeLiveSnapshot("Stopped");
       }
       return;
     }
@@ -844,10 +856,10 @@ async function pollLive() {
         setTerminalMode(false, { persist: false });
       }
       liveCommand = "";
-      if (liveBubble) { liveBubble.remove(); liveBubble = null; }
+      freezeLiveSnapshot("Done");
       updateInputMode();
       since = Math.max(0, since - 0.001);
-      await refreshMessages(true);
+      await refreshMessages(false);
       await refreshState();
       await loadSessions();
     } else if (d.state === "error") {
@@ -860,6 +872,7 @@ async function pollLive() {
         setTerminalMode(false, { persist: false });
       }
       liveCommand = "";
+      freezeLiveSnapshot("Stopped");
       updateInputMode();
     }
   } catch {}
@@ -1195,7 +1208,7 @@ async function stopLiveApp() {
     removeCodexBubble();
     updateInputMode();
     since = Math.max(0, since - 0.001);
-    await refreshMessages(true);
+    await refreshMessages(false);
     await refreshState();
     return;
   }
@@ -1206,10 +1219,10 @@ async function stopLiveApp() {
   setTerminalMode(false, { persist: false });
   liveCommand = "";
   stopLivePoll();
-  if (liveBubble) { liveBubble.remove(); liveBubble = null; }
+  freezeLiveSnapshot("Stopped");
   updateInputMode();
   since = Math.max(0, since - 0.001);
-  await refreshMessages(true);
+  await refreshMessages(false);
   await refreshState();
 }
 
