@@ -1232,7 +1232,14 @@ async function stopLiveApp() {
     await refreshState();
     return;
   }
-  await fetch(`/api/v1/sessions/${activeId}/stop`, { method: "POST" });
+  const res = await fetch(`/api/v1/sessions/${activeId}/stop`, { method: "POST" });
+  const data = await res.json().catch(() => ({}));
+  if (!data.ok) {
+    if (liveBubble) setLiveContent(escapeHtml(data.output || "Stop failed"));
+    updateInputMode();
+    await refreshState();
+    return;
+  }
   runningTag = null;
   liveStartedAt = 0;
   adoptedLive = false;

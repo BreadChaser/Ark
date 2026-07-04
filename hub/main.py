@@ -6,9 +6,12 @@ import os
 import re
 import socket
 import json
+import threading
+import time
 import urllib.error
 import urllib.request
 import uuid
+from collections import deque
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -103,6 +106,80 @@ class AddMessage(BaseModel):
 
 
 _pending: dict[str, bool] = {}
+
+
+class _TypeQueue:
+    def __init__(self):
+        self.items = deque()
+        self.cond = threading.Condition()
+        self.busy = False
+        self.thread: threading.Thread | None = None
+
+    def enqueue(self, item: dict) -> None:
+        with self.cond:
+            self.items.append(item)
+            if not self.thread or not self.thread.is_alive():
+                self.thread = threading.Thread(target=self._run, daemon=True)
+                self.thread.start()
+            self.cond.notify()
+
+    def drain(self, timeout: float = 10) -> bool:
+        end = time.monotonic() + timeout
+        with self.cond:
+            while self.items or self.busy:
+                remaining = end - time.monotonic()
+                if remaining <= 0:
+                    return False
+                self.cond.wait(remaining)
+            return True
+
+    def _run(self) -> None:
+        while True:
+            with self.cond:
+                while not self.items:
+                    self.cond.wait(30)
+                    if not self.items:
+                        return
+                item = self.items.popleft()
+                while (
+                    not item["submit"]
+                    and self.items
+                    and not self.items[0]["submit"]
+                    and self.items[0]["target"] == item["target"]
+                ):
+                    item["text"] += self.items.popleft()["text"]
+                self.busy = True
+            try:
+                send_text_line(
+                    item["tmux_name"],
+                    item["text"],
+                    item["tailscale_ip"],
+                    local=item["local"],
+                    user=item["user"],
+                    submit=item["submit"],
+                )
+            finally:
+                with self.cond:
+                    self.busy = False
+                    self.cond.notify_all()
+
+
+_type_queues: dict[str, _TypeQueue] = {}
+_type_queues_lock = threading.Lock()
+
+
+def _type_queue(session_id: str) -> _TypeQueue:
+    with _type_queues_lock:
+        q = _type_queues.get(session_id)
+        if not q:
+            q = _TypeQueue()
+            _type_queues[session_id] = q
+        return q
+
+
+def _drain_type_queue(session_id: str) -> None:
+    if not _type_queue(session_id).drain():
+        raise HTTPException(503, "terminal input is still flushing")
 
 
 @app.get("/health")
@@ -390,11 +467,20 @@ def api_type(session_id: str, body: TypeText):
         raise HTTPException(400, "empty text")
     _peer, local = _session_peer_local(session)
     user = _session_ssh_user(session)
-    ensure_tmux(session.tmux_name, session.tailscale_ip, local=local, user=user)
     if body.store:
         store.add_message(session_id, "user", text)
-    send_text_line(session.tmux_name, text, session.tailscale_ip, local=local, user=user, submit=body.submit)
-    return {"ok": True}
+    _type_queue(session_id).enqueue(
+        {
+            "target": (session.tmux_name, session.tailscale_ip, local, user),
+            "tmux_name": session.tmux_name,
+            "tailscale_ip": session.tailscale_ip,
+            "local": local,
+            "user": user,
+            "text": text,
+            "submit": body.submit,
+        }
+    )
+    return {"ok": True, "queued": True}
 
 
 @app.post("/api/v1/sessions/{session_id}/codex/start")
@@ -508,6 +594,7 @@ def api_keys(session_id: str, body: SendKey):
         raise HTTPException(404, "session not found")
     _peer, local = _session_peer_local(session)
     user = _session_ssh_user(session)
+    _drain_type_queue(session_id)
     code, out = send_key(session.tmux_name, body.key, session.tailscale_ip, local=local, user=user)
     if tmux_missing(out):
         ensure_tmux(session.tmux_name, session.tailscale_ip, local=local, user=user)
@@ -521,6 +608,7 @@ def api_stop(session_id: str):
     if not session:
         raise HTTPException(404, "session not found")
     _peer, local = _session_peer_local(session)
+    _drain_type_queue(session_id)
     code, out = stop_pane_app(
         session.tmux_name,
         session.tailscale_ip,
