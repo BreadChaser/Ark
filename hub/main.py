@@ -347,12 +347,12 @@ def api_pane(session_id: str):
     _peer, local = _session_peer_local(session)
     user = _session_ssh_user(session)
     code, text = capture_pane(
-        session.tmux_name, session.tailscale_ip, local=local, scroll=500, user=user
+        session.tmux_name, session.tailscale_ip, local=local, scroll=0, user=user
     )
     if tmux_missing(text):
         ensure_tmux(session.tmux_name, session.tailscale_ip, local=local, user=user)
         code, text = capture_pane(
-            session.tmux_name, session.tailscale_ip, local=local, scroll=500, user=user
+            session.tmux_name, session.tailscale_ip, local=local, scroll=0, user=user
         )
     return {"ok": code == 0, "text": text}
 

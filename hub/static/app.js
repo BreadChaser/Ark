@@ -206,6 +206,8 @@ function setLiveContent(html) {
   if (!liveBubble) return;
   const b = liveBubble.querySelector(".live-terminal");
   b.innerHTML = html || `<span class="output-ok">running…</span>`;
+  const bubble = liveBubble.querySelector(".msg-bubble");
+  bubble.scrollTop = bubble.scrollHeight;
   scrollFeedBottom();
 }
 

@@ -298,7 +298,8 @@ def capture_pane(
     user: str | None = None,
 ) -> tuple[int, str]:
     """Capture the live pane with ANSI escape sequences preserved."""
-    cmd = f"tmux capture-pane -pt {shlex.quote(tmux_name)} -S -{scroll} -e"
+    start = f" -S -{scroll}" if scroll > 0 else ""
+    cmd = f"tmux capture-pane -pt {shlex.quote(tmux_name)}{start} -e"
     code, text = run_on_host(tailscale_ip, cmd, local=local, user=user, timeout=15)
     if code != 0 or tmux_missing(text):
         return code, text
