@@ -5,9 +5,10 @@ let since = 0;
 let msgTimer = null;
 let liveTimer = null;
 let runningTag = null;
+let liveStartedAt = 0;
+let liveCommand = "";
 let liveBubble = null;
 let currentSession = null;
-let cmdHistory = [];
 let suggestIndex = -1;
 let suggestAbort = null;
 
@@ -23,6 +24,7 @@ const btnClose = document.getElementById("btn-close");
 const dialog = document.getElementById("new-dialog");
 const machineSelect = document.getElementById("machine-select");
 const tmuxSelect = document.getElementById("tmux-select");
+const sshUserInput = document.getElementById("ssh-user");
 const machineHint = document.getElementById("machine-hint");
 const sidebar = document.getElementById("sidebar");
 const sidebarBackdrop = document.getElementById("sidebar-backdrop");
@@ -35,7 +37,7 @@ let tmuxHosts = [];
 
 const COLLAPSE_KEY = "ark-collapsed-machines";
 const SIDEBAR_KEY = "ark-sidebar-open";
-const HISTORY_KEY = "ark-cmd-history";
+const SSH_USER_KEY = "ark-ssh-user";
 
 const SUGGESTIONS = [
   "/model", "/status", "/help", "/clear", "/compact", "/diff", "/new", "/exit",
@@ -55,13 +57,7 @@ function loadCollapsed() {
 }
 function saveCollapsed(set) { localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...set])); }
 let collapsedMachines = loadCollapsed();
-
-function loadHistory() {
-  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); }
-  catch { return []; }
-}
-function saveHistory() { localStorage.setItem(HISTORY_KEY, JSON.stringify(cmdHistory.slice(-100))); }
-cmdHistory = loadHistory();
+sshUserInput.value = localStorage.getItem(SSH_USER_KEY) || "";
 
 function isMobile() { return window.innerWidth <= 768; }
 function defaultSidebarOpen() {
@@ -282,7 +278,8 @@ async function loadSessions() {
 async function loadPeers() {
   const res = await fetch("/api/v1/peers");
   peers = (await res.json()).peers || [];
-  const tmuxRes = await fetch("/api/v1/tmux");
+  const user = sshUserInput.value.trim();
+  const tmuxRes = await fetch(`/api/v1/tmux?ssh_user=${encodeURIComponent(user)}`);
   tmuxHosts = (await tmuxRes.json()).hosts || [];
   machineSelect.innerHTML = "";
   const online = peers.filter((p) => p.online);
@@ -309,14 +306,22 @@ function updateHint() {
     tmuxSelect.appendChild(opt);
   }
   machineHint.className = "field-hint";
-  machineHint.textContent = p ? `${p.dns_name || p.tailscale_ip} · ${p.os}` : "";
+  const user = sshUserInput.value.trim();
+  const suffix = user ? ` · ssh ${user}` : "";
+  machineHint.textContent = p ? `${p.dns_name || p.tailscale_ip} · ${p.os}${suffix}` : "";
 }
 machineSelect.addEventListener("change", updateHint);
+sshUserInput.addEventListener("change", async () => {
+  localStorage.setItem(SSH_USER_KEY, sshUserInput.value.trim());
+  await loadPeers();
+});
 
 async function openSession(id) {
   activeId = id;
   since = 0;
   runningTag = null;
+  liveStartedAt = 0;
+  liveCommand = "";
   liveBubble = null;
   stopLivePoll();
   const s = sessions.find((x) => x.id === id);
@@ -341,7 +346,7 @@ async function refreshState() {
   try {
     const res = await fetch(`/api/v1/sessions/${activeId}/state`);
     const d = await res.json();
-    const cwd = d.cwd ? d.cwd.replace(/^\/home\/tony/, "~") : currentSession.tailscale_ip;
+    const cwd = d.cwd ? d.cwd.replace(/^\/home\/[^/]+/, "~") : currentSession.tailscale_ip;
     sessionMeta.textContent = `${currentSession.hostname} · ${cwd} · ${d.tmux || currentSession.tmux_name}`;
   } catch {}
 }
@@ -368,7 +373,6 @@ function startMsgPolling() {
 function startLivePoll() {
   if (liveTimer) clearInterval(liveTimer);
   liveTimer = setInterval(pollLive, 700);
-  pollLive();
 }
 
 function stopLivePoll() {
@@ -384,6 +388,8 @@ async function pollLive() {
     if (d.state === "done") {
       stopLivePoll();
       runningTag = null;
+      liveStartedAt = 0;
+      liveCommand = "";
       if (liveBubble) { liveBubble.remove(); liveBubble = null; }
       since = Math.max(0, since - 0.001);
       await refreshMessages(true);
@@ -393,9 +399,14 @@ async function pollLive() {
       if (liveBubble) setLiveContent(escapeHtml(d.output || "session lost"));
       stopLivePoll();
       runningTag = null;
+      liveStartedAt = 0;
+      liveCommand = "";
     } else {
-      if (!liveBubble) createLiveBubble();
-      setLiveContent(d.output ? ansiToHtml(filterTerminalEcho(d.output)) : "");
+      const paneRes = await fetch(`/api/v1/sessions/${activeId}/pane`);
+      const pane = await paneRes.json();
+      const output = filterLivePane(pane.text || d.output || "");
+      if (!liveBubble && (output || Date.now() - liveStartedAt > 1000)) createLiveBubble();
+      if (liveBubble) setLiveContent(output ? ansiToHtml(output) : "");
     }
   } catch {}
 }
@@ -414,10 +425,30 @@ function filterTerminalEcho(text) {
     .trim();
 }
 
+function filterLivePane(text) {
+  let skippedCommand = false;
+  const command = String(liveCommand || "").trim();
+  const lines = String(text || "").replace(/\r/g, "\n").split("\n");
+  const out = [];
+  for (const line of lines) {
+    const plain = line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+    if (MARKER_LINE_RE.test(plain.trim())) continue;
+    if (runningTag && plain.includes(`@@${runningTag}`)) continue;
+    if (!skippedCommand && command && plain.includes(command)) {
+      skippedCommand = true;
+      continue;
+    }
+    out.push(line.replace(MARKER_SUFFIX_RE, "").replace(MARKER_RE, ""));
+  }
+  return out.join("\n").trim().split("\n").slice(-120).join("\n");
+}
+
 function closeUi() {
   activeId = null;
   since = 0;
   runningTag = null;
+  liveStartedAt = 0;
+  liveCommand = "";
   liveBubble = null;
   if (msgTimer) clearInterval(msgTimer);
   stopLivePoll();
@@ -446,6 +477,8 @@ document.getElementById("new-form").onsubmit = async (e) => {
   const peer_id = machineSelect.value;
   if (!peer_id) return;
   const tmux_name = tmuxSelect.value;
+  const ssh_user = sshUserInput.value.trim();
+  localStorage.setItem(SSH_USER_KEY, ssh_user);
   const btn = document.getElementById("btn-create");
   btn.disabled = true;
   btn.textContent = "Connecting…";
@@ -454,16 +487,16 @@ document.getElementById("new-form").onsubmit = async (e) => {
     let res;
     if (tmux_name && tmux_name !== "__new__") {
       res = await fetch("/api/v1/sessions/import", {
-        method: "POST", headers, body: JSON.stringify({ peer_id, tmux_name }),
+        method: "POST", headers, body: JSON.stringify({ peer_id, tmux_name, ssh_user }),
       });
       if (res.status === 409 && confirm("This tmux session was not created by Ark. Attach anyway?")) {
         res = await fetch("/api/v1/sessions/import", {
-          method: "POST", headers, body: JSON.stringify({ peer_id, tmux_name, confirmed: true }),
+          method: "POST", headers, body: JSON.stringify({ peer_id, tmux_name, ssh_user, confirmed: true }),
         });
       }
     } else {
       res = await fetch("/api/v1/sessions", {
-        method: "POST", headers, body: JSON.stringify({ peer_id }),
+        method: "POST", headers, body: JSON.stringify({ peer_id, ssh_user }),
       });
     }
     const data = await res.json();
@@ -489,8 +522,6 @@ async function sendCommand(cmd) {
   if (/^tmux\b/.test(cmd) && !confirm("This can change Ark's managed tmux session. Run it anyway?")) {
     return;
   }
-  cmdHistory.push(cmd);
-  saveHistory();
   const headers = { "Content-Type": "application/json" };
 
   if (runningTag) {
@@ -512,7 +543,8 @@ async function sendCommand(cmd) {
   await refreshMessages(false); // render the command bubble
   if (data.tag) {
     runningTag = data.tag;
-    createLiveBubble();
+    liveStartedAt = Date.now();
+    liveCommand = cmd;
     startLivePoll(); // monitor for completion (stores output server-side)
   }
   await refreshState();
@@ -575,6 +607,8 @@ async function stopLiveApp() {
   if (!activeId) return;
   await fetch(`/api/v1/sessions/${activeId}/stop`, { method: "POST" });
   runningTag = null;
+  liveStartedAt = 0;
+  liveCommand = "";
   stopLivePoll();
   if (liveBubble) { liveBubble.remove(); liveBubble = null; }
   since = Math.max(0, since - 0.001);
@@ -588,15 +622,30 @@ async function currentSuggestions(prefix) {
   const p = prefix.toLowerCase();
   const seen = new Set();
   const out = [];
-  const pool = [...SUGGESTIONS, ...cmdHistory.slice().reverse()];
-  for (const s of pool) {
+
+  function add(s) {
     const sl = s.toLowerCase();
     if (sl.startsWith(p) && !seen.has(sl)) {
       seen.add(sl);
       out.push(s);
+    }
+  }
+  function addContext(list) {
+    for (const s of list) {
+      add(s);
       if (out.length >= 8) break;
     }
   }
+
+  if (p.startsWith("tmux")) return [];
+  if (p.startsWith("/")) {
+    addContext(SUGGESTIONS.filter((s) => s.startsWith("/")));
+  } else if (/^cd(\s|$)/.test(p)) {
+    addContext(["cd ..", "cd ~", "cd "]);
+  } else {
+    addContext(SUGGESTIONS.filter((s) => !s.startsWith("/") && !s.startsWith("tmux")));
+  }
+
   if (activeId && !p.startsWith("tmux")) {
     try {
       if (suggestAbort) suggestAbort.abort();
@@ -637,7 +686,8 @@ function acceptSuggest(text) {
 commandInput.addEventListener("input", async () => {
   const v = commandInput.value;
   if (!v) { hideSuggest(); return; }
-  showSuggest(await currentSuggestions(v));
+  const list = await currentSuggestions(v);
+  if (commandInput.value === v) showSuggest(list);
 });
 commandInput.addEventListener("keydown", (e) => {
   const items = suggestEl.querySelectorAll(".suggest-item");

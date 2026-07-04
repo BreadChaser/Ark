@@ -32,11 +32,11 @@
           <span class="brand-mark">Ark</span>
         </div>
         <div class="topbar-info">
-          <h1 id="session-title">Welcome</h1>
+          <div class="session-heading">
+            <h1 id="session-title">Welcome</h1>
+            <button type="button" class="btn-icon hidden" id="btn-close" title="End session" aria-label="End session">×</button>
+          </div>
           <p id="session-meta">Open a session on any machine</p>
-        </div>
-        <div class="topbar-actions">
-          <button type="button" class="btn-icon hidden" id="btn-close" title="End session">×</button>
         </div>
       </header>
 
@@ -79,6 +79,10 @@
       <label class="field">
         <span>Machine</span>
         <select id="machine-select" required></select>
+      </label>
+      <label class="field">
+        <span>SSH user</span>
+        <input type="text" id="ssh-user" placeholder="Default user" autocomplete="username" autocapitalize="off" spellcheck="false" />
       </label>
       <label class="field">
         <span>tmux session</span>

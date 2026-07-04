@@ -52,12 +52,14 @@ app = FastAPI(title="The Ark", version="0.3.0")
 
 class CreateSession(BaseModel):
     peer_id: str
+    ssh_user: str = ""
 
 
 class ImportSession(BaseModel):
     peer_id: str
     tmux_name: str
     confirmed: bool = False
+    ssh_user: str = ""
 
 
 class RunCommand(BaseModel):
@@ -99,13 +101,14 @@ def api_sessions():
 
 
 @app.get("/api/v1/tmux")
-def api_tmux_sessions():
+def api_tmux_sessions(ssh_user: str = ""):
     rows = []
+    user = ssh_user.strip() or None
     for peer in peer_map().values():
         if not peer.online:
             continue
         local = is_local_peer(peer)
-        code, sessions, error = list_tmux_sessions(peer.tailscale_ip, local=local)
+        code, sessions, error = list_tmux_sessions(peer.tailscale_ip, local=local, user=user)
         rows.append(
             {
                 "peer": peer.to_dict(),
@@ -128,8 +131,9 @@ def api_create_session(body: CreateSession):
     session_id = uuid.uuid4().hex[:10]
     tmux_name = f"ark-{session_id}"
     local = is_local_peer(peer)
+    user = body.ssh_user.strip()
 
-    code, out = ensure_tmux(tmux_name, peer.tailscale_ip, local=local)
+    code, out = ensure_tmux(tmux_name, peer.tailscale_ip, local=local, user=user or None)
     if code != 0:
         raise HTTPException(500, f"tmux setup failed: {out}")
 
@@ -141,6 +145,7 @@ def api_create_session(body: CreateSession):
         hostname=peer.hostname,
         tailscale_ip=peer.tailscale_ip,
         tmux_name=tmux_name,
+        ssh_user=user,
     )
     store.add_message(
         session.id,
@@ -162,17 +167,18 @@ def api_import_session(body: ImportSession):
         raise HTTPException(503, f"{peer.hostname} is offline")
 
     tmux_name = body.tmux_name.strip()
+    user = body.ssh_user.strip()
     if not tmux_name:
         raise HTTPException(400, "empty tmux session")
     if not tmux_name.startswith("ark-") and not body.confirmed:
         raise HTTPException(409, "This tmux session was not created by Ark. Attach anyway?")
 
     for s in store.list_sessions():
-        if s.peer_id == peer.id and s.tmux_name == tmux_name:
+        if s.peer_id == peer.id and s.tmux_name == tmux_name and s.ssh_user == user:
             return {"session": {**s.to_dict(), "preview": store.last_message_preview(s.id)}}
 
     local = is_local_peer(peer)
-    code, out = ensure_tmux(tmux_name, peer.tailscale_ip, local=local)
+    code, out = ensure_tmux(tmux_name, peer.tailscale_ip, local=local, user=user or None)
     if code != 0:
         raise HTTPException(500, f"tmux attach failed: {out}")
 
@@ -184,6 +190,7 @@ def api_import_session(body: ImportSession):
         hostname=peer.hostname,
         tailscale_ip=peer.tailscale_ip,
         tmux_name=tmux_name,
+        ssh_user=user,
     )
     store.add_message(
         session.id,
@@ -211,13 +218,22 @@ def _session_peer_local(session):
     return peer, is_local_peer(peer) if peer else False
 
 
+def _session_ssh_user(session) -> str | None:
+    return session.ssh_user or None
+
+
 @app.get("/api/v1/sessions/{session_id}/state")
 def api_session_state(session_id: str):
     session = store.get_session(session_id)
     if not session:
         raise HTTPException(404, "session not found")
     _peer, local = _session_peer_local(session)
-    code, cwd = pane_current_path(session.tmux_name, session.tailscale_ip, local=local)
+    code, cwd = pane_current_path(
+        session.tmux_name,
+        session.tailscale_ip,
+        local=local,
+        user=_session_ssh_user(session),
+    )
     return {"ok": code == 0, "cwd": cwd if code == 0 else "", "tmux": session.tmux_name}
 
 
@@ -227,7 +243,13 @@ def api_complete(session_id: str, q: str = ""):
     if not session:
         raise HTTPException(404, "session not found")
     _peer, local = _session_peer_local(session)
-    code, items, error = complete_shell(session.tmux_name, q, session.tailscale_ip, local=local)
+    code, items, error = complete_shell(
+        session.tmux_name,
+        q,
+        session.tailscale_ip,
+        local=local,
+        user=_session_ssh_user(session),
+    )
     return {"ok": code == 0, "items": items, "error": error}
 
 
@@ -256,8 +278,9 @@ def api_run_command(session_id: str, body: RunCommand):
     tag = uuid.uuid4().hex[:8]
     wrapped = f"{cmd};c=$?;echo;echo @@{tag}:$c"
 
-    ensure_tmux(session.tmux_name, session.tailscale_ip, local=local)
-    send_line(session.tmux_name, wrapped, session.tailscale_ip, local=local)
+    user = _session_ssh_user(session)
+    ensure_tmux(session.tmux_name, session.tailscale_ip, local=local, user=user)
+    send_line(session.tmux_name, wrapped, session.tailscale_ip, local=local, user=user)
     store.add_message(session_id, "user", cmd)
 
     new_name = infer_name(cmd, session.hostname)
@@ -277,8 +300,9 @@ def api_type(session_id: str, body: TypeText):
     if not text:
         raise HTTPException(400, "empty text")
     _peer, local = _session_peer_local(session)
-    ensure_tmux(session.tmux_name, session.tailscale_ip, local=local)
-    send_line(session.tmux_name, text, session.tailscale_ip, local=local)
+    user = _session_ssh_user(session)
+    ensure_tmux(session.tmux_name, session.tailscale_ip, local=local, user=user)
+    send_line(session.tmux_name, text, session.tailscale_ip, local=local, user=user)
     store.add_message(session_id, "user", text)
     return {"ok": True}
 
@@ -290,7 +314,13 @@ def api_live(session_id: str, tag: str):
     if not session:
         raise HTTPException(404, "session not found")
     _peer, local = _session_peer_local(session)
-    code, pane = capture_pane(session.tmux_name, session.tailscale_ip, local=local, scroll=500)
+    code, pane = capture_pane(
+        session.tmux_name,
+        session.tailscale_ip,
+        local=local,
+        scroll=500,
+        user=_session_ssh_user(session),
+    )
     if code != 0 or tmux_missing(pane):
         return {"state": "error", "output": pane or "session lost", "exit": 1, "stored": False}
 
@@ -314,10 +344,15 @@ def api_pane(session_id: str):
     if not session:
         raise HTTPException(404, "session not found")
     _peer, local = _session_peer_local(session)
-    code, text = capture_pane(session.tmux_name, session.tailscale_ip, local=local, scroll=500)
+    user = _session_ssh_user(session)
+    code, text = capture_pane(
+        session.tmux_name, session.tailscale_ip, local=local, scroll=500, user=user
+    )
     if tmux_missing(text):
-        ensure_tmux(session.tmux_name, session.tailscale_ip, local=local)
-        code, text = capture_pane(session.tmux_name, session.tailscale_ip, local=local, scroll=500)
+        ensure_tmux(session.tmux_name, session.tailscale_ip, local=local, user=user)
+        code, text = capture_pane(
+            session.tmux_name, session.tailscale_ip, local=local, scroll=500, user=user
+        )
     return {"ok": code == 0, "text": text}
 
 
@@ -327,10 +362,11 @@ def api_keys(session_id: str, body: SendKey):
     if not session:
         raise HTTPException(404, "session not found")
     _peer, local = _session_peer_local(session)
-    code, out = send_key(session.tmux_name, body.key, session.tailscale_ip, local=local)
+    user = _session_ssh_user(session)
+    code, out = send_key(session.tmux_name, body.key, session.tailscale_ip, local=local, user=user)
     if tmux_missing(out):
-        ensure_tmux(session.tmux_name, session.tailscale_ip, local=local)
-        code, out = send_key(session.tmux_name, body.key, session.tailscale_ip, local=local)
+        ensure_tmux(session.tmux_name, session.tailscale_ip, local=local, user=user)
+        code, out = send_key(session.tmux_name, body.key, session.tailscale_ip, local=local, user=user)
     return {"ok": code == 0}
 
 
@@ -340,7 +376,13 @@ def api_stop(session_id: str):
     if not session:
         raise HTTPException(404, "session not found")
     _peer, local = _session_peer_local(session)
-    code, out = send_key(session.tmux_name, "C-c", session.tailscale_ip, local=local)
+    code, out = send_key(
+        session.tmux_name,
+        "C-c",
+        session.tailscale_ip,
+        local=local,
+        user=_session_ssh_user(session),
+    )
     if code == 0:
         store.add_message(session_id, "system", "Stopped the running app.")
     return {"ok": code == 0, "output": out}
@@ -353,7 +395,12 @@ def api_delete_session(session_id: str, kill: bool = True):
         raise HTTPException(404, "session not found")
     if kill:
         _peer, local = _session_peer_local(session)
-        kill_tmux(session.tmux_name, session.tailscale_ip, local=local)
+        kill_tmux(
+            session.tmux_name,
+            session.tailscale_ip,
+            local=local,
+            user=_session_ssh_user(session),
+        )
     store.delete_session(session_id)
     return {"ok": True}
 

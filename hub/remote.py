@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import getpass
+import os
 import re
 import shlex
 import subprocess
@@ -86,7 +88,7 @@ def extract_command_output(pane: str, marker: str, sent: str) -> tuple[int, str]
 def run_on_host(
     tailscale_ip: str,
     command: str,
-    user: str = "tony",
+    user: str | None = None,
     timeout: int = 120,
     local: bool = False,
 ) -> tuple[int, str]:
@@ -106,7 +108,8 @@ def run_on_host(
         except Exception as e:
             return 1, str(e)
 
-    remote = f"{user}@{tailscale_ip}"
+    ssh_user = user or os.environ.get("ARK_SSH_USER") or getpass.getuser()
+    remote = f"{ssh_user}@{tailscale_ip}"
     try:
         p = subprocess.run(
             [
@@ -132,19 +135,23 @@ def run_on_host(
         return 1, str(e)
 
 
-def ensure_tmux(tmux_name: str, tailscale_ip: str, local: bool = False) -> tuple[int, str]:
+def ensure_tmux(
+    tmux_name: str, tailscale_ip: str, local: bool = False, user: str | None = None
+) -> tuple[int, str]:
     """Create detached tmux session in $HOME if missing."""
     script = (
         f"tmux has-session -t {shlex.quote(tmux_name)} 2>/dev/null "
         f"|| tmux new-session -d -s {shlex.quote(tmux_name)} -c ~"
     )
-    return run_on_host(tailscale_ip, script, local=local, timeout=30)
+    return run_on_host(tailscale_ip, script, local=local, user=user, timeout=30)
 
 
-def list_tmux_sessions(tailscale_ip: str, local: bool = False) -> tuple[int, list[dict], str]:
+def list_tmux_sessions(
+    tailscale_ip: str, local: bool = False, user: str | None = None
+) -> tuple[int, list[dict], str]:
     """Return tmux sessions visible on a host."""
     cmd = "tmux list-sessions -F '#S\t#{session_windows}\t#{session_attached}\t#{session_created}'"
-    code, out = run_on_host(tailscale_ip, cmd, local=local, timeout=15)
+    code, out = run_on_host(tailscale_ip, cmd, local=local, user=user, timeout=15)
     if code != 0:
         if "no server running" in out.lower():
             return 0, [], ""
@@ -178,6 +185,7 @@ def run_in_tmux(
     tailscale_ip: str,
     local: bool = False,
     wait_s: float = 0.8,
+    user: str | None = None,
 ) -> tuple[int, str]:
     """Send command to tmux session and return only its output."""
     prepared = prepare_command(command)
@@ -190,15 +198,17 @@ def run_in_tmux(
         f"sleep {wait_s}; "
         f"tmux capture-pane -pt {shlex.quote(tmux_name)} -S -60"
     )
-    code, pane = run_on_host(tailscale_ip, inner, local=local, timeout=120)
+    code, pane = run_on_host(tailscale_ip, inner, local=local, user=user, timeout=120)
     if code != 0 or tmux_missing(pane):
         return code, pane
     return extract_command_output(pane, marker, wrapped)
 
 
-def capture_tmux(tmux_name: str, tailscale_ip: str, local: bool = False) -> tuple[int, str]:
+def capture_tmux(
+    tmux_name: str, tailscale_ip: str, local: bool = False, user: str | None = None
+) -> tuple[int, str]:
     cmd = f"tmux capture-pane -pt {shlex.quote(tmux_name)} -S -40"
-    code, pane = run_on_host(tailscale_ip, cmd, local=local, timeout=15)
+    code, pane = run_on_host(tailscale_ip, cmd, local=local, user=user, timeout=15)
     if code != 0 or tmux_missing(pane):
         return code, pane
     lines = pane.splitlines()
@@ -214,9 +224,11 @@ def capture_tmux(tmux_name: str, tailscale_ip: str, local: bool = False) -> tupl
     return code, "\n".join(cleaned).strip() or "(empty pane)"
 
 
-def kill_tmux(tmux_name: str, tailscale_ip: str, local: bool = False) -> tuple[int, str]:
+def kill_tmux(
+    tmux_name: str, tailscale_ip: str, local: bool = False, user: str | None = None
+) -> tuple[int, str]:
     cmd = f"tmux kill-session -t {shlex.quote(tmux_name)} 2>/dev/null || true"
-    return run_on_host(tailscale_ip, cmd, local=local, timeout=15)
+    return run_on_host(tailscale_ip, cmd, local=local, user=user, timeout=15)
 
 
 # ── Live pane model ──
@@ -233,32 +245,44 @@ _VALID_KEYS = frozenset(
 
 
 def send_line(
-    tmux_name: str, command: str, tailscale_ip: str, local: bool = False
+    tmux_name: str,
+    command: str,
+    tailscale_ip: str,
+    local: bool = False,
+    user: str | None = None,
 ) -> tuple[int, str]:
     """Send a command line + Enter to the pane. Output is read via capture_pane."""
     inner = (
         f"tmux send-keys -t {shlex.quote(tmux_name)} "
         f"{_shell_single(command)} Enter"
     )
-    return run_on_host(tailscale_ip, inner, local=local, timeout=30)
+    return run_on_host(tailscale_ip, inner, local=local, user=user, timeout=30)
 
 
 def send_key(
-    tmux_name: str, key: str, tailscale_ip: str, local: bool = False
+    tmux_name: str,
+    key: str,
+    tailscale_ip: str,
+    local: bool = False,
+    user: str | None = None,
 ) -> tuple[int, str]:
     """Send a special tmux key (C-c, Up, Tab, ...) without Enter."""
     if key not in _VALID_KEYS:
         return 1, f"invalid key: {key}"
     inner = f"tmux send-keys -t {shlex.quote(tmux_name)} {shlex.quote(key)}"
-    return run_on_host(tailscale_ip, inner, local=local, timeout=15)
+    return run_on_host(tailscale_ip, inner, local=local, user=user, timeout=15)
 
 
 def capture_pane(
-    tmux_name: str, tailscale_ip: str, local: bool = False, scroll: int = 300
+    tmux_name: str,
+    tailscale_ip: str,
+    local: bool = False,
+    scroll: int = 300,
+    user: str | None = None,
 ) -> tuple[int, str]:
     """Capture the live pane with ANSI escape sequences preserved."""
     cmd = f"tmux capture-pane -pt {shlex.quote(tmux_name)} -S -{scroll} -e"
-    code, text = run_on_host(tailscale_ip, cmd, local=local, timeout=15)
+    code, text = run_on_host(tailscale_ip, cmd, local=local, user=user, timeout=15)
     if code != 0 or tmux_missing(text):
         return code, text
     # Trim trailing blank lines but keep internal formatting.
@@ -266,15 +290,19 @@ def capture_pane(
 
 
 def pane_current_path(
-    tmux_name: str, tailscale_ip: str, local: bool = False
+    tmux_name: str, tailscale_ip: str, local: bool = False, user: str | None = None
 ) -> tuple[int, str]:
     cmd = f"tmux display-message -p -t {shlex.quote(tmux_name)} '#{{pane_current_path}}'"
-    code, text = run_on_host(tailscale_ip, cmd, local=local, timeout=15)
+    code, text = run_on_host(tailscale_ip, cmd, local=local, user=user, timeout=15)
     return code, text.strip()
 
 
 def complete_shell(
-    tmux_name: str, query: str, tailscale_ip: str, local: bool = False
+    tmux_name: str,
+    query: str,
+    tailscale_ip: str,
+    local: bool = False,
+    user: str | None = None,
 ) -> tuple[int, list[str], str]:
     """Small context completion for shell paths. Keep tmux control out."""
     q = query.strip()
@@ -285,7 +313,7 @@ def complete_shell(
     if not q.startswith("cd"):
         return 0, [], ""
 
-    code, cwd = pane_current_path(tmux_name, tailscale_ip, local=local)
+    code, cwd = pane_current_path(tmux_name, tailscale_ip, local=local, user=user)
     if code != 0:
         return code, [], cwd
     arg = q[2:].strip()
@@ -310,7 +338,7 @@ def complete_shell(
         )
         + f" {shlex.quote(cwd)} {shlex.quote(arg)}"
     )
-    code, out = run_on_host(tailscale_ip, script, local=local, timeout=15)
+    code, out = run_on_host(tailscale_ip, script, local=local, user=user, timeout=15)
     if code != 0:
         return code, [], out
     return 0, out.splitlines()[:10], ""
@@ -351,13 +379,13 @@ def extract_pane_output(pane: str, tag: str) -> tuple[str, int, str]:
         c = clean[idx].strip()
         if not c:
             continue
-        if "__ARK_" in c:
+        if marker in c or f"__ARK_{tag}__" in c:
             continue
         if _PROMPT_RE.match(clean[idx]):
             continue
         out.append(lines[idx].rstrip())
 
-    if marker_prefix and not _PROMPT_RE.match(marker_prefix):
+    if marker_prefix and marker not in marker_prefix and not _PROMPT_RE.match(marker_prefix):
         out.append(marker_prefix)
 
     state = "done" if end_idx is not None else "running"

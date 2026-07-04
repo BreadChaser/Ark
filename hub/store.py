@@ -17,6 +17,7 @@ class Session:
     hostname: str
     tailscale_ip: str
     tmux_name: str
+    ssh_user: str
     created_at: float
     updated_at: float
 
@@ -28,6 +29,7 @@ class Session:
             "hostname": self.hostname,
             "tailscale_ip": self.tailscale_ip,
             "tmux_name": self.tmux_name,
+            "ssh_user": self.ssh_user,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
@@ -73,6 +75,7 @@ class ArkStore:
                     hostname TEXT NOT NULL,
                     tailscale_ip TEXT NOT NULL,
                     tmux_name TEXT NOT NULL,
+                    ssh_user TEXT NOT NULL DEFAULT '',
                     created_at REAL NOT NULL,
                     updated_at REAL NOT NULL
                 );
@@ -88,6 +91,9 @@ class ArkStore:
                     ON messages(session_id, created_at);
                 """
             )
+            cols = {r["name"] for r in c.execute("PRAGMA table_info(sessions)").fetchall()}
+            if "ssh_user" not in cols:
+                c.execute("ALTER TABLE sessions ADD COLUMN ssh_user TEXT NOT NULL DEFAULT ''")
 
     def create_session(
         self,
@@ -97,6 +103,7 @@ class ArkStore:
         hostname: str,
         tailscale_ip: str,
         tmux_name: str,
+        ssh_user: str = "",
     ) -> Session:
         now = time.time()
         session = Session(
@@ -106,12 +113,15 @@ class ArkStore:
             hostname=hostname,
             tailscale_ip=tailscale_ip,
             tmux_name=tmux_name,
+            ssh_user=ssh_user.strip(),
             created_at=now,
             updated_at=now,
         )
         with self._conn() as c:
             c.execute(
-                "INSERT INTO sessions VALUES (?,?,?,?,?,?,?,?)",
+                "INSERT INTO sessions "
+                "(id, name, peer_id, hostname, tailscale_ip, tmux_name, ssh_user, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
                 (
                     session.id,
                     session.name,
@@ -119,6 +129,7 @@ class ArkStore:
                     session.hostname,
                     session.tailscale_ip,
                     session.tmux_name,
+                    session.ssh_user,
                     session.created_at,
                     session.updated_at,
                 ),
@@ -160,6 +171,7 @@ class ArkStore:
             hostname=r["hostname"],
             tailscale_ip=r["tailscale_ip"],
             tmux_name=r["tmux_name"],
+            ssh_user=r["ssh_user"] if "ssh_user" in r.keys() else "",
             created_at=r["created_at"],
             updated_at=r["updated_at"],
         )
