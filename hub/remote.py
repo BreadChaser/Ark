@@ -270,7 +270,7 @@ def send_text_line(
     target = shlex.quote(tmux_name)
     inner = (
         f"tmux send-keys -t {target} -l {_shell_single(text)}; "
-        "sleep 0.25; "
+        "sleep 0.65; "
         f"tmux send-keys -t {target} Enter"
     )
     return run_on_host(tailscale_ip, inner, local=local, user=user, timeout=30)

@@ -9,6 +9,7 @@ let liveStartedAt = 0;
 let liveCommand = "";
 let liveBubble = null;
 let currentSession = null;
+let sending = false;
 let suggestIndex = -1;
 let suggestAbort = null;
 
@@ -567,14 +568,22 @@ async function sendCommand(cmd) {
 
 composer.addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (sending) return;
   const cmd = commandInput.value.trim();
   if (!cmd || !activeId) return;
   commandInput.value = "";
   hideSuggest();
+  sending = true;
   sendBtn.disabled = true;
-  await sendCommand(cmd);
-  sendBtn.disabled = false;
-  commandInput.focus();
+  commandInput.disabled = true;
+  try {
+    await sendCommand(cmd);
+  } finally {
+    sending = false;
+    commandInput.disabled = false;
+    sendBtn.disabled = false;
+    commandInput.focus();
+  }
 });
 
 btnClose.onclick = async () => {
