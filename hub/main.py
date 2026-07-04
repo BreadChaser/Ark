@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import socket
+import subprocess
 import json
 import threading
 import time
@@ -33,7 +35,6 @@ from remote import (
     list_tmux_sessions,
     pane_current_command,
     pane_current_path,
-    send_key,
     send_line,
     send_text_line,
     stop_pane_app,
@@ -108,6 +109,83 @@ class AddMessage(BaseModel):
 _pending: dict[str, bool] = {}
 
 
+class _TmuxInput:
+    def __init__(self, tmux_name: str, tailscale_ip: str, local: bool, user: str | None):
+        self.tmux_name = tmux_name
+        self.tailscale_ip = tailscale_ip
+        self.local = local
+        self.user = user
+        self.proc: subprocess.Popen | None = None
+        self.lock = threading.Lock()
+
+    def _ensure(self) -> None:
+        if self.proc and self.proc.poll() is None and self.proc.stdin:
+            return
+        if self.local:
+            cmd = ["bash"]
+        else:
+            remote = f"{self.user or os.environ.get('ARK_SSH_USER') or os.environ.get('USER')}@{self.tailscale_ip}"
+            cmd = [
+                "ssh",
+                "-o", "ConnectTimeout=10",
+                "-o", "BatchMode=yes",
+                "-o", "StrictHostKeyChecking=accept-new",
+                "-o", "ControlMaster=auto",
+                "-o", "ControlPersist=90",
+                "-o", "ControlPath=/tmp/ark-ssh-%r@%h:%p",
+                remote,
+                "bash -s",
+            ]
+        self.proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            bufsize=1,
+        )
+
+    def _write(self, command: str) -> None:
+        with self.lock:
+            for attempt in range(2):
+                try:
+                    self._ensure()
+                    assert self.proc and self.proc.stdin
+                    self.proc.stdin.write(command + "\n")
+                    self.proc.stdin.flush()
+                    return
+                except (BrokenPipeError, OSError):
+                    if self.proc:
+                        self.proc.kill()
+                    self.proc = None
+                    if attempt:
+                        raise
+
+    def text(self, text: str) -> None:
+        self._write(
+            f"tmux send-keys -t {shlex.quote(self.tmux_name)} -l {shlex.quote(text)}"
+        )
+
+    def key(self, key: str) -> None:
+        self._write(
+            f"tmux send-keys -t {shlex.quote(self.tmux_name)} {shlex.quote(key)}"
+        )
+
+
+_tmux_inputs: dict[tuple, _TmuxInput] = {}
+_tmux_inputs_lock = threading.Lock()
+
+
+def _tmux_input(tmux_name: str, tailscale_ip: str, local: bool, user: str | None) -> _TmuxInput:
+    target = (tmux_name, tailscale_ip, local, user)
+    with _tmux_inputs_lock:
+        stream = _tmux_inputs.get(target)
+        if not stream:
+            stream = _TmuxInput(tmux_name, tailscale_ip, local, user)
+            _tmux_inputs[target] = stream
+        return stream
+
+
 class _TypeQueue:
     def __init__(self):
         self.items = deque()
@@ -150,14 +228,19 @@ class _TypeQueue:
                     item["text"] += self.items.popleft()["text"]
                 self.busy = True
             try:
-                send_text_line(
+                _tmux_input(
                     item["tmux_name"],
-                    item["text"],
                     item["tailscale_ip"],
-                    local=item["local"],
-                    user=item["user"],
-                    submit=item["submit"],
-                )
+                    item["local"],
+                    item["user"],
+                ).text(item["text"])
+                if item["submit"]:
+                    _tmux_input(
+                        item["tmux_name"],
+                        item["tailscale_ip"],
+                        item["local"],
+                        item["user"],
+                    ).key("Enter")
             finally:
                 with self.cond:
                     self.busy = False
@@ -595,11 +678,13 @@ def api_keys(session_id: str, body: SendKey):
     _peer, local = _session_peer_local(session)
     user = _session_ssh_user(session)
     _drain_type_queue(session_id)
-    code, out = send_key(session.tmux_name, body.key, session.tailscale_ip, local=local, user=user)
-    if tmux_missing(out):
-        ensure_tmux(session.tmux_name, session.tailscale_ip, local=local, user=user)
-        code, out = send_key(session.tmux_name, body.key, session.tailscale_ip, local=local, user=user)
-    return {"ok": code == 0}
+    if not re.match(r"^[A-Za-z0-9_-]+$", body.key):
+        raise HTTPException(400, "invalid key")
+    try:
+        _tmux_input(session.tmux_name, session.tailscale_ip, local, user).key(body.key)
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 @app.post("/api/v1/sessions/{session_id}/stop")
