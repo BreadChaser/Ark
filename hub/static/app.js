@@ -6,10 +6,12 @@ let msgTimer = null;
 let liveTimer = null;
 let runningTag = null;
 let liveStartedAt = 0;
+let adoptedLive = false;
 let liveCommand = "";
 let liveBubble = null;
 let currentSession = null;
 let sending = false;
+let pendingLocalUsers = [];
 let suggestIndex = -1;
 let suggestAbort = null;
 
@@ -172,10 +174,24 @@ function addBubble(m) {
 
 function renderMessages(msgs, append = false) {
   if (!append) messagesEl.innerHTML = "";
-  if (!msgs.length && !append) { showWelcome(true); return; }
+  if (!append) pendingLocalUsers = [];
+  const shown = append ? filterPendingUserEchoes(msgs) : msgs;
+  if (!shown.length && !append) { showWelcome(true); return; }
   showWelcome(false);
-  for (const m of msgs) addBubble(m);
+  for (const m of shown) addBubble(m);
   scrollFeedBottom();
+}
+
+function filterPendingUserEchoes(msgs) {
+  const now = Date.now() / 1000;
+  pendingLocalUsers = pendingLocalUsers.filter((p) => now - p.created_at < 20);
+  return msgs.filter((m) => {
+    if (m.role !== "user") return true;
+    const i = pendingLocalUsers.findIndex((p) => p.content === m.content && Math.abs(m.created_at - p.created_at) < 20);
+    if (i < 0) return true;
+    pendingLocalUsers.splice(i, 1);
+    return false;
+  });
 }
 
 function scrollFeedBottom() {
@@ -210,6 +226,21 @@ function setLiveContent(html) {
   const bubble = liveBubble.querySelector(".msg-bubble");
   bubble.scrollTop = bubble.scrollHeight;
   scrollFeedBottom();
+}
+
+function freezeLiveSnapshot() {
+  if (!liveBubble) return;
+  setLiveContent(liveBubble.querySelector(".live-terminal")?.innerHTML || "");
+  const snapshot = liveBubble.cloneNode(true);
+  snapshot.classList.remove("live");
+  snapshot.classList.add("snapshot");
+  const head = snapshot.querySelector(".live-head span");
+  if (head) head.textContent = "Snapshot";
+  snapshot.querySelector("#btn-stop-live")?.remove();
+  snapshot.querySelector(".msg-time").textContent = fmtTime(Date.now() / 1000);
+  messagesEl.insertBefore(snapshot, liveBubble);
+  liveBubble.remove();
+  liveBubble = null;
 }
 
 function machineKey(s) { return s.peer_id || s.hostname; }
@@ -324,6 +355,7 @@ async function openSession(id) {
   since = 0;
   runningTag = null;
   liveStartedAt = 0;
+  adoptedLive = false;
   liveCommand = "";
   liveBubble = null;
   stopLivePoll();
@@ -339,7 +371,8 @@ async function openSession(id) {
   renderSidebar();
   messagesEl.innerHTML = '<div class="session-empty">Loading…</div>';
   await refreshMessages(true);
-  await refreshState();
+  const state = await refreshState();
+  restoreLiveFromState(state);
   startMsgPolling();
   commandInput.focus();
 }
@@ -351,7 +384,19 @@ async function refreshState() {
     const d = await res.json();
     const cwd = d.cwd ? d.cwd.replace(/^\/home\/[^/]+/, "~") : currentSession.tailscale_ip;
     sessionMeta.textContent = `${currentSession.hostname} · ${cwd} · ${d.tmux || currentSession.tmux_name}`;
+    return d;
   } catch {}
+  return null;
+}
+
+function restoreLiveFromState(state) {
+  if (!state?.live?.running || runningTag) return;
+  runningTag = "adopted";
+  adoptedLive = true;
+  liveStartedAt = Date.now();
+  liveCommand = state.live.command || "";
+  createLiveBubble();
+  startLivePoll();
 }
 
 async function refreshMessages(full = false) {
@@ -391,12 +436,27 @@ async function pollLive() {
   if (!activeId || !runningTag) return;
   try {
     const shouldRenderPane = liveBubble || isLiveCommand(liveCommand) || Date.now() - liveStartedAt > 1000;
+    let paneRendered = false;
     if (shouldRenderPane) {
       const paneRes = await fetch(`/api/v1/sessions/${activeId}/pane`);
       const pane = await paneRes.json();
+      paneRendered = true;
       const output = filterLivePane(pane.text || "");
       if (!liveBubble) createLiveBubble();
       setLiveContent(output ? ansiToHtml(output) : "");
+    }
+
+    if (adoptedLive) {
+      const state = await refreshState();
+      if (!state?.live?.running) {
+        stopLivePoll();
+        runningTag = null;
+        adoptedLive = false;
+        liveStartedAt = 0;
+        liveCommand = "";
+        if (liveBubble && !paneRendered) liveBubble.remove();
+      }
+      return;
     }
 
     const res = await fetch(`/api/v1/sessions/${activeId}/live?tag=${runningTag}`);
@@ -405,6 +465,7 @@ async function pollLive() {
       stopLivePoll();
       runningTag = null;
       liveStartedAt = 0;
+      adoptedLive = false;
       liveCommand = "";
       if (liveBubble) { liveBubble.remove(); liveBubble = null; }
       since = Math.max(0, since - 0.001);
@@ -416,6 +477,7 @@ async function pollLive() {
       stopLivePoll();
       runningTag = null;
       liveStartedAt = 0;
+      adoptedLive = false;
       liveCommand = "";
     }
   } catch {}
@@ -462,6 +524,7 @@ function closeUi() {
   since = 0;
   runningTag = null;
   liveStartedAt = 0;
+  adoptedLive = false;
   liveCommand = "";
   liveBubble = null;
   if (msgTimer) clearInterval(msgTimer);
@@ -539,13 +602,17 @@ async function sendCommand(cmd) {
   const headers = { "Content-Type": "application/json" };
 
   if (runningTag) {
-    // App is running: send raw input to it (typing into codex / htop).
-    await fetch(`/api/v1/sessions/${activeId}/type`, {
+    freezeLiveSnapshot();
+    const now = Date.now() / 1000;
+    addBubble({ role: "user", content: cmd, created_at: now });
+    pendingLocalUsers.push({ content: cmd, created_at: now });
+    since = now;
+    scrollFeedBottom();
+    createLiveBubble();
+    fetch(`/api/v1/sessions/${activeId}/type`, {
       method: "POST", headers, body: JSON.stringify({ text: cmd }),
-    });
-    since = Math.max(0, since - 0.001);
-    await refreshMessages(false);
-    await pollLive();
+    }).then(() => pollLive()).catch(() => {});
+    setTimeout(() => pollLive(), 300);
     return;
   }
 
@@ -558,6 +625,7 @@ async function sendCommand(cmd) {
   if (data.tag) {
     runningTag = data.tag;
     liveStartedAt = Date.now();
+    adoptedLive = false;
     liveCommand = cmd;
     startLivePoll(); // monitor for completion (stores output server-side)
   }
@@ -630,6 +698,7 @@ async function stopLiveApp() {
   await fetch(`/api/v1/sessions/${activeId}/stop`, { method: "POST" });
   runningTag = null;
   liveStartedAt = 0;
+  adoptedLive = false;
   liveCommand = "";
   stopLivePoll();
   if (liveBubble) { liveBubble.remove(); liveBubble = null; }

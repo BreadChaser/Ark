@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import socket
 import uuid
 from pathlib import Path
@@ -21,6 +22,7 @@ from remote import (
     extract_pane_output,
     kill_tmux,
     list_tmux_sessions,
+    pane_current_command,
     pane_current_path,
     send_key,
     send_line,
@@ -33,6 +35,7 @@ STATIC = Path(__file__).resolve().parent / "static"
 DATA = Path(os.environ.get("ARK_DATA", Path.home() / ".local/share/ark"))
 store = ArkStore(DATA / "ark.db")
 
+SHELL_COMMANDS = {"bash", "zsh", "sh", "fish", "tmux", "login", "sudo"}
 HUB_TS_IP = os.environ.get("ARK_HUB_TS_IP", "")
 
 
@@ -223,6 +226,12 @@ def _session_ssh_user(session) -> str | None:
     return session.ssh_user or None
 
 
+def _live_command_hint(command: str) -> dict:
+    name = re.sub(r"^[-/]*(?:.*?/)?", "", command.strip()).lower()
+    running = bool(name and name not in SHELL_COMMANDS)
+    return {"running": running, "command": name if running else "", "adopted": running}
+
+
 @app.get("/api/v1/sessions/{session_id}/state")
 def api_session_state(session_id: str):
     session = store.get_session(session_id)
@@ -235,7 +244,18 @@ def api_session_state(session_id: str):
         local=local,
         user=_session_ssh_user(session),
     )
-    return {"ok": code == 0, "cwd": cwd if code == 0 else "", "tmux": session.tmux_name}
+    cmd_code, pane_cmd = pane_current_command(
+        session.tmux_name,
+        session.tailscale_ip,
+        local=local,
+        user=_session_ssh_user(session),
+    )
+    return {
+        "ok": code == 0,
+        "cwd": cwd if code == 0 else "",
+        "tmux": session.tmux_name,
+        "live": _live_command_hint(pane_cmd if cmd_code == 0 else ""),
+    }
 
 
 @app.get("/api/v1/sessions/{session_id}/complete")
@@ -303,8 +323,8 @@ def api_type(session_id: str, body: TypeText):
     _peer, local = _session_peer_local(session)
     user = _session_ssh_user(session)
     ensure_tmux(session.tmux_name, session.tailscale_ip, local=local, user=user)
-    send_text_line(session.tmux_name, text, session.tailscale_ip, local=local, user=user)
     store.add_message(session_id, "user", text)
+    send_text_line(session.tmux_name, text, session.tailscale_ip, local=local, user=user)
     return {"ok": True}
 
 

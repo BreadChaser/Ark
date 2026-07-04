@@ -315,6 +315,14 @@ def pane_current_path(
     return code, text.strip()
 
 
+def pane_current_command(
+    tmux_name: str, tailscale_ip: str, local: bool = False, user: str | None = None
+) -> tuple[int, str]:
+    cmd = f"tmux display-message -p -t {shlex.quote(tmux_name)} '#{{pane_current_command}}'"
+    code, text = run_on_host(tailscale_ip, cmd, local=local, user=user, timeout=15)
+    return code, text.strip()
+
+
 def complete_shell(
     tmux_name: str,
     query: str,
