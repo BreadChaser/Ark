@@ -18,6 +18,9 @@ let sending = false;
 let pendingLocalUsers = [];
 let suggestIndex = -1;
 let suggestAbort = null;
+let terminalTypeQueue = Promise.resolve();
+let terminalTextBuffer = "";
+let terminalFlushTimer = null;
 
 const sessionList = document.getElementById("session-list");
 const messagesEl = document.getElementById("messages");
@@ -42,6 +45,7 @@ const btnTerminal = document.getElementById("btn-terminal");
 const suggestEl = document.getElementById("suggest");
 const feedEl = document.getElementById("messages");
 const btnSettings = document.getElementById("btn-settings");
+const btnScrollBottom = document.getElementById("btn-scroll-bottom");
 const settingsDialog = document.getElementById("settings-dialog");
 const themeSelect = document.getElementById("theme-select");
 const llamaStatus = document.getElementById("llama-status");
@@ -111,6 +115,8 @@ btnSettings.onclick = async () => {
     llamaStatus.textContent = "offline";
   }
 };
+btnScrollBottom.onclick = scrollFeedBottom;
+messagesEl.addEventListener("scroll", updateScrollButton);
 
 function updateInputMode() {
   document.body.classList.toggle("terminal-mode", terminalMode);
@@ -228,6 +234,7 @@ function removeCodexBubble() {
 }
 
 function setCodexBubble(text, status = "working") {
+  const keepBottom = isNearBottom(messagesEl, 80);
   if (!codexBubble) {
     codexBubble = document.createElement("div");
     codexBubble.className = "msg-row output codex-chat";
@@ -241,17 +248,20 @@ function setCodexBubble(text, status = "working") {
   }
   codexBubble.querySelector(".msg-bubble").innerHTML = text ? twinkleText(text) : `<span class="output-ok">${escapeHtml(status)}</span>`;
   codexBubble.querySelector(".msg-time").textContent = status;
-  scrollFeedBottom();
+  if (keepBottom) scrollFeedBottom();
+  else updateScrollButton();
 }
 
 function renderMessages(msgs, append = false) {
+  const keepBottom = !append || isNearBottom(messagesEl, 80);
   if (!append) messagesEl.innerHTML = "";
   if (!append) pendingLocalUsers = [];
   const shown = append ? filterPendingUserEchoes(msgs) : msgs;
   if (!shown.length && !append) { showWelcome(true); return; }
   showWelcome(false);
   for (const m of shown) addBubble(m);
-  scrollFeedBottom();
+  if (keepBottom) scrollFeedBottom();
+  else updateScrollButton();
 }
 
 function filterPendingUserEchoes(msgs) {
@@ -266,8 +276,23 @@ function filterPendingUserEchoes(msgs) {
   });
 }
 
-function scrollFeedBottom() {
+function scrollFeedBottom(scrollLive = true) {
   messagesEl.scrollTop = messagesEl.scrollHeight;
+  if (scrollLive) {
+    const bubble = liveBubble?.querySelector(".msg-bubble");
+    if (bubble) bubble.scrollTop = bubble.scrollHeight;
+  }
+  updateScrollButton();
+}
+
+function isNearBottom(el, pad = 24) {
+  return el.scrollHeight - el.scrollTop - el.clientHeight < pad;
+}
+
+function updateScrollButton() {
+  const bubble = liveBubble?.querySelector(".msg-bubble");
+  const show = activeId && (!isNearBottom(messagesEl, 80) || (bubble && !isNearBottom(bubble, 80)));
+  btnScrollBottom.classList.toggle("hidden", !show);
 }
 
 function createLiveBubble() {
@@ -290,17 +315,21 @@ function createLiveBubble() {
   messagesEl.appendChild(liveBubble);
   liveBubble.querySelector(".live-title").textContent = terminalMode ? "Terminal" : "Live app";
   liveBubble.querySelector("#btn-stop-live").onclick = stopLiveApp;
+  liveBubble.querySelector(".msg-bubble").addEventListener("scroll", updateScrollButton);
   scrollFeedBottom();
 }
 
 function setLiveContent(html, rawText = null) {
   if (!liveBubble) return;
+  const keepFeedBottom = !terminalMode || isNearBottom(messagesEl, 48);
   const b = liveBubble.querySelector(".live-terminal");
+  const bubble = liveBubble.querySelector(".msg-bubble");
+  const keepBubbleBottom = !terminalMode || isNearBottom(bubble, 48);
   b.innerHTML = html || `<span class="output-ok">running…</span>`;
   if (rawText !== null) renderAgentChat(rawText);
-  const bubble = liveBubble.querySelector(".msg-bubble");
-  bubble.scrollTop = bubble.scrollHeight;
-  scrollFeedBottom();
+  if (keepBubbleBottom) bubble.scrollTop = bubble.scrollHeight;
+  if (keepFeedBottom) scrollFeedBottom(false);
+  else updateScrollButton();
 }
 
 function stripAnsi(s) {
@@ -638,6 +667,30 @@ async function pollTerminal() {
   } catch {}
 }
 
+function flushTerminalText() {
+  if (terminalFlushTimer) clearTimeout(terminalFlushTimer);
+  terminalFlushTimer = null;
+  const text = terminalTextBuffer;
+  terminalTextBuffer = "";
+  if (!activeId || !text) return terminalTypeQueue;
+  terminalTypeQueue = terminalTypeQueue.then(async () => {
+    await fetch(`/api/v1/sessions/${activeId}/type`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, store: false, submit: false }),
+    });
+    pollTerminal();
+  }).catch(() => {});
+  return terminalTypeQueue;
+}
+
+function sendTerminalText(text) {
+  if (!text) return;
+  terminalTextBuffer += text;
+  if (terminalFlushTimer) clearTimeout(terminalFlushTimer);
+  terminalFlushTimer = setTimeout(flushTerminalText, 45);
+}
+
 async function pollLive() {
   if (!activeId || !runningTag) return;
   const tag = runningTag;
@@ -766,6 +819,7 @@ function closeUi() {
   sendBtn.disabled = true;
   keybar.classList.remove("visible");
   updateInputMode();
+  updateScrollButton();
   showWelcome(true);
   renderSidebar();
 }
@@ -934,6 +988,12 @@ async function sendCommand(cmd) {
 composer.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (sending) return;
+  if (terminalMode && !codexMode) {
+    commandInput.value = "";
+    hideSuggest();
+    await sendKey("Enter");
+    return;
+  }
   const cmd = commandInput.value.trim();
   if (!cmd || !activeId) return;
   commandInput.value = "";
@@ -962,10 +1022,19 @@ btnClose.onclick = async () => {
 // ── Key bar + shortcuts ──
 async function sendKey(key) {
   if (!activeId) return;
-  await fetch(`/api/v1/sessions/${activeId}/keys`, {
+  const postKey = () => fetch(`/api/v1/sessions/${activeId}/keys`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ key }),
   });
+  if (terminalMode && !codexMode) {
+    flushTerminalText();
+    terminalTypeQueue = terminalTypeQueue.then(postKey).then(() => {
+      if (runningTag) pollLive();
+      else pollTerminal();
+    }).catch(() => {});
+    return terminalTypeQueue;
+  }
+  await postKey();
   if (runningTag) pollLive();
   else if (terminalMode) pollTerminal();
 }
@@ -1095,12 +1164,34 @@ function acceptSuggest(text) {
   commandInput.setSelectionRange(text.length, text.length);
 }
 commandInput.addEventListener("input", async () => {
+  if (terminalMode && !codexMode) {
+    const text = commandInput.value;
+    commandInput.value = "";
+    hideSuggest();
+    sendTerminalText(text);
+    return;
+  }
   const v = commandInput.value;
   if (!v) { hideSuggest(); return; }
   const list = await currentSuggestions(v);
   if (commandInput.value === v) showSuggest(list);
 });
 commandInput.addEventListener("keydown", (e) => {
+  if (terminalMode && !codexMode) {
+    const keyMap = {
+      Enter: "Enter", Backspace: "BSpace", Tab: "Tab", Escape: "Escape",
+      ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right",
+      PageUp: "PageUp", PageDown: "PageDown", Home: "Home", End: "End",
+    };
+    const key = keyMap[e.key];
+    if (key) {
+      e.preventDefault();
+      commandInput.value = "";
+      hideSuggest();
+      sendKey(key);
+    }
+    return;
+  }
   const items = suggestEl.querySelectorAll(".suggest-item");
   if (!items.length) return;
   if (e.key === "ArrowDown") {

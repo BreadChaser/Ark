@@ -82,6 +82,7 @@ class RunCommand(BaseModel):
 class TypeText(BaseModel):
     text: str
     store: bool = True
+    submit: bool = True
 
 
 class SendKey(BaseModel):
@@ -359,7 +360,7 @@ def api_type(session_id: str, body: TypeText):
     ensure_tmux(session.tmux_name, session.tailscale_ip, local=local, user=user)
     if body.store:
         store.add_message(session_id, "user", text)
-    send_text_line(session.tmux_name, text, session.tailscale_ip, local=local, user=user)
+    send_text_line(session.tmux_name, text, session.tailscale_ip, local=local, user=user, submit=body.submit)
     return {"ok": True}
 
 

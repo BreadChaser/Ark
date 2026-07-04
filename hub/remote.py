@@ -267,14 +267,13 @@ def send_text_line(
     tailscale_ip: str,
     local: bool = False,
     user: str | None = None,
+    submit: bool = True,
 ) -> tuple[int, str]:
-    """Type literal text, then submit it. TUIs like Codex need Enter separately."""
+    """Type literal text, optionally followed by Enter."""
     target = shlex.quote(tmux_name)
-    inner = (
-        f"tmux send-keys -t {target} -l {_shell_single(text)}; "
-        "sleep 0.65; "
-        f"tmux send-keys -t {target} Enter"
-    )
+    inner = f"tmux send-keys -t {target} -l {_shell_single(text)}"
+    if submit:
+        inner += f"; sleep 0.65; tmux send-keys -t {target} Enter"
     return run_on_host(tailscale_ip, inner, local=local, user=user, timeout=30)
 
 
