@@ -1,18 +1,18 @@
 :root {
-  --bg: #07090a;
-  --bg-elevated: #101416;
-  --surface: #182024;
-  --surface-hover: #202b30;
-  --border: rgba(94, 234, 212, 0.14);
-  --text: #f4f8f7;
-  --text-secondary: #bfd1ce;
-  --text-muted: #7c9290;
-  --accent: #34d399;
-  --accent-dim: #22d3ee;
-  --accent-glow: rgba(45, 212, 191, 0.18);
-  --accent-soft: #102a24;
-  --accent-muted: rgba(94, 234, 212, 0.62);
-  --ok: #a3e635;
+  --bg: #0a0908;
+  --bg-elevated: #14110e;
+  --surface: #1c1814;
+  --surface-hover: #262019;
+  --border: rgba(217, 119, 6, 0.12);
+  --text: #faf7f2;
+  --text-secondary: #c4b5a3;
+  --text-muted: #8a7d6e;
+  --accent: #f59e0b;
+  --accent-dim: #d97706;
+  --accent-glow: rgba(245, 158, 11, 0.18);
+  --accent-soft: #2a2010;
+  --accent-muted: rgba(245, 158, 11, 0.55);
+  --ok: #84cc16;
   --err: #ef4444;
   --radius: 14px;
   --radius-sm: 9px;
@@ -121,19 +121,19 @@ body {
   margin: 0 0.85rem 0.85rem;
   padding: 0.6rem 1rem;
   background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%);
-  color: #06130f;
+  color: #1a1208;
   border: none;
   border-radius: var(--radius-sm);
   font-family: var(--font);
   font-weight: 700;
   font-size: 0.88rem;
   cursor: pointer;
-  box-shadow: 0 4px 16px rgba(45, 212, 191, 0.25);
+  box-shadow: 0 4px 16px rgba(217, 119, 6, 0.35);
   transition: transform 0.15s, box-shadow 0.15s;
 }
 .btn-new:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 22px rgba(45, 212, 191, 0.35);
+  box-shadow: 0 6px 22px rgba(217, 119, 6, 0.45);
 }
 
 .btn-new-icon {
@@ -267,7 +267,7 @@ body {
   flex: 1;
   overflow: hidden;
   background:
-    radial-gradient(ellipse at 20% 0%, rgba(45, 212, 191, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 20% 0%, rgba(245, 158, 11, 0.06) 0%, transparent 50%),
     var(--bg-elevated);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
@@ -439,7 +439,7 @@ body {
 .msg-row.command .msg-bubble,
 .msg-row.user .msg-bubble {
   background: var(--accent-soft);
-  color: #d8fff3;
+  color: #fde8c8;
   font-family: var(--mono);
   font-size: 0.8rem;
   border-bottom-right-radius: 4px;
@@ -628,7 +628,7 @@ body {
   border-radius: var(--radius);
   border: none;
   background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%);
-  color: #06130f;
+  color: #1a1208;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -638,7 +638,7 @@ body {
 .composer button[type="submit"]:disabled { opacity: 0.35; cursor: not-allowed; }
 .composer button[type="submit"]:not(:disabled):hover { filter: brightness(1.06); }
 
-.cmd-text { color: #d8fff3; }
+.cmd-text { color: #fde8c8; }
 
 /* ── Suggestions ── */
 .suggest {
@@ -726,7 +726,7 @@ body {
 
 .btn-primary {
   background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%);
-  color: #06130f;
+  color: #1a1208;
   border: none;
   border-radius: var(--radius-sm);
   padding: 0.55rem 1.1rem;

@@ -373,6 +373,10 @@ function startMsgPolling() {
 function startLivePoll() {
   if (liveTimer) clearInterval(liveTimer);
   liveTimer = setInterval(pollLive, 700);
+  if (isLiveCommand(liveCommand)) {
+    createLiveBubble();
+    pollLive();
+  }
 }
 
 function stopLivePoll() {
@@ -383,6 +387,15 @@ function stopLivePoll() {
 async function pollLive() {
   if (!activeId || !runningTag) return;
   try {
+    const shouldRenderPane = liveBubble || isLiveCommand(liveCommand) || Date.now() - liveStartedAt > 1000;
+    if (shouldRenderPane) {
+      const paneRes = await fetch(`/api/v1/sessions/${activeId}/pane`);
+      const pane = await paneRes.json();
+      const output = filterLivePane(pane.text || "");
+      if (!liveBubble) createLiveBubble();
+      setLiveContent(output ? ansiToHtml(output) : "");
+    }
+
     const res = await fetch(`/api/v1/sessions/${activeId}/live?tag=${runningTag}`);
     const d = await res.json();
     if (d.state === "done") {
@@ -401,14 +414,12 @@ async function pollLive() {
       runningTag = null;
       liveStartedAt = 0;
       liveCommand = "";
-    } else {
-      const paneRes = await fetch(`/api/v1/sessions/${activeId}/pane`);
-      const pane = await paneRes.json();
-      const output = filterLivePane(pane.text || d.output || "");
-      if (!liveBubble && (output || Date.now() - liveStartedAt > 1000)) createLiveBubble();
-      if (liveBubble) setLiveContent(output ? ansiToHtml(output) : "");
     }
   } catch {}
+}
+
+function isLiveCommand(cmd) {
+  return /^(codex|opencode|htop|top|btop|vim|vi|nano|less|man|ssh|python3?\s+-i|node\s+-i)\b/.test(String(cmd || "").trim());
 }
 
 const MARKER_RE = /(?:__ARK_[0-9a-f]+__|@@[0-9a-f]+):\d+/g;
