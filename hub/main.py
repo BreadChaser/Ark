@@ -27,7 +27,6 @@ from codex_bridge import stop_app as stop_codex_app
 from ark_common.tailscale import TailscalePeer, list_peers
 from naming import infer_name, should_auto_rename
 from remote import (
-    capture_pane,
     complete_shell,
     ensure_tmux,
     extract_pane_output,
@@ -139,25 +138,31 @@ class _TmuxInput:
         self.proc = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
         )
+
+    def _write_unlocked(self, command: str) -> None:
+        self._ensure()
+        assert self.proc and self.proc.stdin
+        self.proc.stdin.write(command + "\n")
+        self.proc.stdin.flush()
+
+    def _reset(self) -> None:
+        if self.proc:
+            self.proc.kill()
+        self.proc = None
 
     def _write(self, command: str) -> None:
         with self.lock:
             for attempt in range(2):
                 try:
-                    self._ensure()
-                    assert self.proc and self.proc.stdin
-                    self.proc.stdin.write(command + "\n")
-                    self.proc.stdin.flush()
+                    self._write_unlocked(command)
                     return
                 except (BrokenPipeError, OSError):
-                    if self.proc:
-                        self.proc.kill()
-                    self.proc = None
+                    self._reset()
                     if attempt:
                         raise
 
@@ -170,6 +175,32 @@ class _TmuxInput:
         self._write(
             f"tmux send-keys -t {shlex.quote(self.tmux_name)} {shlex.quote(key)}"
         )
+
+    def capture(self, scroll: int = 300) -> str:
+        marker = f"__ARK_CAPTURE_{uuid.uuid4().hex}__"
+        start = f" -S -{scroll}" if scroll > 0 else ""
+        command = (
+            f"tmux capture-pane -pt {shlex.quote(self.tmux_name)}{start} -e; "
+            f"printf '\\n{marker}\\n'"
+        )
+        with self.lock:
+            for attempt in range(2):
+                try:
+                    self._write_unlocked(command)
+                    assert self.proc and self.proc.stdout
+                    lines: list[str] = []
+                    while True:
+                        line = self.proc.stdout.readline()
+                        if line == "":
+                            raise BrokenPipeError("tmux capture stream closed")
+                        if line.rstrip("\n") == marker:
+                            return "".join(lines).rstrip("\n")
+                        lines.append(line)
+                except (BrokenPipeError, OSError):
+                    self._reset()
+                    if attempt:
+                        raise
+        return ""
 
 
 _tmux_inputs: dict[tuple, _TmuxInput] = {}
@@ -628,13 +659,19 @@ def api_live(session_id: str, tag: str):
     if not session:
         raise HTTPException(404, "session not found")
     _peer, local = _session_peer_local(session)
-    code, pane = capture_pane(
-        session.tmux_name,
-        session.tailscale_ip,
-        local=local,
-        scroll=500,
-        user=_session_ssh_user(session),
-    )
+    user = _session_ssh_user(session)
+    try:
+        pane = _tmux_input(session.tmux_name, session.tailscale_ip, local, user).capture(scroll=500)
+        code = 0
+    except Exception as e:
+        code, pane = 1, str(e)
+    if tmux_missing(pane):
+        ensure_tmux(session.tmux_name, session.tailscale_ip, local=local, user=user)
+        try:
+            pane = _tmux_input(session.tmux_name, session.tailscale_ip, local, user).capture(scroll=500)
+            code = 0
+        except Exception as e:
+            code, pane = 1, str(e)
     if code != 0 or tmux_missing(pane):
         return {"state": "error", "output": pane or "session lost", "exit": 1, "stored": False}
 
@@ -659,14 +696,18 @@ def api_pane(session_id: str):
         raise HTTPException(404, "session not found")
     _peer, local = _session_peer_local(session)
     user = _session_ssh_user(session)
-    code, text = capture_pane(
-        session.tmux_name, session.tailscale_ip, local=local, scroll=5000, user=user
-    )
+    try:
+        text = _tmux_input(session.tmux_name, session.tailscale_ip, local, user).capture(scroll=5000)
+        code = 0
+    except Exception as e:
+        code, text = 1, str(e)
     if tmux_missing(text):
         ensure_tmux(session.tmux_name, session.tailscale_ip, local=local, user=user)
-        code, text = capture_pane(
-            session.tmux_name, session.tailscale_ip, local=local, scroll=5000, user=user
-        )
+        try:
+            text = _tmux_input(session.tmux_name, session.tailscale_ip, local, user).capture(scroll=5000)
+            code = 0
+        except Exception as e:
+            code, text = 1, str(e)
     return {"ok": code == 0, "text": text}
 
 

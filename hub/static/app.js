@@ -45,6 +45,7 @@ const btnSidebar = document.getElementById("btn-sidebar");
 const btnSidebarClose = document.getElementById("btn-sidebar-close");
 const keybar = document.getElementById("keybar");
 const btnTerminal = document.getElementById("btn-terminal");
+const btnCodex = document.getElementById("btn-codex");
 const suggestEl = document.getElementById("suggest");
 const feedEl = document.getElementById("messages");
 const btnSettings = document.getElementById("btn-settings");
@@ -153,7 +154,9 @@ function setTerminalMode(next, { auto = false, persist = !auto } = {}) {
 function updateInputMode() {
   document.body.classList.toggle("terminal-mode", terminalMode);
   btnTerminal.classList.toggle("active", terminalMode);
-  if (terminalMode) commandInput.placeholder = "Type into terminal…";
+  btnCodex.classList.toggle("active", codexMode);
+  if (codexMode) commandInput.placeholder = "Message Codex…";
+  else if (terminalMode) commandInput.placeholder = "Type into terminal…";
   else if (runningTag && !codexMode) commandInput.placeholder = "Type into app…";
   else commandInput.placeholder = "Run a command…";
 }
@@ -608,7 +611,7 @@ function startMsgPolling() {
 
 function startLivePoll() {
   if (liveTimer) clearInterval(liveTimer);
-  liveTimer = setInterval(pollLive, 500);
+  liveTimer = setInterval(pollLive, 250);
   if (isLiveCommand(liveCommand) || terminalMode) {
     createLiveBubble();
     pollLive();
@@ -676,7 +679,7 @@ async function pollCommand(tag, tries = 80) {
 
 function startTerminalPoll() {
   if (liveTimer) clearInterval(liveTimer);
-  liveTimer = setInterval(pollTerminal, 350);
+  liveTimer = setInterval(pollTerminal, 150);
   createLiveBubble();
   pollTerminal();
   updateInputMode();
@@ -961,6 +964,16 @@ function toggleTerminalMode() {
 }
 btnTerminal.onclick = toggleTerminalMode;
 
+btnCodex.onclick = async () => {
+  if (!activeId || codexMode) return;
+  if (runningTag) {
+    alert("Stop the current live app before starting Codex.");
+    return;
+  }
+  setTerminalMode(false);
+  await sendCommand("codex");
+};
+
 async function renameSession(id, currentName) {
   const name = prompt("Rename chat", currentName || sessionTitle.textContent);
   if (name === null) return;
@@ -1061,6 +1074,7 @@ async function sendCommand(cmd) {
     codexMode = true;
     liveStartedAt = Date.now();
     liveCommand = provider.command;
+    updateInputMode();
     setCodexBubble("", `starting ${provider.label} app-server`);
     const res = await fetch(`/api/v1/sessions/${activeId}/codex/start`, { method: "POST" });
     const data = await res.json().catch(() => ({}));
@@ -1077,6 +1091,7 @@ async function sendCommand(cmd) {
     runningTag = null;
     codexMode = false;
     liveCommand = "";
+    updateInputMode();
     removeCodexBubble();
   }
 
