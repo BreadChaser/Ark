@@ -11,6 +11,8 @@ let codexMode = false;
 let liveCommand = "";
 let liveBubble = null;
 let codexBubble = null;
+let terminalMode = false;
+let autoTerminalMode = false;
 let currentSession = null;
 let sending = false;
 let pendingLocalUsers = [];
@@ -36,6 +38,7 @@ const sidebarBackdrop = document.getElementById("sidebar-backdrop");
 const btnSidebar = document.getElementById("btn-sidebar");
 const btnSidebarClose = document.getElementById("btn-sidebar-close");
 const keybar = document.getElementById("keybar");
+const btnTerminal = document.getElementById("btn-terminal");
 const suggestEl = document.getElementById("suggest");
 const feedEl = document.getElementById("messages");
 const btnSettings = document.getElementById("btn-settings");
@@ -108,6 +111,14 @@ btnSettings.onclick = async () => {
     llamaStatus.textContent = "offline";
   }
 };
+
+function updateInputMode() {
+  document.body.classList.toggle("terminal-mode", terminalMode);
+  btnTerminal.classList.toggle("active", terminalMode);
+  if (terminalMode) commandInput.placeholder = "Type into terminal…";
+  else if (runningTag && !codexMode) commandInput.placeholder = "Type into app…";
+  else commandInput.placeholder = "Run a command…";
+}
 
 function fmtTime(ts) {
   return new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -277,6 +288,7 @@ function createLiveBubble() {
       <div class="msg-time">live</div>
     </div>`;
   messagesEl.appendChild(liveBubble);
+  liveBubble.querySelector(".live-title").textContent = terminalMode ? "Terminal" : "Live app";
   liveBubble.querySelector("#btn-stop-live").onclick = stopLiveApp;
   scrollFeedBottom();
 }
@@ -318,7 +330,7 @@ function renderAgentChat(rawText) {
   const chat = liveBubble?.querySelector(".agent-chat");
   const title = liveBubble?.querySelector(".live-title");
   if (!chat) return;
-  if (title) title.textContent = isAgentCommand(liveCommand) ? "Agent live" : "Live app";
+  if (title) title.textContent = terminalMode ? "Terminal" : (isAgentCommand(liveCommand) ? "Agent live" : "Live app");
   if (!isAgentCommand(liveCommand)) {
     chat.classList.add("hidden");
     chat.innerHTML = "";
@@ -465,6 +477,8 @@ async function openSession(id) {
   liveStartedAt = 0;
   adoptedLive = false;
   codexMode = false;
+  terminalMode = false;
+  autoTerminalMode = false;
   liveCommand = "";
   liveBubble = null;
   removeCodexBubble();
@@ -478,6 +492,7 @@ async function openSession(id) {
   commandInput.disabled = false;
   sendBtn.disabled = false;
   keybar.classList.add("visible");
+  updateInputMode();
   renderSidebar();
   messagesEl.innerHTML = '<div class="session-empty">Loading…</div>';
   await refreshMessages(true);
@@ -545,10 +560,11 @@ function startMsgPolling() {
 function startLivePoll() {
   if (liveTimer) clearInterval(liveTimer);
   liveTimer = setInterval(pollLive, 700);
-  if (isLiveCommand(liveCommand)) {
+  if (isLiveCommand(liveCommand) || terminalMode) {
     createLiveBubble();
     pollLive();
   }
+  updateInputMode();
 }
 
 function stopLivePoll() {
@@ -603,11 +619,30 @@ async function pollCommand(tag, tries = 80) {
   setTimeout(() => pollCommand(tag, tries - 1), 700);
 }
 
+function startTerminalPoll() {
+  if (liveTimer) clearInterval(liveTimer);
+  liveTimer = setInterval(pollTerminal, 700);
+  createLiveBubble();
+  pollTerminal();
+  updateInputMode();
+}
+
+async function pollTerminal() {
+  if (!activeId || !terminalMode) return;
+  try {
+    const pane = await (await fetch(`/api/v1/sessions/${activeId}/pane`)).json();
+    if (!terminalMode) return;
+    if (!liveBubble) createLiveBubble();
+    const text = String(pane.text || "").split("\n").slice(-120).join("\n").trim();
+    setLiveContent(text ? ansiToHtml(text) : "", text);
+  } catch {}
+}
+
 async function pollLive() {
   if (!activeId || !runningTag) return;
   const tag = runningTag;
   try {
-    const shouldRenderPane = liveBubble || isLiveCommand(liveCommand) || Date.now() - liveStartedAt > 1000;
+    const shouldRenderPane = liveBubble || terminalMode || isLiveCommand(liveCommand) || Date.now() - liveStartedAt > 1000;
     let paneRendered = false;
     if (shouldRenderPane) {
       const paneRes = await fetch(`/api/v1/sessions/${activeId}/pane`);
@@ -640,8 +675,13 @@ async function pollLive() {
       runningTag = null;
       liveStartedAt = 0;
       adoptedLive = false;
+      if (autoTerminalMode) {
+        terminalMode = false;
+        autoTerminalMode = false;
+      }
       liveCommand = "";
       if (liveBubble) { liveBubble.remove(); liveBubble = null; }
+      updateInputMode();
       since = Math.max(0, since - 0.001);
       await refreshMessages(true);
       await refreshState();
@@ -652,13 +692,22 @@ async function pollLive() {
       runningTag = null;
       liveStartedAt = 0;
       adoptedLive = false;
+      if (autoTerminalMode) {
+        terminalMode = false;
+        autoTerminalMode = false;
+      }
       liveCommand = "";
+      updateInputMode();
     }
   } catch {}
 }
 
 function isLiveCommand(cmd) {
   return /^(codex|opencode|htop|top|btop|vim|vi|nano|less|man|ssh|python3?\s+-i|node\s+-i)\b/.test(String(cmd || "").trim());
+}
+
+function isTerminalCommand(cmd) {
+  return /^sudo\b/.test(String(cmd || "").trim());
 }
 
 const MARKER_RE = /(?:__ARK_[0-9a-f]+__|@@[0-9a-f]+):\d+/g;
@@ -700,6 +749,8 @@ function closeUi() {
   liveStartedAt = 0;
   adoptedLive = false;
   codexMode = false;
+  terminalMode = false;
+  autoTerminalMode = false;
   liveCommand = "";
   liveBubble = null;
   removeCodexBubble();
@@ -714,9 +765,29 @@ function closeUi() {
   commandInput.disabled = true;
   sendBtn.disabled = true;
   keybar.classList.remove("visible");
+  updateInputMode();
   showWelcome(true);
   renderSidebar();
 }
+
+function toggleTerminalMode() {
+  if (!activeId) return;
+  terminalMode = !terminalMode;
+  autoTerminalMode = false;
+  if (terminalMode) {
+    liveCommand = liveCommand || "terminal";
+    if (runningTag) startLivePoll();
+    else startTerminalPoll();
+  } else {
+    if (runningTag) startLivePoll();
+    else {
+      stopLivePoll();
+      if (liveBubble) { liveBubble.remove(); liveBubble = null; }
+    }
+    updateInputMode();
+  }
+}
+btnTerminal.onclick = toggleTerminalMode;
 
 document.getElementById("btn-new").onclick = async () => {
   await loadPeers();
@@ -777,6 +848,15 @@ async function sendCommand(cmd) {
   }
   const headers = { "Content-Type": "application/json" };
 
+  if (terminalMode && !codexMode) {
+    await fetch(`/api/v1/sessions/${activeId}/type`, {
+      method: "POST", headers, body: JSON.stringify({ text: cmd, store: false }),
+    }).catch(() => {});
+    if (runningTag) pollLive();
+    else pollTerminal();
+    return;
+  }
+
   if (!runningTag && cmd === "codex") {
     runningTag = "codex-api";
     codexMode = true;
@@ -834,10 +914,12 @@ async function sendCommand(cmd) {
   since = Math.max(0, since - 0.001);
   await refreshMessages(false); // render the command bubble
   if (data.tag) {
-    if (isLiveCommand(cmd)) {
+    if (isLiveCommand(cmd) || isTerminalCommand(cmd)) {
       runningTag = data.tag;
       liveStartedAt = Date.now();
       adoptedLive = false;
+      terminalMode = isTerminalCommand(cmd);
+      autoTerminalMode = terminalMode;
       liveCommand = cmd;
       startLivePoll(); // monitor for completion (stores output server-side)
     } else {
@@ -865,6 +947,7 @@ composer.addEventListener("submit", async (e) => {
     sending = false;
     commandInput.disabled = false;
     sendBtn.disabled = false;
+    updateInputMode();
     commandInput.focus();
   }
 });
@@ -884,6 +967,7 @@ async function sendKey(key) {
     body: JSON.stringify({ key }),
   });
   if (runningTag) pollLive();
+  else if (terminalMode) pollTerminal();
 }
 keybar.addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-key]");
@@ -922,6 +1006,7 @@ async function stopLiveApp() {
     liveCommand = "";
     stopLivePoll();
     removeCodexBubble();
+    updateInputMode();
     since = Math.max(0, since - 0.001);
     await refreshMessages(true);
     await refreshState();
@@ -931,9 +1016,12 @@ async function stopLiveApp() {
   runningTag = null;
   liveStartedAt = 0;
   adoptedLive = false;
+  terminalMode = false;
+  autoTerminalMode = false;
   liveCommand = "";
   stopLivePoll();
   if (liveBubble) { liveBubble.remove(); liveBubble = null; }
+  updateInputMode();
   since = Math.max(0, since - 0.001);
   await refreshMessages(true);
   await refreshState();

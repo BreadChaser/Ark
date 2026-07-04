@@ -33,6 +33,7 @@ from remote import (
     send_key,
     send_line,
     send_text_line,
+    stop_pane_app,
     tmux_missing,
 )
 from store import ArkStore
@@ -80,6 +81,7 @@ class RunCommand(BaseModel):
 
 class TypeText(BaseModel):
     text: str
+    store: bool = True
 
 
 class SendKey(BaseModel):
@@ -355,7 +357,8 @@ def api_type(session_id: str, body: TypeText):
     _peer, local = _session_peer_local(session)
     user = _session_ssh_user(session)
     ensure_tmux(session.tmux_name, session.tailscale_ip, local=local, user=user)
-    store.add_message(session_id, "user", text)
+    if body.store:
+        store.add_message(session_id, "user", text)
     send_text_line(session.tmux_name, text, session.tailscale_ip, local=local, user=user)
     return {"ok": True}
 
@@ -483,15 +486,14 @@ def api_stop(session_id: str):
     if not session:
         raise HTTPException(404, "session not found")
     _peer, local = _session_peer_local(session)
-    code, out = send_key(
+    code, out = stop_pane_app(
         session.tmux_name,
-        "C-c",
         session.tailscale_ip,
         local=local,
         user=_session_ssh_user(session),
     )
     if code == 0:
-        store.add_message(session_id, "system", "Stopped the running app.")
+        store.add_message(session_id, "system", out or "Stopped the running app.")
     return {"ok": code == 0, "output": out}
 
 

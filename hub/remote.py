@@ -325,6 +325,32 @@ def pane_current_command(
     return code, text.strip()
 
 
+def stop_pane_app(
+    tmux_name: str,
+    tailscale_ip: str,
+    local: bool = False,
+    user: str | None = None,
+) -> tuple[int, str]:
+    before_code, before = pane_current_command(tmux_name, tailscale_ip, local=local, user=user)
+    if before_code != 0:
+        return before_code, before
+    if before in ("", "bash", "zsh", "sh", "fish", "tmux", "login", "sudo"):
+        return 0, "already at shell"
+    send_key(tmux_name, "C-c", tailscale_ip, local=local, user=user)
+    time.sleep(0.8)
+    _code, after = pane_current_command(tmux_name, tailscale_ip, local=local, user=user)
+    if after != before:
+        return 0, f"stopped {before}"
+    send_key(tmux_name, "C-d", tailscale_ip, local=local, user=user)
+    time.sleep(0.5)
+    _code, after = pane_current_command(tmux_name, tailscale_ip, local=local, user=user)
+    if after != before:
+        return 0, f"stopped {before}"
+    cmd = f"tmux respawn-pane -k -t {shlex.quote(tmux_name)}"
+    code, out = run_on_host(tailscale_ip, cmd, local=local, user=user, timeout=15)
+    return code, out or f"killed {before}"
+
+
 def complete_shell(
     tmux_name: str,
     query: str,
