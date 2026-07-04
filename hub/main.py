@@ -93,6 +93,11 @@ class CodexInput(BaseModel):
     text: str = ""
 
 
+class AddMessage(BaseModel):
+    role: str
+    content: str
+
+
 _pending: dict[str, bool] = {}
 
 
@@ -318,6 +323,17 @@ def api_messages(session_id: str, since: float = 0):
     }
 
 
+@app.post("/api/v1/sessions/{session_id}/messages")
+def api_add_message(session_id: str, body: AddMessage):
+    if not store.get_session(session_id):
+        raise HTTPException(404, "session not found")
+    if body.role != "image" or not body.content.startswith("data:image/"):
+        raise HTTPException(400, "only pasted image messages are supported")
+    if len(body.content) > 10_000_000:
+        raise HTTPException(413, "image paste is too large")
+    return {"message": store.add_message(session_id, "image", body.content).to_dict()}
+
+
 @app.post("/api/v1/sessions/{session_id}/run")
 def api_run_command(session_id: str, body: RunCommand):
     """Start a shell command: wrap with a marker so we can detect completion."""
@@ -393,9 +409,9 @@ def api_codex_send(session_id: str, body: CodexInput):
     text = body.text.strip()
     if not text:
         raise HTTPException(400, "empty text")
-    store.add_message(session_id, "user", text)
+    msg = store.add_message(session_id, "user", text)
     app.send(text)
-    return {"ok": True, "state": app.state()}
+    return {"ok": True, "message": msg.to_dict(), "state": app.state()}
 
 
 @app.get("/api/v1/sessions/{session_id}/codex/state")
@@ -404,10 +420,11 @@ def api_codex_state(session_id: str):
     if not app:
         return {"active": False}
     completed = False
+    messages = []
     for text in app.drain_completed():
-        store.add_message(session_id, "output", text[:20000])
+        messages.append(store.add_message(session_id, "output", text[:20000]).to_dict())
         completed = True
-    return {**app.state(), "completed": completed}
+    return {**app.state(), "completed": completed, "messages": messages}
 
 
 @app.post("/api/v1/sessions/{session_id}/codex/stop")

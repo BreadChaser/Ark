@@ -232,6 +232,9 @@ function showWelcome(show) {
 }
 
 function bubbleHtml(m) {
+  if (m.role === "image" && /^data:image\//.test(m.content)) {
+    return `<img class="pasted-image" src="${m.content}" alt="Pasted image" loading="lazy" />`;
+  }
   if (m.role === "command" || m.role === "user") {
     return `<span class="cmd-text">${twinkleText(m.content.replace(/^\$\s*/, ""))}</span>`;
   }
@@ -350,15 +353,15 @@ function createLiveBubble() {
 
 function setLiveContent(html, rawText = null) {
   if (!liveBubble) return;
-  const keepFeedBottom = !terminalMode || isNearBottom(messagesEl, 48);
+  const feedTop = messagesEl.scrollTop;
   const b = liveBubble.querySelector(".live-terminal");
   const bubble = liveBubble.querySelector(".msg-bubble");
-  const keepBubbleBottom = !terminalMode || isNearBottom(bubble, 48);
+  const bubbleTop = bubble.scrollTop;
   b.innerHTML = html || `<span class="output-ok">running…</span>`;
   if (rawText !== null) renderAgentChat(rawText);
-  if (keepBubbleBottom) bubble.scrollTop = bubble.scrollHeight;
-  if (keepFeedBottom) scrollFeedBottom(false);
-  else updateScrollButton();
+  bubble.scrollTop = bubbleTop;
+  messagesEl.scrollTop = feedTop;
+  updateScrollButton();
 }
 
 function stripAnsi(s) {
@@ -660,10 +663,16 @@ async function pollCodex() {
 }
 
 function renderCodexState(d) {
+  if (d.messages?.length) {
+    removeCodexBubble();
+    for (const m of d.messages) {
+      addBubble(m);
+      since = Math.max(since, m.created_at || since);
+    }
+    updateScrollButton();
+  }
   if (d.completed && !d.busy) {
     removeCodexBubble();
-    since = Math.max(0, since - 0.001);
-    refreshMessages(false);
     return;
   }
   setCodexBubble(d.transcript || "", d.status || "ready");
@@ -725,6 +734,73 @@ function sendTerminalText(text) {
   terminalTextBuffer += text;
   if (terminalFlushTimer) clearTimeout(terminalFlushTimer);
   terminalFlushTimer = setTimeout(flushTerminalText, 45);
+}
+
+function readBlobAsDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("failed to read pasted image"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("failed to load pasted image"));
+    img.src = src;
+  });
+}
+
+async function imageFileToDataUrl(file) {
+  if (file.size <= 6_000_000) return readBlobAsDataUrl(file);
+  const src = await readBlobAsDataUrl(file);
+  const img = await loadImage(src);
+  const scale = Math.min(1, 1800 / Math.max(img.naturalWidth, img.naturalHeight));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+  canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.84);
+}
+
+async function addPastedImage(file) {
+  if (!activeId || !file || !file.type.startsWith("image/")) return;
+  if (file.size > 25_000_000) {
+    addBubble({ role: "system", content: "Pasted image is too large for Ark right now. Try a smaller crop.", created_at: Date.now() / 1000 });
+    return;
+  }
+  const content = await imageFileToDataUrl(file);
+  const res = await fetch(`/api/v1/sessions/${activeId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role: "image", content }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || "image paste failed");
+  addBubble(data.message);
+  since = Math.max(since, data.message.created_at);
+  scrollFeedBottom();
+  await loadSessions();
+}
+
+async function handlePaste(e) {
+  const itemFiles = [...(e.clipboardData?.items || [])]
+    .filter((i) => i.type.startsWith("image/"))
+    .map((i) => i.getAsFile())
+    .filter(Boolean);
+  const files = [...(e.clipboardData?.files || []), ...itemFiles]
+    .filter((f, i, all) => f.type.startsWith("image/") && all.findIndex((x) => x.name === f.name && x.size === f.size) === i);
+  if (!files.length) return;
+  e.preventDefault();
+  e.stopPropagation();
+  for (const file of files.slice(0, 4)) {
+    await addPastedImage(file).catch((err) => {
+      addBubble({ role: "system", content: err.message || "image paste failed", created_at: Date.now() / 1000 });
+    });
+  }
 }
 
 async function pollLive() {
@@ -974,20 +1050,25 @@ async function sendCommand(cmd) {
   if (runningTag) {
     if (!codexMode) freezeLiveSnapshot();
     else removeCodexBubble();
+    if (codexMode) {
+      setCodexBubble("", "sent");
+      const res = await fetch(`/api/v1/sessions/${activeId}/codex/send`, {
+        method: "POST", headers, body: JSON.stringify({ text: cmd }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.message) {
+        addBubble(data.message);
+        since = Math.max(since, data.message.created_at);
+      }
+      pollCodex();
+      setTimeout(() => pollCodex(), 300);
+      return;
+    }
     const now = Date.now() / 1000;
     addBubble({ role: "user", content: cmd, created_at: now });
     pendingLocalUsers.push({ content: cmd, created_at: now });
     since = now;
     scrollFeedBottom();
-    if (codexMode) {
-      setCodexBubble("", "sent");
-      await fetch(`/api/v1/sessions/${activeId}/codex/send`, {
-        method: "POST", headers, body: JSON.stringify({ text: cmd }),
-      }).catch(() => {});
-      pollCodex();
-      setTimeout(() => pollCodex(), 300);
-      return;
-    }
     createLiveBubble();
     await fetch(`/api/v1/sessions/${activeId}/type`, {
       method: "POST", headers, body: JSON.stringify({ text: cmd }),
@@ -1046,6 +1127,8 @@ composer.addEventListener("submit", async (e) => {
     commandInput.focus();
   }
 });
+composer.addEventListener("paste", (e) => { handlePaste(e); });
+commandInput.addEventListener("paste", (e) => { handlePaste(e); });
 
 btnClose.onclick = async () => {
   if (!activeId || !confirm("End session and close remote tmux?")) return;
