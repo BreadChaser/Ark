@@ -24,6 +24,7 @@ from remote import (
     pane_current_path,
     send_key,
     send_line,
+    send_text_line,
     tmux_missing,
 )
 from store import ArkStore
@@ -302,7 +303,7 @@ def api_type(session_id: str, body: TypeText):
     _peer, local = _session_peer_local(session)
     user = _session_ssh_user(session)
     ensure_tmux(session.tmux_name, session.tailscale_ip, local=local, user=user)
-    send_line(session.tmux_name, text, session.tailscale_ip, local=local, user=user)
+    send_text_line(session.tmux_name, text, session.tailscale_ip, local=local, user=user)
     store.add_message(session_id, "user", text)
     return {"ok": True}
 
