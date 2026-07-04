@@ -605,12 +605,14 @@ async function pollCommand(tag, tries = 80) {
 
 async function pollLive() {
   if (!activeId || !runningTag) return;
+  const tag = runningTag;
   try {
     const shouldRenderPane = liveBubble || isLiveCommand(liveCommand) || Date.now() - liveStartedAt > 1000;
     let paneRendered = false;
     if (shouldRenderPane) {
       const paneRes = await fetch(`/api/v1/sessions/${activeId}/pane`);
       const pane = await paneRes.json();
+      if (runningTag !== tag) return;
       paneRendered = true;
       const output = filterLivePane(pane.text || "");
       if (!liveBubble) createLiveBubble();
@@ -630,8 +632,9 @@ async function pollLive() {
       return;
     }
 
-    const res = await fetch(`/api/v1/sessions/${activeId}/live?tag=${runningTag}`);
+    const res = await fetch(`/api/v1/sessions/${activeId}/live?tag=${tag}`);
     const d = await res.json();
+    if (runningTag !== tag) return;
     if (d.state === "done") {
       stopLivePoll();
       runningTag = null;
