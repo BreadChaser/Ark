@@ -120,6 +120,12 @@ def run_on_host(
                 "BatchMode=yes",
                 "-o",
                 "StrictHostKeyChecking=accept-new",
+                "-o",
+                "ControlMaster=auto",
+                "-o",
+                "ControlPersist=90",
+                "-o",
+                "ControlPath=/tmp/ark-ssh-%r@%h:%p",
                 remote,
                 command,
             ],
@@ -141,7 +147,8 @@ def ensure_tmux(
     """Create detached tmux session in $HOME if missing."""
     script = (
         f"tmux has-session -t {shlex.quote(tmux_name)} 2>/dev/null "
-        f"|| tmux new-session -d -s {shlex.quote(tmux_name)} -c ~"
+        f"|| tmux new-session -d -s {shlex.quote(tmux_name)} -c ~; "
+        f"tmux set-option -t {shlex.quote(tmux_name)} history-limit 10000"
     )
     return run_on_host(tailscale_ip, script, local=local, user=user, timeout=30)
 

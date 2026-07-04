@@ -698,7 +698,7 @@ async function pollTerminal() {
     const pane = await (await fetch(`/api/v1/sessions/${activeId}/pane`)).json();
     if (!terminalMode) return;
     if (!liveBubble) createLiveBubble();
-    const text = String(pane.text || "").split("\n").slice(-120).join("\n").trim();
+    const text = String(pane.text || "").split("\n").slice(-1200).join("\n").trim();
     setLiveContent(text ? ansiToHtml(text) : "", text);
   } catch {}
 }
