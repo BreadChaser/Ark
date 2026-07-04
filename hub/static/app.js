@@ -23,6 +23,7 @@ let terminalSending = false;
 let terminalPollInFlight = false;
 let terminalTextBuffer = "";
 let terminalFlushTimer = null;
+let pendingCodexImages = [];
 
 const sessionList = document.getElementById("session-list");
 const messagesEl = document.getElementById("messages");
@@ -527,6 +528,7 @@ async function openSession(id) {
   liveStartedAt = 0;
   adoptedLive = false;
   codexMode = false;
+  pendingCodexImages = [];
   terminalMode = !!getSessionUiState(id).terminalMode;
   autoTerminalMode = false;
   liveCommand = "";
@@ -636,6 +638,7 @@ async function pollCodex() {
     const d = await (await fetch(`/api/v1/sessions/${activeId}/codex/state`)).json();
     if (!d.active) {
       codexMode = false;
+      pendingCodexImages = [];
       runningTag = null;
       stopLivePoll();
       removeCodexBubble();
@@ -769,6 +772,10 @@ async function addPastedImage(file) {
     return;
   }
   const content = await imageFileToDataUrl(file);
+  if (content.length > 14_000_000) {
+    addBubble({ role: "system", content: "Pasted image is too large for Codex. Try a smaller crop.", created_at: Date.now() / 1000 });
+    return;
+  }
   const res = await fetch(`/api/v1/sessions/${activeId}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -777,6 +784,7 @@ async function addPastedImage(file) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.detail || "image paste failed");
   addBubble(data.message);
+  if (codexMode) pendingCodexImages.push(content);
   since = Math.max(since, data.message.created_at);
   scrollFeedBottom();
   await loadSessions();
@@ -923,6 +931,7 @@ function closeUi() {
   liveStartedAt = 0;
   adoptedLive = false;
   codexMode = false;
+  pendingCodexImages = [];
   setTerminalMode(false, { persist: false });
   autoTerminalMode = false;
   liveCommand = "";
@@ -1090,6 +1099,7 @@ async function sendCommand(cmd) {
     }
     runningTag = null;
     codexMode = false;
+    pendingCodexImages = [];
     liveCommand = "";
     updateInputMode();
     removeCodexBubble();
@@ -1100,10 +1110,12 @@ async function sendCommand(cmd) {
     else removeCodexBubble();
     if (codexMode) {
       setCodexBubble("", "sent");
+      const attachments = pendingCodexImages.slice(0, 8);
       const res = await fetch(`/api/v1/sessions/${activeId}/codex/send`, {
-        method: "POST", headers, body: JSON.stringify({ text: cmd }),
+        method: "POST", headers, body: JSON.stringify({ text: cmd, attachments }),
       });
       const data = await res.json().catch(() => ({}));
+      if (res.ok) pendingCodexImages = pendingCodexImages.slice(attachments.length);
       if (data.message) {
         addBubble(data.message);
         since = Math.max(since, data.message.created_at);
@@ -1236,6 +1248,7 @@ async function stopLiveApp() {
   if (codexMode) {
     await fetch(`/api/v1/sessions/${activeId}/codex/stop`, { method: "POST" });
     codexMode = false;
+    pendingCodexImages = [];
     runningTag = null;
     liveStartedAt = 0;
     liveCommand = "";

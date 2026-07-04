@@ -63,18 +63,26 @@ class CodexApp:
             return False, self.error or "codex app-server did not become ready"
         return True, ""
 
-    def send(self, text: str) -> None:
+    def send(self, text: str, attachments: list[str] | None = None) -> None:
+        turn_input = []
+        if text:
+            turn_input.append({"type": "text", "text": text})
+        for url in attachments or []:
+            if isinstance(url, str) and url.startswith("data:image/"):
+                turn_input.append({"type": "image", "url": url})
+        if not turn_input:
+            raise ValueError("empty codex turn")
         if self.busy and self.turn_id:
             self._send("turn/steer", {
                 "threadId": self.thread_id,
                 "expectedTurnId": self.turn_id,
-                "input": [{"type": "text", "text": text}],
+                "input": turn_input,
             })
         else:
             self._send("turn/start", {
                 "threadId": self.thread_id,
                 "cwd": self.cwd or None,
-                "input": [{"type": "text", "text": text}],
+                "input": turn_input,
             })
         self.status = "sent"
 

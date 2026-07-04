@@ -98,6 +98,7 @@ class SendKey(BaseModel):
 
 class CodexInput(BaseModel):
     text: str = ""
+    attachments: list[str] = []
 
 
 class AddMessage(BaseModel):
@@ -537,7 +538,7 @@ def api_add_message(session_id: str, body: AddMessage):
         raise HTTPException(404, "session not found")
     if body.role != "image" or not body.content.startswith("data:image/"):
         raise HTTPException(400, "only pasted image messages are supported")
-    if len(body.content) > 10_000_000:
+    if len(body.content) > 14_000_000:
         raise HTTPException(413, "image paste is too large")
     return {"message": store.add_message(session_id, "image", body.content).to_dict()}
 
@@ -624,10 +625,11 @@ def api_codex_send(session_id: str, body: CodexInput):
     if not app:
         raise HTTPException(404, "codex app-server is not running")
     text = body.text.strip()
-    if not text:
+    attachments = [a for a in body.attachments[:8] if a.startswith("data:image/")]
+    if not text and not attachments:
         raise HTTPException(400, "empty text")
-    msg = store.add_message(session_id, "user", text)
-    app.send(text)
+    msg = store.add_message(session_id, "user", text or "(image)")
+    app.send(text, attachments=attachments)
     return {"ok": True, "message": msg.to_dict(), "state": app.state()}
 
 
