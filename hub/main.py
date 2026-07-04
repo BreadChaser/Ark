@@ -5,6 +5,9 @@ from __future__ import annotations
 import os
 import re
 import socket
+import json
+import urllib.error
+import urllib.request
 import uuid
 from pathlib import Path
 
@@ -37,6 +40,8 @@ store = ArkStore(DATA / "ark.db")
 
 SHELL_COMMANDS = {"bash", "zsh", "sh", "fish", "tmux", "login", "sudo"}
 HUB_TS_IP = os.environ.get("ARK_HUB_TS_IP", "")
+LLAMA_URL = os.environ.get("ARK_LLAMA_URL", "http://127.0.0.1:8080")
+LLAMA_PANEL_URL = os.environ.get("ARK_LLAMA_PANEL_URL", "http://100.114.148.108:8090")
 
 
 def peer_map() -> dict[str, TailscalePeer]:
@@ -122,6 +127,26 @@ def api_tmux_sessions(ssh_user: str = ""):
             }
         )
     return {"hosts": rows}
+
+
+@app.get("/api/v1/llama")
+def api_llama():
+    url = f"{LLAMA_URL.rstrip('/')}/v1/models"
+    try:
+        with urllib.request.urlopen(url, timeout=3) as resp:
+            data = json.loads(resp.read().decode())
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
+        return {"ok": False, "panel_url": LLAMA_PANEL_URL, "error": str(e)}
+    models = data.get("data") or data.get("models") or []
+    model = models[0] if models else {}
+    meta = model.get("meta") or {}
+    return {
+        "ok": bool(models),
+        "panel_url": LLAMA_PANEL_URL,
+        "model": model.get("id") or model.get("name") or "local",
+        "ctx": meta.get("n_ctx"),
+        "params": meta.get("n_params"),
+    }
 
 
 @app.post("/api/v1/sessions")

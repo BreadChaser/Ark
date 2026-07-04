@@ -38,6 +38,7 @@
           </div>
           <p id="session-meta">Open a session on any machine</p>
         </div>
+        <button type="button" class="btn-icon" id="btn-settings" title="Settings" aria-label="Settings">⚙</button>
       </header>
 
       <div class="feed" id="messages">
@@ -92,6 +93,29 @@
       <div class="modal-actions">
         <button type="button" class="btn-secondary" id="btn-cancel">Cancel</button>
         <button type="submit" class="btn-primary" id="btn-create">Connect</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="settings-dialog" class="modal">
+    <form method="dialog">
+      <h2>Settings</h2>
+      <label class="field">
+        <span>Theme</span>
+        <select id="theme-select">
+          <option value="crt-soft">CRT soft</option>
+          <option value="crt-strong">CRT strong</option>
+        </select>
+      </label>
+      <div class="settings-row">
+        <div>
+          <div class="settings-label">Llama</div>
+          <div class="settings-value" id="llama-status">Checking…</div>
+        </div>
+        <a class="btn-primary settings-link" id="llama-link" href="http://100.114.148.108:8090" target="_blank" rel="noreferrer">Open</a>
+      </div>
+      <div class="modal-actions">
+        <button type="submit" class="btn-primary">Done</button>
       </div>
     </form>
   </dialog>

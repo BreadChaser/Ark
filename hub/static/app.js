@@ -36,11 +36,17 @@ const btnSidebarClose = document.getElementById("btn-sidebar-close");
 const keybar = document.getElementById("keybar");
 const suggestEl = document.getElementById("suggest");
 const feedEl = document.getElementById("messages");
+const btnSettings = document.getElementById("btn-settings");
+const settingsDialog = document.getElementById("settings-dialog");
+const themeSelect = document.getElementById("theme-select");
+const llamaStatus = document.getElementById("llama-status");
+const llamaLink = document.getElementById("llama-link");
 let tmuxHosts = [];
 
 const COLLAPSE_KEY = "ark-collapsed-machines";
 const SIDEBAR_KEY = "ark-sidebar-open";
 const SSH_USER_KEY = "ark-ssh-user";
+const THEME_KEY = "ark-theme";
 
 const SUGGESTIONS = [
   "/model", "/status", "/help", "/clear", "/compact", "/diff", "/new", "/exit",
@@ -61,6 +67,8 @@ function loadCollapsed() {
 function saveCollapsed(set) { localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...set])); }
 let collapsedMachines = loadCollapsed();
 sshUserInput.value = localStorage.getItem(SSH_USER_KEY) || "";
+themeSelect.value = localStorage.getItem(THEME_KEY) || "crt-soft";
+applyTheme(themeSelect.value);
 
 function isMobile() { return window.innerWidth <= 768; }
 function defaultSidebarOpen() {
@@ -79,11 +87,40 @@ btnSidebarClose.onclick = () => setSidebarOpen(false);
 sidebarBackdrop.onclick = () => setSidebarOpen(false);
 setSidebarOpen(defaultSidebarOpen());
 
+function applyTheme(name) {
+  document.body.dataset.theme = name || "crt-soft";
+}
+themeSelect.addEventListener("change", () => {
+  localStorage.setItem(THEME_KEY, themeSelect.value);
+  applyTheme(themeSelect.value);
+});
+btnSettings.onclick = async () => {
+  settingsDialog.showModal();
+  try {
+    const d = await (await fetch("/api/v1/llama")).json();
+    llamaLink.href = d.panel_url || llamaLink.href;
+    llamaStatus.textContent = d.ok
+      ? `${d.model || "local"}${d.ctx ? ` · ctx ${d.ctx}` : ""}`
+      : `offline · ${d.error || "no model"}`;
+  } catch {
+    llamaStatus.textContent = "offline";
+  }
+};
+
 function fmtTime(ts) {
   return new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 function escapeHtml(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function twinkleText(text) {
+  let n = 0;
+  return [...String(text)].map((ch) => {
+    if (/[A-Za-z0-9]/.test(ch) && (++n % 17 === 0 || n % 29 === 0)) {
+      return `<span class="phosphor-pop">${escapeHtml(ch)}</span>`;
+    }
+    return escapeHtml(ch);
+  }).join("");
 }
 function renderMarkdownLite(text) {
   return escapeHtml(text)
@@ -148,7 +185,7 @@ function showWelcome(show) {
 
 function bubbleHtml(m) {
   if (m.role === "command" || m.role === "user") {
-    return `<span class="cmd-text">${escapeHtml(m.content.replace(/^\$\s*/, ""))}</span>`;
+    return `<span class="cmd-text">${twinkleText(m.content.replace(/^\$\s*/, ""))}</span>`;
   }
   if (m.role === "system") return renderMarkdownLite(m.content);
   return ansiToHtml(m.content) || `<span class="output-ok">done</span>`;
@@ -207,9 +244,10 @@ function createLiveBubble() {
     <div class="msg-body">
       <div class="msg-bubble">
         <div class="live-head">
-          <span><span class="live-dot"></span>Live app</span>
+          <span><span class="live-dot"></span><span class="live-title">Live app</span></span>
           <button type="button" class="btn-stop" id="btn-stop-live">Stop</button>
         </div>
+        <div class="agent-chat hidden"></div>
         <div class="live-terminal"><span class="output-ok">running…</span></div>
       </div>
       <div class="msg-time">live</div>
@@ -219,13 +257,59 @@ function createLiveBubble() {
   scrollFeedBottom();
 }
 
-function setLiveContent(html) {
+function setLiveContent(html, rawText = null) {
   if (!liveBubble) return;
   const b = liveBubble.querySelector(".live-terminal");
   b.innerHTML = html || `<span class="output-ok">running…</span>`;
+  if (rawText !== null) renderAgentChat(rawText);
   const bubble = liveBubble.querySelector(".msg-bubble");
   bubble.scrollTop = bubble.scrollHeight;
   scrollFeedBottom();
+}
+
+function stripAnsi(s) {
+  return String(s || "").replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+}
+
+function isAgentCommand(cmd) {
+  return /^(codex|opencode)\b/.test(String(cmd || "").trim());
+}
+
+function extractAgentLines(text) {
+  const noise = /^(model:|directory:|tip:|heads up|to change|gpt-|tab to queue|[0-9]+% context|booting mcp|esc to interrupt|ctrl-|press |run \/status|included in your plan)/i;
+  return stripAnsi(text).split(/\r?\n/)
+    .map((l) => l.replace(/[│╭╮╰╯─]/g, "").trim())
+    .filter((l) => l && !l.startsWith("›") && !noise.test(l) && !isPromptEcho(l))
+    .slice(-8);
+}
+
+function isPromptEcho(line) {
+  return pendingLocalUsers.some((p) => {
+    const content = p.content.trim();
+    return content && (content.includes(line) || line.includes(content.slice(0, 40)));
+  });
+}
+
+function renderAgentChat(rawText) {
+  const chat = liveBubble?.querySelector(".agent-chat");
+  const title = liveBubble?.querySelector(".live-title");
+  if (!chat) return;
+  if (title) title.textContent = isAgentCommand(liveCommand) ? "Agent live" : "Live app";
+  if (!isAgentCommand(liveCommand)) {
+    chat.classList.add("hidden");
+    chat.innerHTML = "";
+    return;
+  }
+  const lines = extractAgentLines(rawText);
+  if (!lines.length) {
+    chat.classList.add("hidden");
+    chat.innerHTML = "";
+    return;
+  }
+  chat.classList.remove("hidden");
+  chat.innerHTML = `<div class="agent-label">Agent</div><div class="agent-text">${twinkleText(lines.join("\n"))}</div>`;
+  const text = chat.querySelector(".agent-text");
+  text.scrollTop = text.scrollHeight;
 }
 
 function freezeLiveSnapshot() {
@@ -443,7 +527,7 @@ async function pollLive() {
       paneRendered = true;
       const output = filterLivePane(pane.text || "");
       if (!liveBubble) createLiveBubble();
-      setLiveContent(output ? ansiToHtml(output) : "");
+      setLiveContent(output ? ansiToHtml(output) : "", output);
     }
 
     if (adoptedLive) {
