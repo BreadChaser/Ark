@@ -489,6 +489,7 @@ async function loadPeers() {
   machineSelect.innerHTML = "";
   const online = peers.filter((p) => p.online);
   const offline = peers.filter((p) => !p.online);
+  online.sort((a, b) => Number(!a.is_self) - Number(!b.is_self) || a.hostname.localeCompare(b.hostname));
   for (const p of [...online, ...offline]) {
     const opt = document.createElement("option");
     opt.value = p.id;
@@ -496,7 +497,7 @@ async function loadPeers() {
     opt.textContent = `${p.hostname}${p.is_self ? " · hub" : ""}${p.online ? "" : " (offline)"}`;
     machineSelect.appendChild(opt);
   }
-  if (online.length) machineSelect.value = online[0].id;
+  if (online.length) machineSelect.value = online.find((p) => p.is_self)?.id || online[0].id;
   updateHint();
 }
 
@@ -504,16 +505,29 @@ function updateHint() {
   const p = peers.find((x) => x.id === machineSelect.value);
   const host = tmuxHosts.find((h) => h.peer.id === machineSelect.value);
   tmuxSelect.innerHTML = '<option value="__new__">New Ark session</option>';
-  for (const s of host?.sessions || []) {
+  const sessions = host?.sessions || [];
+  for (const s of sessions) {
     const opt = document.createElement("option");
     opt.value = s.name;
     opt.textContent = `${s.name}${s.ark ? "" : " · external"}${s.attached ? " · attached" : ""}`;
     tmuxSelect.appendChild(opt);
   }
+  if (host && !host.ok) {
+    const opt = document.createElement("option");
+    opt.disabled = true;
+    opt.textContent = `tmux unavailable: ${host.error || "connection failed"}`;
+    tmuxSelect.appendChild(opt);
+  } else if (host && sessions.length === 0) {
+    const opt = document.createElement("option");
+    opt.disabled = true;
+    opt.textContent = "No existing tmux sessions found";
+    tmuxSelect.appendChild(opt);
+  }
   machineHint.className = "field-hint";
   const user = sshUserInput.value.trim();
   const suffix = user ? ` · ssh ${user}` : "";
-  machineHint.textContent = p ? `${p.dns_name || p.tailscale_ip} · ${p.os}${suffix}` : "";
+  const tmuxStatus = host && !host.ok ? ` · ${host.error || "tmux unavailable"}` : "";
+  machineHint.textContent = p ? `${p.dns_name || p.tailscale_ip} · ${p.os}${suffix}${tmuxStatus}` : "";
 }
 machineSelect.addEventListener("change", updateHint);
 sshUserInput.addEventListener("change", async () => {
