@@ -399,9 +399,11 @@ def api_codex_state(session_id: str):
     app = get_codex_app(session_id)
     if not app:
         return {"active": False}
+    completed = False
     for text in app.drain_completed():
         store.add_message(session_id, "output", text[:20000])
-    return app.state()
+        completed = True
+    return {**app.state(), "completed": completed}
 
 
 @app.post("/api/v1/sessions/{session_id}/codex/stop")

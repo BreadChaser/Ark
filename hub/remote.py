@@ -235,7 +235,9 @@ def kill_tmux(
 
 _VALID_KEYS = frozenset(
     {
-        "C-c", "C-d", "C-z", "C-l", "C-u", "C-w", "C-a", "C-e", "C-r", "C-p", "C-n",
+        "C-a", "C-b", "C-c", "C-d", "C-e", "C-f", "C-g", "C-j", "C-k", "C-l",
+        "C-n", "C-o", "C-p", "C-r", "C-s", "C-t", "C-u", "C-v", "C-w", "C-x",
+        "C-y", "C-z",
         "Up", "Down", "Left", "Right",
         "Tab", "BTab", "Enter", "Escape", "Space", "BSpace",
         "PageUp", "PageDown", "Home", "End",

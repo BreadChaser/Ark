@@ -10,6 +10,7 @@ let adoptedLive = false;
 let codexMode = false;
 let liveCommand = "";
 let liveBubble = null;
+let codexBubble = null;
 let currentSession = null;
 let sending = false;
 let pendingLocalUsers = [];
@@ -208,6 +209,28 @@ function addBubble(m) {
     messagesEl.appendChild(row);
   }
   return row;
+}
+
+function removeCodexBubble() {
+  if (codexBubble) codexBubble.remove();
+  codexBubble = null;
+}
+
+function setCodexBubble(text, status = "working") {
+  if (!codexBubble) {
+    codexBubble = document.createElement("div");
+    codexBubble.className = "msg-row output codex-chat";
+    codexBubble.innerHTML = `
+      <div class="msg-avatar">⌘</div>
+      <div class="msg-body">
+        <div class="msg-bubble"></div>
+        <div class="msg-time"></div>
+      </div>`;
+    messagesEl.appendChild(codexBubble);
+  }
+  codexBubble.querySelector(".msg-bubble").innerHTML = text ? twinkleText(text) : `<span class="output-ok">${escapeHtml(status)}</span>`;
+  codexBubble.querySelector(".msg-time").textContent = status;
+  scrollFeedBottom();
 }
 
 function renderMessages(msgs, append = false) {
@@ -444,6 +467,7 @@ async function openSession(id) {
   codexMode = false;
   liveCommand = "";
   liveBubble = null;
+  removeCodexBubble();
   stopLivePoll();
   const s = sessions.find((x) => x.id === id);
   if (!s) return;
@@ -494,7 +518,6 @@ async function restoreCodexFromState() {
     codexMode = true;
     liveStartedAt = Date.now();
     liveCommand = "codex";
-    createLiveBubble();
     renderCodexState(d);
     startCodexPoll();
   } catch {}
@@ -547,7 +570,7 @@ async function pollCodex() {
       codexMode = false;
       runningTag = null;
       stopLivePoll();
-      if (liveBubble) { liveBubble.remove(); liveBubble = null; }
+      removeCodexBubble();
       await refreshMessages(true);
       return;
     }
@@ -556,9 +579,28 @@ async function pollCodex() {
 }
 
 function renderCodexState(d) {
-  if (!liveBubble) createLiveBubble();
-  const text = d.transcript || d.status || "Codex app-server";
-  setLiveContent(`<span class="output-ok">${escapeHtml(d.status || "ready")}</span>`, text);
+  if (d.completed && !d.busy) {
+    removeCodexBubble();
+    since = Math.max(0, since - 0.001);
+    refreshMessages(false);
+    return;
+  }
+  setCodexBubble(d.transcript || "", d.status || "ready");
+}
+
+async function pollCommand(tag, tries = 80) {
+  if (!activeId || !tag || tries <= 0) return;
+  try {
+    const res = await fetch(`/api/v1/sessions/${activeId}/live?tag=${tag}`);
+    const d = await res.json();
+    if (d.state === "done") {
+      await refreshMessages(false);
+      await refreshState();
+      await loadSessions();
+      return;
+    }
+  } catch {}
+  setTimeout(() => pollCommand(tag, tries - 1), 700);
 }
 
 async function pollLive() {
@@ -657,6 +699,7 @@ function closeUi() {
   codexMode = false;
   liveCommand = "";
   liveBubble = null;
+  removeCodexBubble();
   if (msgTimer) clearInterval(msgTimer);
   stopLivePoll();
   msgTimer = null;
@@ -736,12 +779,12 @@ async function sendCommand(cmd) {
     codexMode = true;
     liveStartedAt = Date.now();
     liveCommand = "codex";
-    createLiveBubble();
-    setLiveContent(`<span class="output-ok">starting codex app-server…</span>`, "Starting Codex app-server…");
+    setCodexBubble("", "starting codex app-server");
     const res = await fetch(`/api/v1/sessions/${activeId}/codex/start`, { method: "POST" });
     const data = await res.json().catch(() => ({}));
     if (data.ok) {
       since = Math.max(0, since - 0.001);
+      removeCodexBubble();
       await refreshMessages(false);
       renderCodexState(data.state || {});
       startCodexPoll();
@@ -752,27 +795,31 @@ async function sendCommand(cmd) {
     runningTag = null;
     codexMode = false;
     liveCommand = "";
-    if (liveBubble) { liveBubble.remove(); liveBubble = null; }
+    removeCodexBubble();
   }
 
   if (runningTag) {
-    freezeLiveSnapshot();
+    if (!codexMode) freezeLiveSnapshot();
+    else removeCodexBubble();
     const now = Date.now() / 1000;
     addBubble({ role: "user", content: cmd, created_at: now });
     pendingLocalUsers.push({ content: cmd, created_at: now });
     since = now;
     scrollFeedBottom();
-    createLiveBubble();
     if (codexMode) {
-      fetch(`/api/v1/sessions/${activeId}/codex/send`, {
+      setCodexBubble("", "sent");
+      await fetch(`/api/v1/sessions/${activeId}/codex/send`, {
         method: "POST", headers, body: JSON.stringify({ text: cmd }),
-      }).then(() => pollCodex()).catch(() => {});
+      }).catch(() => {});
+      pollCodex();
       setTimeout(() => pollCodex(), 300);
       return;
     }
-    fetch(`/api/v1/sessions/${activeId}/type`, {
+    createLiveBubble();
+    await fetch(`/api/v1/sessions/${activeId}/type`, {
       method: "POST", headers, body: JSON.stringify({ text: cmd }),
-    }).then(() => pollLive()).catch(() => {});
+    }).catch(() => {});
+    pollLive();
     setTimeout(() => pollLive(), 300);
     return;
   }
@@ -784,11 +831,15 @@ async function sendCommand(cmd) {
   since = Math.max(0, since - 0.001);
   await refreshMessages(false); // render the command bubble
   if (data.tag) {
-    runningTag = data.tag;
-    liveStartedAt = Date.now();
-    adoptedLive = false;
-    liveCommand = cmd;
-    startLivePoll(); // monitor for completion (stores output server-side)
+    if (isLiveCommand(cmd)) {
+      runningTag = data.tag;
+      liveStartedAt = Date.now();
+      adoptedLive = false;
+      liveCommand = cmd;
+      startLivePoll(); // monitor for completion (stores output server-side)
+    } else {
+      pollCommand(data.tag);
+    }
   }
   await refreshState();
   if (data.name) sessionTitle.textContent = data.name;
@@ -843,15 +894,19 @@ keybar.addEventListener("click", (e) => {
 
 document.addEventListener("keydown", (e) => {
   if (!activeId) return;
-  if ((e.ctrlKey || e.metaKey) && (e.key === "c" || e.key === "C")) {
+  const ctrlKeyMap = {
+    c: "C-c", d: "C-d", g: "C-g", j: "C-j", k: "C-k", l: "C-l",
+    o: "C-o", r: "C-r", s: "C-s", t: "C-t", u: "C-u", w: "C-w", x: "C-x",
+    y: "C-y",
+  };
+  const ctrlKey = (e.ctrlKey || e.metaKey) ? ctrlKeyMap[e.key.toLowerCase()] : null;
+  if (ctrlKey) {
     const t = e.target;
-    if (t === commandInput && commandInput.selectionStart !== commandInput.selectionEnd) return;
+    if (ctrlKey === "C-c" && t === commandInput && commandInput.selectionStart !== commandInput.selectionEnd) return;
     e.preventDefault();
-    runningTag ? stopLiveApp() : sendKey("C-c");
+    sendKey(ctrlKey);
     return;
   }
-  if ((e.ctrlKey || e.metaKey) && e.key === "l") { e.preventDefault(); sendKey("C-l"); return; }
-  if ((e.ctrlKey || e.metaKey) && e.key === "d") { e.preventDefault(); sendKey("C-d"); return; }
 });
 
 async function stopLiveApp() {
@@ -863,7 +918,7 @@ async function stopLiveApp() {
     liveStartedAt = 0;
     liveCommand = "";
     stopLivePoll();
-    if (liveBubble) { liveBubble.remove(); liveBubble = null; }
+    removeCodexBubble();
     since = Math.max(0, since - 0.001);
     await refreshMessages(true);
     await refreshState();
