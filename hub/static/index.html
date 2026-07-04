@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>The Ark</title>
+  <title>Ark</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -11,43 +11,63 @@
 </head>
 <body>
   <div class="app">
-    <aside class="sidebar">
-      <div class="brand">
-        <span class="brand-icon">⚓</span>
-        <div>
-          <div class="brand-title">The Ark</div>
-          <div class="brand-sub">Mission control</div>
-        </div>
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-head">
+        <span class="sidebar-title">Sessions</span>
+        <button type="button" class="btn-sidebar-close" id="btn-sidebar-close" aria-label="Close">×</button>
       </div>
       <button type="button" class="btn-new" id="btn-new">
         <span class="btn-new-icon">+</span> New session
       </button>
-      <div class="sidebar-label">Sessions</div>
-      <ul class="session-list" id="session-list"></ul>
+      <div class="session-list" id="session-list"></div>
     </aside>
 
     <main class="main">
       <header class="topbar" id="topbar">
+        <div class="topbar-left">
+          <button type="button" class="btn-sidebar" id="btn-sidebar" title="Sessions" aria-label="Toggle sessions">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+          </button>
+          <span class="brand-mark">Ark</span>
+        </div>
         <div class="topbar-info">
           <h1 id="session-title">Welcome</h1>
-          <p id="session-meta">Open a session on any Tailscale machine</p>
+          <p id="session-meta">Open a session on any machine</p>
         </div>
-        <button type="button" class="btn-icon hidden" id="btn-close" title="End session">×</button>
+        <div class="topbar-actions">
+          <button type="button" class="btn-icon hidden" id="btn-close" title="End session">×</button>
+        </div>
       </header>
 
       <div class="feed" id="messages">
         <div class="welcome" id="welcome">
-          <div class="welcome-icon">⚓</div>
           <h2>Start working anywhere</h2>
-          <p>Pick a machine, run commands in chat. SSH and tmux are handled for you — session names update from what you do.</p>
+          <p>Pick a machine, run commands in chat. SSH and tmux are handled for you.</p>
         </div>
       </div>
 
       <form class="composer" id="composer">
-        <input type="text" id="command-input" placeholder="Run a command…" disabled />
-        <button type="submit" id="send-btn" disabled aria-label="Run">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-        </button>
+        <div class="keybar" id="keybar">
+          <button type="button" data-key="C-c">Stop</button>
+          <button type="button" data-key="C-d">Ctrl-D</button>
+          <button type="button" data-key="Up">↑</button>
+          <button type="button" data-key="Down">↓</button>
+          <button type="button" data-key="Left">←</button>
+          <button type="button" data-key="Right">→</button>
+          <button type="button" data-key="Tab">Tab</button>
+          <button type="button" data-key="Escape">Esc</button>
+          <button type="button" data-key="Enter">⏎</button>
+          <button type="button" data-key="C-l">Clear</button>
+          <button type="button" data-key="BSpace">⌫</button>
+        </div>
+        <div class="input-wrap">
+          <input type="text" id="command-input" placeholder="Run a command…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" disabled />
+          <div class="suggest" id="suggest"></div>
+          <button type="submit" id="send-btn" disabled aria-label="Run">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </button>
+        </div>
       </form>
     </main>
   </div>
@@ -59,6 +79,10 @@
       <label class="field">
         <span>Machine</span>
         <select id="machine-select" required></select>
+      </label>
+      <label class="field">
+        <span>tmux session</span>
+        <select id="tmux-select" required></select>
       </label>
       <p class="field-hint" id="machine-hint"></p>
       <div class="modal-actions">

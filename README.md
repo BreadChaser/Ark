@@ -16,7 +16,7 @@ A Tailscale-only mission control dashboard for your homelab — **all Linux**: g
 | always-on services | detach/resume from any machine |
 
 ```bash
-~/ark/scripts/ark-attach laptop agents/opencode
+~/Development/ark/scripts/ark-attach laptop agents/opencode
 ```
 
 ## Quick summary

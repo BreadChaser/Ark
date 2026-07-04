@@ -13,8 +13,19 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from ark_common.tailscale import TailscalePeer, list_peers
-from naming import clean_tmux_output, infer_name, should_auto_rename
-from remote import capture_tmux, ensure_tmux, kill_tmux, run_in_tmux
+from naming import infer_name, should_auto_rename
+from remote import (
+    capture_pane,
+    complete_shell,
+    ensure_tmux,
+    extract_pane_output,
+    kill_tmux,
+    list_tmux_sessions,
+    pane_current_path,
+    send_key,
+    send_line,
+    tmux_missing,
+)
 from store import ArkStore
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -43,8 +54,25 @@ class CreateSession(BaseModel):
     peer_id: str
 
 
+class ImportSession(BaseModel):
+    peer_id: str
+    tmux_name: str
+    confirmed: bool = False
+
+
 class RunCommand(BaseModel):
     command: str
+
+
+class TypeText(BaseModel):
+    text: str
+
+
+class SendKey(BaseModel):
+    key: str
+
+
+_pending: dict[str, bool] = {}
 
 
 @app.get("/health")
@@ -68,6 +96,25 @@ def api_sessions():
             for s in store.list_sessions()
         ]
     }
+
+
+@app.get("/api/v1/tmux")
+def api_tmux_sessions():
+    rows = []
+    for peer in peer_map().values():
+        if not peer.online:
+            continue
+        local = is_local_peer(peer)
+        code, sessions, error = list_tmux_sessions(peer.tailscale_ip, local=local)
+        rows.append(
+            {
+                "peer": peer.to_dict(),
+                "ok": code == 0,
+                "error": error,
+                "sessions": sessions,
+            }
+        )
+    return {"hosts": rows}
 
 
 @app.post("/api/v1/sessions")
@@ -106,6 +153,46 @@ def api_create_session(body: CreateSession):
     }
 
 
+@app.post("/api/v1/sessions/import")
+def api_import_session(body: ImportSession):
+    peer = peer_map().get(body.peer_id)
+    if not peer:
+        raise HTTPException(404, "machine not found on tailnet")
+    if not peer.online:
+        raise HTTPException(503, f"{peer.hostname} is offline")
+
+    tmux_name = body.tmux_name.strip()
+    if not tmux_name:
+        raise HTTPException(400, "empty tmux session")
+    if not tmux_name.startswith("ark-") and not body.confirmed:
+        raise HTTPException(409, "This tmux session was not created by Ark. Attach anyway?")
+
+    for s in store.list_sessions():
+        if s.peer_id == peer.id and s.tmux_name == tmux_name:
+            return {"session": {**s.to_dict(), "preview": store.last_message_preview(s.id)}}
+
+    local = is_local_peer(peer)
+    code, out = ensure_tmux(tmux_name, peer.tailscale_ip, local=local)
+    if code != 0:
+        raise HTTPException(500, f"tmux attach failed: {out}")
+
+    session_id = uuid.uuid4().hex[:10]
+    session = store.create_session(
+        session_id=session_id,
+        name=f"{peer.hostname} · {tmux_name}",
+        peer_id=peer.id,
+        hostname=peer.hostname,
+        tailscale_ip=peer.tailscale_ip,
+        tmux_name=tmux_name,
+    )
+    store.add_message(
+        session.id,
+        "system",
+        f"Attached to **{peer.hostname}** · tmux `{tmux_name}`.",
+    )
+    return {"session": {**session.to_dict(), "preview": store.last_message_preview(session.id)}}
+
+
 @app.get("/api/v1/sessions/{session_id}")
 def api_get_session(session_id: str):
     session = store.get_session(session_id)
@@ -119,6 +206,31 @@ def api_get_session(session_id: str):
     }
 
 
+def _session_peer_local(session):
+    peer = peer_map().get(session.peer_id)
+    return peer, is_local_peer(peer) if peer else False
+
+
+@app.get("/api/v1/sessions/{session_id}/state")
+def api_session_state(session_id: str):
+    session = store.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "session not found")
+    _peer, local = _session_peer_local(session)
+    code, cwd = pane_current_path(session.tmux_name, session.tailscale_ip, local=local)
+    return {"ok": code == 0, "cwd": cwd if code == 0 else "", "tmux": session.tmux_name}
+
+
+@app.get("/api/v1/sessions/{session_id}/complete")
+def api_complete(session_id: str, q: str = ""):
+    session = store.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "session not found")
+    _peer, local = _session_peer_local(session)
+    code, items, error = complete_shell(session.tmux_name, q, session.tailscale_ip, local=local)
+    return {"ok": code == 0, "items": items, "error": error}
+
+
 @app.get("/api/v1/sessions/{session_id}/messages")
 def api_messages(session_id: str, since: float = 0):
     if not store.get_session(session_id):
@@ -130,6 +242,7 @@ def api_messages(session_id: str, since: float = 0):
 
 @app.post("/api/v1/sessions/{session_id}/run")
 def api_run_command(session_id: str, body: RunCommand):
+    """Start a shell command: wrap with a marker so we can detect completion."""
     session = store.get_session(session_id)
     if not session:
         raise HTTPException(404, "session not found")
@@ -138,27 +251,99 @@ def api_run_command(session_id: str, body: RunCommand):
     if not cmd:
         raise HTTPException(400, "empty command")
 
-    peer = peer_map().get(session.peer_id)
-    local = is_local_peer(peer) if peer else False
+    _peer, local = _session_peer_local(session)
 
-    store.add_message(session_id, "command", f"$ {cmd}")
+    tag = uuid.uuid4().hex[:8]
+    wrapped = f"{cmd};c=$?;echo;echo @@{tag}:$c"
 
-    if cmd in ("capture", ":capture"):
-        code, out = capture_tmux(session.tmux_name, session.tailscale_ip, local=local)
-    else:
-        code, out = run_in_tmux(
-            session.tmux_name, cmd, session.tailscale_ip, local=local
-        )
-
-    out = clean_tmux_output(out)
-    role = "output" if code == 0 else "error"
-    store.add_message(session_id, role, out[:20000] or f"(exit {code})")
+    ensure_tmux(session.tmux_name, session.tailscale_ip, local=local)
+    send_line(session.tmux_name, wrapped, session.tailscale_ip, local=local)
+    store.add_message(session_id, "user", cmd)
 
     new_name = infer_name(cmd, session.hostname)
     if new_name and should_auto_rename(session.name, session.hostname):
         store.rename_session(session_id, new_name)
 
-    return {"ok": code == 0, "exit_code": code, "name": store.get_session(session_id).name}
+    return {"ok": True, "tag": tag, "name": store.get_session(session_id).name}
+
+
+@app.post("/api/v1/sessions/{session_id}/type")
+def api_type(session_id: str, body: TypeText):
+    """Send raw input to a running interactive app (no marker, no auto-name)."""
+    session = store.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "session not found")
+    text = body.text
+    if not text:
+        raise HTTPException(400, "empty text")
+    _peer, local = _session_peer_local(session)
+    ensure_tmux(session.tmux_name, session.tailscale_ip, local=local)
+    send_line(session.tmux_name, text, session.tailscale_ip, local=local)
+    store.add_message(session_id, "user", text)
+    return {"ok": True}
+
+
+@app.get("/api/v1/sessions/{session_id}/live")
+def api_live(session_id: str, tag: str):
+    """Poll a running command's filtered output. Stores it once done."""
+    session = store.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "session not found")
+    _peer, local = _session_peer_local(session)
+    code, pane = capture_pane(session.tmux_name, session.tailscale_ip, local=local, scroll=500)
+    if code != 0 or tmux_missing(pane):
+        return {"state": "error", "output": pane or "session lost", "exit": 1, "stored": False}
+
+    state, exit_code, output = extract_pane_output(pane, tag)
+    stored = False
+    if state == "done" and not _pending.get(tag):
+        if output or exit_code != 0:
+            role = "error" if exit_code != 0 else "output"
+            content = output[:20000] if output else f"(exit {exit_code})"
+            store.add_message(session_id, role, content)
+        _pending[tag] = True
+        stored = True
+
+    return {"state": state, "exit": exit_code, "output": output, "stored": stored}
+
+
+@app.get("/api/v1/sessions/{session_id}/pane")
+def api_pane(session_id: str):
+    """Raw live capture of the whole tmux pane (ANSI preserved) — terminal mode."""
+    session = store.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "session not found")
+    _peer, local = _session_peer_local(session)
+    code, text = capture_pane(session.tmux_name, session.tailscale_ip, local=local, scroll=500)
+    if tmux_missing(text):
+        ensure_tmux(session.tmux_name, session.tailscale_ip, local=local)
+        code, text = capture_pane(session.tmux_name, session.tailscale_ip, local=local, scroll=500)
+    return {"ok": code == 0, "text": text}
+
+
+@app.post("/api/v1/sessions/{session_id}/keys")
+def api_keys(session_id: str, body: SendKey):
+    session = store.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "session not found")
+    _peer, local = _session_peer_local(session)
+    code, out = send_key(session.tmux_name, body.key, session.tailscale_ip, local=local)
+    if tmux_missing(out):
+        ensure_tmux(session.tmux_name, session.tailscale_ip, local=local)
+        code, out = send_key(session.tmux_name, body.key, session.tailscale_ip, local=local)
+    return {"ok": code == 0}
+
+
+@app.post("/api/v1/sessions/{session_id}/stop")
+def api_stop(session_id: str):
+    session = store.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "session not found")
+    _peer, local = _session_peer_local(session)
+    code, out = send_key(session.tmux_name, "C-c", session.tailscale_ip, local=local)
+    if code == 0:
+        store.add_message(session_id, "system", "Stopped the running app.")
+    return {"ok": code == 0, "output": out}
 
 
 @app.delete("/api/v1/sessions/{session_id}")
@@ -167,8 +352,7 @@ def api_delete_session(session_id: str, kill: bool = True):
     if not session:
         raise HTTPException(404, "session not found")
     if kill:
-        peer = peer_map().get(session.peer_id)
-        local = is_local_peer(peer) if peer else False
+        _peer, local = _session_peer_local(session)
         kill_tmux(session.tmux_name, session.tailscale_ip, local=local)
     store.delete_session(session_id)
     return {"ok": True}

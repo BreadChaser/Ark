@@ -59,7 +59,7 @@ tmux new -s dev/llama-debug
 Copy once per machine (or symlink):
 
 ```bash
-ln -sf ~/ark/config/tmux.conf ~/.tmux.conf
+ln -sf ~/Development/ark/config/tmux.conf ~/.tmux.conf
 # or clone path: ~/Projects/ark/config/tmux.conf
 ```
 
@@ -72,8 +72,8 @@ Reload: `tmux source-file ~/.tmux.conf`
 From any machine with SSH keys + Tailscale:
 
 ```bash
-~/ark/scripts/ark-attach laptop agents/opencode
-~/ark/scripts/ark-attach gaming dev/llama-debug
+~/Development/ark/scripts/ark-attach laptop agents/opencode
+~/Development/ark/scripts/ark-attach gaming dev/llama-debug
 ```
 
 ---

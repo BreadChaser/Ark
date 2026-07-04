@@ -276,8 +276,8 @@ ark/
 
 ```bash
 # On tony-gaming
-git clone <repo> ~/ark
-cd ~/ark/hub
+git clone <repo> ~/Development/ark
+cd ~/Development/ark/hub
 python3 -m venv .venv && .venv/bin/pip install -e ../packages/ark_common -r requirements.txt
 systemctl --user enable --now ark-hub.service
 ```

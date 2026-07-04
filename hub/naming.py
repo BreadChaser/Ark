@@ -64,23 +64,41 @@ def infer_name(command: str, hostname: str) -> str | None:
 
 
 def should_auto_rename(current_name: str, hostname: str) -> bool:
-    """True if session still has a generic name."""
-    if current_name in (hostname, f"New on {hostname}", "New session"):
-        return True
-    if current_name.startswith(f"{hostname} · "):
-        return True  # allow refining cd path
-    return False
+    """True only while the session still has a generic initial name."""
+    return current_name in (hostname, f"New on {hostname}", "New session")
+
+
+def polish_output(text: str) -> str:
+    """Strip noise and dedupe captured shell output."""
+    if not text or text in ("(ok)", "(no output)", "(empty pane)"):
+        return text
+
+    lines = text.splitlines()
+    cleaned: list[str] = []
+    prev = None
+
+    for line in lines:
+        s = line.strip()
+        if not s or s == "$":
+            continue
+        if "__ARK_" in s:
+            continue
+        if "; echo __ARK_" in s:
+            continue
+        if re.match(r"^.*\$\s+\S", line) and "echo __ARK_" in line:
+            continue
+        if re.match(r"^[\w@.~-]+:.*[$#]\s*", line):
+            continue
+        if s.startswith("$ ") and len(s) > 2:
+            continue
+        if s == prev:
+            continue
+        cleaned.append(line.rstrip())
+        prev = s
+
+    return "\n".join(cleaned).strip() or text.strip()
 
 
 def clean_tmux_output(text: str) -> str:
     """Strip noisy shell prompts from captured pane."""
-    lines = text.splitlines()
-    cleaned: list[str] = []
-    prompt_re = re.compile(r"^[\w@.~-]+:.*[$#]\s*")
-    for line in lines:
-        if prompt_re.match(line) and not line.strip().endswith(("\\", "|")):
-            continue
-        if line.strip() in ("", "$"):
-            continue
-        cleaned.append(line)
-    return "\n".join(cleaned).strip() or text.strip()
+    return polish_output(text)

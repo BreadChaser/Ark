@@ -3,7 +3,7 @@
 # No sudo required — uses uv for the Python venv.
 set -euo pipefail
 
-ARK_DIR="${ARK_DIR:-$HOME/ark}"
+ARK_DIR="${ARK_DIR:-$HOME/Development/ark}"
 REPO="${ARK_REPO:-https://github.com/BreadChaser/Ark.git}"
 
 if [[ ! -d "$ARK_DIR/.git" ]]; then
@@ -33,10 +33,10 @@ After=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=$HOME/ark/hub
+WorkingDirectory=$HOME/Development/ark/hub
 Environment=ARK_IS_HUB_HOST=1
 Environment=ARK_LLAMA_URL=http://127.0.0.1:8080
-ExecStart=$HOME/ark/hub/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8787
+ExecStart=$HOME/Development/ark/hub/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8787
 Restart=on-failure
 RestartSec=5
 
