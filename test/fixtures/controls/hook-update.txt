@@ -1,0 +1,2 @@
+Update hooks now?
+Press enter to continue or esc to cancel

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title desc">
+  <title id="title">Ark</title>
+  <desc id="desc">Four long and four short spires surrounding a hollow foundry ring.</desc>
+  <defs>
+    <path id="long-spire" d="M68 54L65 41L68 16L80 2L92 16L95 41L92 54L87 54L87 62H73V54Z"/>
+    <path id="short-spire" d="M70 55L68 44L71 29L80 19L89 29L92 44L90 55L86 55L86 62H74V55Z"/>
+  </defs>
+  <g fill="#ffb02e">
+    <use href="#long-spire"/>
+    <use href="#long-spire" transform="rotate(90 80 80)"/>
+    <use href="#long-spire" transform="rotate(180 80 80)"/>
+    <use href="#long-spire" transform="rotate(270 80 80)"/>
+    <use href="#short-spire" transform="rotate(45 80 80)"/>
+    <use href="#short-spire" transform="rotate(135 80 80)"/>
+    <use href="#short-spire" transform="rotate(225 80 80)"/>
+    <use href="#short-spire" transform="rotate(315 80 80)"/>
+    <path fill-rule="evenodd" d="M80 42A38 38 0 1 1 80 118A38 38 0 0 1 80 42ZM80 53A27 27 0 1 0 80 107A27 27 0 0 0 80 53Z"/>
+  </g>
+</svg>

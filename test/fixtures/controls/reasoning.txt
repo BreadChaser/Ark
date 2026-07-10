@@ -1,0 +1,6 @@
+Select Reasoning Level for gpt-5.3-codex-spark
+1.LowFast responses with lighter reasoning
+2.MediumBalances speed and reasoning depth for everyday tasks
+› 3. High (default)  Greater reasoning depth for complex problems
+4.ExtrahighExtra high reasoning depth for complex problems
+Press enter to confirm or esc to go back

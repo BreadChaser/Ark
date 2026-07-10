@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ark Post-Fix Audit - 2026-07-09</title>
+  <style>
+    :root { color-scheme: dark; --bg: #091016; --panel: #111b24; --line: #2a3b46; --text: #edf6f7; --muted: #9eb2b8; --good: #72d4a0; --warn: #ffbd66; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: radial-gradient(circle at 10% 0%, #12303a, transparent 34rem), var(--bg); color: var(--text); font: 15px/1.55 "IBM Plex Sans", "Aptos", sans-serif; }
+    main { width: min(960px, calc(100% - 28px)); margin: auto; padding: 42px 0 72px; }
+    h1 { margin: 0 0 10px; font-size: clamp(34px, 7vw, 60px); line-height: 1; }
+    h2 { margin-top: 34px; }
+    .lede, .meta { color: var(--muted); }
+    .grid { display: grid; gap: 12px; }
+    article { padding: 17px 19px; border: 1px solid var(--line); border-radius: 17px; background: rgba(17, 27, 36, .92); }
+    article h3 { margin: 0 0 5px; }
+    article p { margin: 5px 0; }
+    .fixed h3 { color: var(--good); }
+    .remaining h3 { color: var(--warn); }
+    code { color: #c6e7ea; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Ark post-fix audit</h1>
+  <p class="lede">This pass addresses the data-loss and wrong-session failures first. It does not claim the product or visual design is finished.</p>
+  <p class="meta">Branch: <code>newark-ssh-tmux</code> | Scope: current working tree | Date: 2026-07-09</p>
+
+  <h2>Resolved in this pass</h2>
+  <div class="grid fixed">
+    <article><h3>Durable history no longer has a 120-message cap</h3><p>Capture reconciliation preserves the complete stored event list and updates a growing assistant response instead of replacing history with a reduced terminal snapshot.</p></article>
+    <article><h3>Session and message writes are serialized</h3><p>Store and per-session message mutations now use small in-process queues, preventing overlapping poll/send writes from clobbering each other.</p></article>
+    <article><h3>Restart and Resume now recreate tmux</h3><p>The endpoint closes the terminal stream, kills the old tmux session, starts a new one, restores logging/context, and uses <code>codex ... resume --last</code> for Resume.</p></article>
+    <article><h3>Old captures cannot replace the active session</h3><p>The browser tracks capture requests per session and ignores responses after the user switches away.</p></article>
+    <article><h3>Unsafe model/reasoning fallbacks were removed</h3><p>Ark sends a numeric control choice only when that choice was parsed from the live menu.</p></article>
+    <article><h3>Failed sends restore the draft</h3><p>Text, attachments, and pending state are restored when the request fails.</p></article>
+    <article><h3>Parser deletion rules were narrowed</h3><p>Normal replies mentioning project files, GPT models, warnings, tips, or sentences beginning with Model/Directory are no longer rejected wholesale.</p></article>
+    <article><h3>Polling payload is bounded</h3><p>Normal capture reads 2,000 tmux lines; one-time adopted-session import still requests the available 100,000-line history.</p></article>
+    <article><h3>Corrupt readable storage stops writes</h3><p>Malformed session, message, profile, settings, or secret files now surface an error instead of silently becoming empty data.</p></article>
+    <article><h3>Profile routing rejects signed-out and full profiles</h3><p>Auto selection now skips profiles that need login or reached <code>max_concurrent</code>.</p></article>
+  </div>
+
+  <h2>Known remaining work</h2>
+  <div class="grid remaining">
+    <article><h3>No user authentication</h3><p>Source IP remains the only boundary. Keep Ark on a fully trusted LAN/tailnet until an app token or login is added.</p></article>
+    <article><h3>Device identities are not merged</h3><p>SSH aliases and Tailscale peers can still represent the same physical machine twice.</p></article>
+    <article><h3>Assistant persistence is still parser-backed</h3><p>Safer reconciliation avoids destructive rewrites, but structured tool transcripts are still preferable to terminal heuristics.</p></article>
+    <article><h3>Resume uses <code>--last</code>, not an exact thread ID</h3><p>Ark still needs to capture and persist each tool's exact conversation identifier.</p></article>
+    <article><h3>CSS remains overgrown</h3><p>The multiple chat polish layers and stale selectors should be consolidated after the repaired interaction flow is visually tested.</p></article>
+    <article><h3>Feature diagnostics remain self-reported</h3><p>Several GUI smoke assertions still check hard-coded capability flags rather than behavior.</p></article>
+    <article><h3>Remote execution is prompt-mediated</h3><p>Central Codex is told to use SSH; Ark does not yet provide a transparent remote filesystem/command adapter.</p></article>
+  </div>
+</main>
+</body>
+</html>

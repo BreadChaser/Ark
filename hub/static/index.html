@@ -4,34 +4,158 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Ark</title>
-    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="icon" href="/static/ark-logo.svg?v=3" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
+    <link rel="stylesheet" href="/static/ark-ui.css?v=11" />
   </head>
   <body>
+    <div class="background-grid" aria-hidden="true"></div>
+    <svg class="svg-sprite" aria-hidden="true">
+      <symbol id="tool-codex" viewBox="146 227 268 265">
+        <path fill="currentColor" stroke="none" d="M249.176 323.434V298.276C249.176 296.158 249.971 294.569 251.825 293.509L302.406 264.381C309.29 260.409 317.5 258.555 325.973 258.555C357.75 258.555 377.877 283.185 377.877 309.399C377.877 311.253 377.877 313.371 377.611 315.49L325.178 284.771C322.001 282.919 318.822 282.919 315.645 284.771L249.176 323.434ZM367.283 421.415V361.301C367.283 357.592 365.694 354.945 362.516 353.092L296.048 314.43L317.763 301.982C319.617 300.925 321.206 300.925 323.058 301.982L373.639 331.112C388.205 339.586 398.003 357.592 398.003 375.069C398.003 395.195 386.087 413.733 367.283 421.412V421.415ZM233.553 368.452L211.838 355.742C209.986 354.684 209.19 353.095 209.19 350.975V292.718C209.19 264.383 230.905 242.932 260.301 242.932C271.423 242.932 281.748 246.641 290.49 253.26L238.321 283.449C235.146 285.303 233.555 287.951 233.555 291.659V368.455L233.553 368.452ZM280.292 395.462L249.176 377.985V340.913L280.292 323.436L311.407 340.913V377.985L280.292 395.462ZM300.286 475.968C289.163 475.968 278.837 472.259 270.097 465.64L322.264 435.449C325.441 433.597 327.03 430.949 327.03 427.239V350.445L349.011 363.155C350.865 364.213 351.66 365.802 351.66 367.922V426.179C351.66 454.514 329.679 475.965 300.286 475.965V475.968ZM237.525 416.915L186.944 387.785C172.378 379.31 162.582 361.305 162.582 343.827C162.582 323.436 174.763 305.164 193.563 297.485V357.861C193.563 361.571 195.154 364.217 198.33 366.071L264.535 404.467L242.82 416.915C240.967 417.972 239.377 417.972 237.525 416.915ZM234.614 460.343C204.689 460.343 182.71 437.833 182.71 410.028C182.71 407.91 182.976 405.792 183.238 403.672L235.405 433.863C238.582 435.715 241.763 435.715 244.938 433.863L311.407 395.466V420.622C311.407 422.742 310.612 424.331 308.758 425.389L258.179 454.519C251.293 458.491 243.083 460.343 234.611 460.343H234.614ZM300.286 491.854C332.329 491.854 359.073 469.082 365.167 438.892C394.825 431.211 413.892 403.406 413.892 375.073C413.892 356.535 405.948 338.529 391.648 325.552C392.972 319.991 393.766 314.43 393.766 308.87C393.766 271.003 363.048 242.666 327.562 242.666C320.413 242.666 313.528 243.723 306.644 246.109C294.725 234.457 278.307 227.042 260.301 227.042C228.258 227.042 201.513 249.815 195.42 280.004C165.761 287.685 146.694 315.49 146.694 343.824C146.694 362.362 154.638 380.368 168.938 393.344C167.613 398.906 166.819 404.467 166.819 410.027C166.819 447.894 197.538 476.231 233.024 476.231C240.172 476.231 247.058 475.173 253.943 472.788C265.859 484.441 282.278 491.854 300.286 491.854Z" />
+      </symbol>
+      <symbol id="tool-terminal" viewBox="0 0 24 24">
+        <path d="m4 6 6 6-6 6m9 0h7" />
+      </symbol>
+      <symbol id="tool-opencode" viewBox="0 0 240 300">
+        <path fill="currentColor" fill-opacity="0.4" stroke="none" d="M180 240H60V120H180V240Z" />
+        <path fill="currentColor" fill-rule="evenodd" stroke="none" d="M180 60H60V240H180V60ZM240 300H0V0H240V300Z" />
+      </symbol>
+      <symbol id="tool-claude" viewBox="0 0 24 24">
+        <path d="M12 2v20M2 12h20M5 5l14 14M19 5 5 19M7.5 2.8l9 18.4M2.8 7.5l18.4 9M16.5 2.8l-9 18.4M21.2 7.5l-18.4 9" />
+      </symbol>
+    </svg>
     <aside class="sidebar">
       <div class="brand-row">
-        <div class="brand">ARK</div>
+        <div class="brand"><img class="brand-logo" src="/static/ark-logo.svg?v=3" alt="" />ARK</div>
         <div class="inline-actions">
-          <button id="add-session" class="primary" title="Add session">Add</button>
-          <button id="sidebar-refresh" class="icon-button" title="Refresh devices">Refresh</button>
+          <button id="sidebar-toggle" class="sidebar-toggle" title="Collapse sidebar">Collapse</button>
+          <button id="add-session" class="primary icon-add" title="New session on selected machine" hidden>+</button>
+          <button id="sidebar-refresh" class="icon-button" title="Refresh devices" hidden>Refresh</button>
         </div>
       </div>
+      <section id="input-inbox" class="input-inbox" aria-label="Sessions needing input" hidden></section>
       <div id="devices" class="device-list"></div>
     </aside>
 
     <main class="main">
       <header class="topbar">
+        <button id="sidebar-open" class="sidebar-open" type="button" aria-label="Open machines">Machines</button>
         <div>
           <h1 id="title">Ark</h1>
-          <p id="meta">Loading...</p>
+          <p id="meta">Pick a device and repo, then start or attach a tmux session.</p>
+          <div id="session-runtime" class="session-runtime" hidden>
+            <span id="session-model"></span>
+            <span id="session-reasoning"></span>
+          </div>
         </div>
         <div class="top-actions">
           <span id="status" class="status-pill">Idle</span>
-          <select id="theme" aria-label="Theme">
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-            <option value="ark">Ark Amber</option>
-          </select>
-          <button id="refresh">Refresh</button>
+          <button id="settings-toggle" class="settings-toggle" aria-expanded="false">Settings</button>
+          <div id="settings-menu" class="settings-menu" hidden>
+            <div class="settings-head">
+              <strong>Settings</strong>
+              <small>Stored by this Ark server</small>
+            </div>
+            <section class="settings-section">
+              <h2>Appearance</h2>
+              <label>
+                Theme
+                <select id="theme" aria-label="Theme">
+                  <option value="dark">Dark</option>
+                  <option value="light">Soft light</option>
+                  <option value="ark">Amber CRT</option>
+                </select>
+              </label>
+            </section>
+            <section class="settings-section">
+              <h2>Behavior</h2>
+              <label>
+                Default tool
+                <select id="default-tool" aria-label="Default tool">
+                  <option value="codex">Codex</option>
+                  <option value="terminal">Terminal</option>
+                  <option value="opencode">OpenCode</option>
+                  <option value="claude">Claude</option>
+                </select>
+              </label>
+              <label>
+                Session view
+                <select id="default-view" aria-label="Session view">
+                  <option value="parsed">Main view</option>
+                  <option value="raw">Chat terminal fallback</option>
+                </select>
+              </label>
+              <label>
+                Attachments
+                <select id="image-mode" aria-label="Image attach behavior">
+                  <option value="queue">Queue until send</option>
+                </select>
+              </label>
+              <button id="enable-notifications" type="button">Enable input notifications</button>
+              <small id="notification-status" class="settings-note">Ark can notify this device when a session needs you.</small>
+            </section>
+            <section class="settings-section">
+              <h2>API keys</h2>
+              <p class="settings-note">Keys are stored server-side in Ark and only shown masked here.</p>
+              <form id="secret-form" class="secret-form">
+                <input id="secret-label" placeholder="Key name" autocomplete="off" />
+                <select id="secret-provider" aria-label="Provider">
+                  <option value="openai">OpenAI</option>
+                  <option value="anthropic">Anthropic</option>
+                  <option value="openrouter">OpenRouter</option>
+                  <option value="custom">Custom</option>
+                </select>
+                <input id="secret-value" type="password" placeholder="Paste API key" autocomplete="off" />
+                <input id="secret-base-url" placeholder="Optional base URL" autocomplete="off" />
+                <button id="add-secret" class="primary" type="submit">Add key</button>
+              </form>
+              <div id="secret-status" class="tool-status">No API keys stored.</div>
+            </section>
+            <section class="settings-section">
+              <h2>Codex accounts</h2>
+              <p class="settings-note">Profiles can set <code>CODEX_HOME</code> so one Codex install can run multiple accounts.</p>
+              <form id="account-form" class="account-form">
+                <input id="account-label" placeholder="Account name" autocomplete="off" />
+                <input id="account-home" placeholder="Optional CODEX_HOME folder" autocomplete="off" />
+                <button id="add-account" class="primary" type="submit">Add account</button>
+              </form>
+              <div id="profile-status" class="tool-status">Checking...</div>
+            </section>
+            <section class="settings-section">
+              <h2>Tools on selected machine</h2>
+              <div id="tool-status" class="tool-status">Checking...</div>
+            </section>
+            <details class="settings-section settings-details">
+              <summary>Diagnostics</summary>
+              <h2>Diagnostics</h2>
+              <div id="diagnostics" class="diagnostics">Checking...</div>
+            </details>
+            <details class="settings-section settings-details">
+              <summary>Tool commands</summary>
+              <h2>Tool commands</h2>
+              <p class="settings-note">Set a full path or command if a tool is installed outside the shell PATH. Codex startup images use <code>--image</code>; normal attachments send file paths with your message.</p>
+              <label>
+                Codex
+                <input data-tool-command="codex" placeholder="codex --no-alt-screen" autocomplete="off" />
+              </label>
+              <label>
+                OpenCode
+                <input data-tool-command="opencode" placeholder="opencode" autocomplete="off" />
+              </label>
+              <label>
+                Claude
+                <input data-tool-command="claude" placeholder="claude" autocomplete="off" />
+              </label>
+              <div class="settings-actions">
+                <button id="save-tool-commands" class="primary">Save commands</button>
+                <button id="reset-tool-commands">Reset</button>
+              </div>
+            </details>
+            <button id="settings-refresh">Refresh devices</button>
+          </div>
+          <button id="refresh" hidden>Refresh</button>
         </div>
       </header>
 
@@ -59,7 +183,15 @@
                 <option value="opencode">OpenCode</option>
                 <option value="claude">Claude</option>
               </select>
+              <select id="profile" aria-label="Profile">
+                <option value="">Auto profile</option>
+              </select>
               <button id="start" class="primary">Open Codex</button>
+            </div>
+            <div class="startup-image-row">
+              <button id="startup-image-button" type="button">Startup image</button>
+              <input id="startup-image-input" type="file" accept="image/*" multiple hidden />
+              <div id="startup-images" class="image-list">No startup images.</div>
             </div>
             <div id="dir-cwd" class="cwd-chip">~</div>
             <div id="dirs" class="dir-list"></div>
@@ -68,7 +200,7 @@
           <section class="tmux-panel">
             <div class="panel-head">
               <h2>tmux sessions</h2>
-              <button id="refresh-tmux">Refresh</button>
+              <button id="refresh-tmux" hidden>Refresh</button>
             </div>
             <div id="tmux"></div>
           </section>
@@ -76,23 +208,55 @@
 
         <section id="session-panel" class="session-panel">
           <div class="session-toolbar">
-            <div class="segmented">
-              <button id="view-parsed" class="active">Parsed</button>
-              <button id="view-raw">Raw</button>
+            <div class="session-summary">
+              <span id="session-kind">No session</span>
+              <strong id="session-name">Pick a machine</strong>
+              <small id="session-detail">Open or attach a tmux session.</small>
+              <small id="session-storage"></small>
+            </div>
+            <div class="segmented" hidden>
+              <button id="view-parsed" class="active">Terminal</button>
+              <button id="view-raw">Raw debug</button>
             </div>
             <div class="inline-actions">
               <button id="restart" disabled>Restart</button>
-              <button id="resume" disabled>Resume last</button>
+              <button id="resume" disabled>Resume</button>
               <button id="forget" disabled>Forget</button>
               <button id="kill" disabled>Kill</button>
             </div>
           </div>
           <div id="parsed" class="parsed-output">
-            <div class="empty-session">Open a tool for the selected project or attach a tmux session.</div>
+            <div class="empty-session">
+              <span>No session open</span>
+              <strong>Pick a machine</strong>
+              <p>Use the + beside a machine to start Codex, a terminal, OpenCode, or Claude. Existing tmux sessions show under each machine.</p>
+            </div>
           </div>
+          <div id="xterm" class="xterm-host" hidden></div>
           <pre id="output" class="terminal-output" hidden>No session selected.</pre>
+          <div id="quick-actions" class="quick-actions" hidden>
+            <button type="button" data-command="/status">Status</button>
+            <button type="button" data-command="/model">Model &amp; reasoning</button>
+            <button type="button" data-command="/permissions">Permissions</button>
+          </div>
+          <div id="control-sheet" class="control-sheet" hidden>
+            <button id="control-close" class="control-scrim" type="button" aria-label="Close selector"></button>
+            <section class="control-panel" role="dialog" aria-modal="true" aria-labelledby="control-title">
+              <button class="control-close-button" type="button" data-control-close aria-label="Close selector">Close</button>
+              <span id="control-kind">Codex</span>
+              <h2 id="control-title">Choose</h2>
+              <p id="control-prompt"></p>
+              <div id="control-body" class="control-body"></div>
+            </section>
+          </div>
           <div class="composer">
-            <textarea id="input" placeholder="Message or terminal input. Ctrl+Enter sends." disabled></textarea>
+            <button id="attach-image" title="Attach files or paste/drop into the box" aria-label="Attach files" disabled>+</button>
+            <input id="image-input" type="file" multiple hidden />
+            <div class="composer-input">
+              <div id="attachment-queue" class="attachment-queue" hidden></div>
+              <textarea id="input" placeholder="Run command... Enter sends, Shift+Enter adds a line." disabled></textarea>
+              <small>Paste, drop files, or click +. Attachments send with your next message.</small>
+            </div>
             <div class="composer-actions">
               <button id="interrupt" disabled>Ctrl-C</button>
               <button id="send" class="primary" disabled>Send</button>
@@ -102,6 +266,15 @@
       </div>
     </main>
 
-    <script src="/static/app.js"></script>
+    <dialog id="image-viewer" class="image-viewer" aria-label="Image preview">
+      <button id="image-viewer-close" class="image-viewer-close" type="button">Close</button>
+      <img id="image-viewer-image" alt="" />
+    </dialog>
+
+    <script src="/vendor/xterm/xterm.js"></script>
+    <script src="/vendor/xterm/addon-fit.js"></script>
+    <script src="/vendor/marked/marked.js"></script>
+    <script src="/vendor/dompurify/purify.js"></script>
+    <script src="/static/app.js?v=11"></script>
   </body>
 </html>

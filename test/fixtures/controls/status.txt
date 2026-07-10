@@ -1,0 +1,6 @@
+╭────────────────────────────────────────────────────────────╮
+│ Model: gpt-5.5                                             │
+│ Directory: /home/tony/Development/ark                      │
+│ Permissions: workspace-write                               │
+│ Context window: 96% left (21.9K used / 258K)               │
+╰────────────────────────────────────────────────────────────╯

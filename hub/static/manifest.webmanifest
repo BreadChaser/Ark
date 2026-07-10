@@ -1,0 +1,13 @@
+{
+  "name": "Ark",
+  "short_name": "Ark",
+  "description": "Phone-friendly controller for terminal and coding-agent sessions.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#071018",
+  "theme_color": "#071018",
+  "icons": [
+    { "src": "/static/ark-logo.svg?v=3", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

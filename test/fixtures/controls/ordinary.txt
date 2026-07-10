@@ -1,0 +1,2 @@
+• Working through the remaining parser fixtures.
+The browser stream is connected and no response is required.

@@ -5,9 +5,23 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "check": "node --check server.mjs"
+    "check": "node --check server.mjs && node --check hub/static/app.js && node --check scripts/gui-smoke.mjs && node --check scripts/ark-service.mjs && node scripts/control-parser-check.mjs && ARK_SELF_CHECK=trusted-remote node server.mjs && ARK_SELF_CHECK=core node server.mjs && node scripts/ark-service.mjs unit >/dev/null",
+    "gui-smoke": "node scripts/gui-smoke.mjs",
+    "service:unit": "node scripts/ark-service.mjs unit",
+    "service:install": "node scripts/ark-service.mjs install",
+    "service:restart": "node scripts/ark-service.mjs restart",
+    "service:stop": "node scripts/ark-service.mjs stop",
+    "service:status": "node scripts/ark-service.mjs status"
   },
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "dompurify": "^3.4.11",
+    "marked": "^18.0.6",
+    "node-pty": "^1.1.0",
+    "yaml": "^2.9.0"
   }
 }

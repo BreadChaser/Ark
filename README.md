@@ -27,8 +27,9 @@ npm start
 
 Open `http://localhost:4873`.
 
-No package install is required for the current slice. The server uses Node's
-built-in HTTP and child process APIs.
+Run `npm install` once before first launch. Ark keeps the HTTP/session layer
+small, but uses xterm.js, node-pty, and YAML packages for the terminal and
+readable app-owned storage.
 
 ## Device Discovery
 
@@ -54,10 +55,15 @@ This branch is the V1 rewrite base. It can:
 - capture tmux output as parsed lines or raw terminal text
 - send input or Ctrl-C
 - restart stored sessions
-- resume the last Codex session for a repo when tmux is gone
+- keep stopped session cards after a reboot
+- resume the exact saved Codex conversation when tmux is gone
+- keep human-input prompts in a durable session inbox until they are answered
+- notify supported installed browsers when a session needs input
+- stream active captures and session state over shared SSE connections
+- merge matching SSH and Tailscale entries into one machine with multiple routes
 - forget stored sessions or kill tmux with confirmation
 - switch between light, dark, and Ark amber themes
 
-Parsing starts intentionally small. Ark strips ANSI and separates prompt lines
-from output lines. Rich Codex/OpenCode controls come after the tmux path stays
-boring and reliable.
+Codex messages prefer its structured rollout transcript. Interactive terminal
+controls use a fixture-tested parser, with the raw terminal always available
+when a tool changes its UI.
