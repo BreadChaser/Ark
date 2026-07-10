@@ -395,8 +395,11 @@ async function assertThemeEffects(theme) {
     const luminance = rgb.map((value) => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
     return {
       grid: grid.backgroundImage.includes("repeating-linear-gradient"),
+      diagonalGrid: grid.backgroundImage.includes("135deg"),
       gridAnimation: grid.animationName,
+      gridDuration: grid.animationDuration,
       gridWillChange: grid.willChange,
+      gridTransform: grid.transform,
       scanlines: Number(overlay.opacity),
       overlayAnimation: overlay.animationName,
       textAnimation: message ? getComputedStyle(message).animationName : "none",
@@ -406,12 +409,14 @@ async function assertThemeEffects(theme) {
     };
   `);
   assert(effects.grid, `${theme} theme lost its grid texture`);
+  assert(effects.diagonalGrid, `${theme} theme lost its diagonal grid layer`);
   assert(effects.gridAnimation === "grid-drift", `${theme} grid is not drifting slowly`);
-  assert(effects.gridWillChange === "transform", `${theme} grid is not compositor animated`);
+  assert(effects.gridDuration === "180s", `${theme} grid drift is not slow: ${effects.gridDuration}`);
+  assert(effects.gridWillChange === "auto" && effects.gridTransform === "none", `${theme} grid still uses flickering subpixel transforms`);
   assert(effects.buttonRadius === "11px", `${theme} changed button shape to ${effects.buttonRadius}`);
   assert(effects.panelRadius === "24px", `${theme} changed panel shape to ${effects.panelRadius}`);
   if (theme === "ark") assert(effects.scanlines > 0, "Amber CRT scanlines are disabled");
-  if (theme === "ark") assert(effects.overlayAnimation === "crt-flicker", "Amber CRT flicker is not on the scanline overlay");
+  if (theme === "ark") assert(effects.overlayAnimation === "none", "Amber CRT overlay still flickers");
   if (theme === "ark") assert(effects.textAnimation === "none", "Amber CRT still flashes individual text nodes");
   if (theme === "light") assert(effects.backgroundLuminance < 0.6, `light theme is still glaring at ${effects.backgroundLuminance.toFixed(2)} luminance`);
 }
