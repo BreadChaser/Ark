@@ -72,6 +72,7 @@ const els = {
   main: document.querySelector(".main"),
   devices: document.querySelector("#devices"),
   inputInbox: document.querySelector("#input-inbox"),
+  codexFooter: document.querySelector("#codex-footer"),
   tmux: document.querySelector("#tmux"),
   dirs: document.querySelector("#dirs"),
   dirCwd: document.querySelector("#dir-cwd"),
@@ -421,6 +422,7 @@ async function loadProfiles() {
   }
   renderProfileStatus();
   renderProfileOptions();
+  renderCodexFooter();
 }
 
 async function loadSecrets() {
@@ -474,6 +476,31 @@ function renderSidebar() {
   renderDeviceSection("Offline", offline, "offline", state.offlineExpanded, () => {
     state.offlineExpanded = !state.offlineExpanded;
   });
+  renderCodexFooter();
+}
+
+function renderCodexFooter() {
+  const session = activeSession();
+  const profile = state.profiles.find((item) => item.id === session?.runner_id);
+  if (session?.tool !== "codex") {
+    els.codexFooter.hidden = true;
+    return;
+  }
+  const email = profile?.auth?.email || session.runner_label || "Codex account";
+  const label = profile?.label && profile.label !== email ? profile.label : "Codex";
+  const usage = session.codex_usage;
+  els.codexFooter.hidden = false;
+  els.codexFooter.innerHTML = `
+    <div class="codex-account">${toolIcon("codex")}<div><strong>${escapeHtml(email)}</strong><small>${escapeHtml(label)}${usage?.plan_type ? ` · ${escapeHtml(usage.plan_type)}` : ""}</small></div></div>
+    ${usage ? `<div class="codex-limits">${usageLimit("5h", usage.primary)}${usageLimit("Weekly", usage.secondary)}</div>` : '<small>Usage appears after Codex responds.</small>'}
+  `;
+}
+
+function usageLimit(label, limit) {
+  if (!limit) return "";
+  const used = Math.max(0, Math.min(100, Number(limit.used_percent) || 0));
+  const reset = limit.resets_at ? ` · resets ${new Date(limit.resets_at * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}` : "";
+  return `<div class="codex-limit"><b>${escapeHtml(label)}</b><span><small>${used}% used${escapeHtml(reset)}</small><progress max="100" value="${used}"></progress></span></div>`;
 }
 
 function renderInputInbox() {
@@ -1214,9 +1241,11 @@ function applyCapture(sessionId, data) {
   if (data.agent_state) state.sessionStates[session.id] = data.agent_state;
   session.pending_control = data.pending_control || null;
   if (data.codex_state?.model) session.codex_state = data.codex_state;
+  if (data.codex_usage) session.codex_usage = data.codex_usage;
   state.captures[session.id] = data;
   state.lastCapture = data;
   renderSessionRuntime(session);
+  renderCodexFooter();
   renderCapture();
   if (stateChanged || pendingChanged) renderSidebar();
   setStatus("Connected");
@@ -1516,10 +1545,11 @@ async function sendQuickCommand(event) {
     state.controlFlow = { sessionId: owner, expected: "__done__", until: Date.now() + 3000 };
     renderControlLoading("Sending choice…");
   }
-  await sendControlCommand(command, key, owner);
+  const menuIndex = ["model", "reasoning", "permissions"].includes(controlKind) && /^\d+$/.test(command) ? Number(command) : 0;
+  await sendControlCommand(menuIndex ? "" : command, key, owner, menuIndex);
 }
 
-async function sendControlCommand(command, key = "", sessionId = activeSession()?.id) {
+async function sendControlCommand(command, key = "", sessionId = activeSession()?.id, menuIndex = 0) {
   const session = activeSession();
   if (!session) return showError("Select a session first.");
   if (!sessionId || session.id !== sessionId) return showError("Chat changed before send. Nothing was sent.");
@@ -1527,7 +1557,7 @@ async function sendControlCommand(command, key = "", sessionId = activeSession()
   try {
     await api(`/api/sessions/${session.id}/send`, {
       method: "POST",
-      body: JSON.stringify({ text: command, key, submit: true, attachments: [], control: true }),
+      body: JSON.stringify({ text: command, key, menu_index: menuIndex || undefined, submit: true, attachments: [], control: true }),
     });
     await capture();
     for (const delay of [350, 900, 1800]) setTimeout(() => capture().catch(() => {}), delay);

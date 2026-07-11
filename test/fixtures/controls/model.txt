@@ -1,6 +1,9 @@
 Select Model and Effort
-› 1. gpt-5.5 (current)    Frontier model for complex coding, research, and real-world work.
-2. gpt-5.4Strong model for everyday coding.
-3. gpt-5.4-miniSmall, fast, and cost-efficient model for simpler coding tasks.
-4. gpt-5.3-codex-sparkUltra-fast coding model.
+1. gpt-5.5 (default)      Frontier model for complex coding, research, and real-world work.
+› 2. gpt-5.6-sol (current)  Latest frontier agentic coding model.
+3. gpt-5.6-terraBalanced agentic coding model for everyday work.
+4. gpt-5.6-lunaFast and affordable agentic coding model.
+5. gpt-5.4Strong model for everyday coding.
+6. gpt-5.4-miniSmall, fast, and cost-efficient model for simpler coding tasks.
+7. gpt-5.3-codex-sparkUltra-fast coding model.
 Press enter to confirm or esc to go back

@@ -1,6 +1,8 @@
-Select Reasoning Level for gpt-5.3-codex-spark
+Select Reasoning Level for gpt-5.6-sol
 1.LowFast responses with lighter reasoning
 2.MediumBalances speed and reasoning depth for everyday tasks
-› 3. High (default)  Greater reasoning depth for complex problems
-4.ExtrahighExtra high reasoning depth for complex problems
+› 3. High (current)Greater reasoning depth for complex problems
+4.Extra highExtra high reasoning depth for complex problems
+5.MaxMaximum reasoning depth for the hardest problems
+6.UltraMaximum reasoning with automatic task delegation
 Press enter to confirm or esc to go back

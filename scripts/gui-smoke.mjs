@@ -708,6 +708,9 @@ async function testCodexControlPrompts() {
   disposableSession = adopted.session;
   await js(`localStorage.setItem("ark-active-session", ${JSON.stringify(disposableSession.id)}); return true;`);
   await command("WebDriver:Navigate", { url: BASE_URL });
+  await wait('!document.querySelector("#codex-footer").hidden && document.querySelector("#codex-footer strong").textContent.length > 0');
+  await js('activeSession().codex_usage = { plan_type: "pro", primary: { used_percent: 15, resets_at: 1783760535 }, secondary: { used_percent: 36, resets_at: 1784310183 } }; renderCodexFooter(); return true;');
+  assert(await js('return document.querySelector("#codex-footer").textContent.includes("15% used") && document.querySelector("#codex-footer").textContent.includes("36% used") && document.querySelectorAll("#codex-footer progress").length === 2;'), "Codex account footer lost usage limits");
   await tmuxSendLine(tmuxName, "printf 'Context window: 80%% left\\nPermissions: workspace-write\\n'");
   await wait('!document.querySelector("#control-sheet").hidden && document.querySelector("#control-kind").textContent === "status"');
   assert((await api(`/api/sessions/${disposableSession.id}/capture`)).agent_state === "ready", "status was classified as needs input");
@@ -751,18 +754,18 @@ async function testCodexControlPrompts() {
   assert(!capture.pending_control, "answered input prompt remained pending");
 
   await runLocal("tmux", ["respawn-pane", "-k", "-t", tmuxName, "bash"]);
-  await tmuxSendLine(tmuxName, "printf 'Select Model and Effort\\n› 1. gpt-5.5 (current)    Frontier model for complex coding, research, and real-world work.\\n2. gpt-5.4Strong model for everyday coding.\\n3. gpt-5.4-miniSmall, fast, and cost-efficient model for simpler coding tasks.\\n4. gpt-5.3-codex-sparkUltra-fast coding model.\\nPress enter to confirm or esc to go back\\n'; read -r model; clear; printf 'Select Reasoning Level for gpt-5.3-codex-spark\\n1.LowFast responses with lighter reasoning\\n2.MediumBalances speed and reasoning depth for everyday tasks\\n› 3. High (default)  Greater reasoning depth for complex problems\\n4.ExtrahighExtra high reasoning depth for complex problems\\nPress enter to confirm or esc to go back\\n'; read -r effort; clear; printf 'selected:%s/%s\\ngpt-5.3-codex-spark high fast · /tmp\\n' \"$model\" \"$effort\"");
-  await wait('!document.querySelector("#control-sheet").hidden && document.querySelector("#control-kind").textContent === "model" && document.querySelectorAll("#control-body [data-command]").length === 4');
-  assert(await js('return [...document.querySelectorAll("#control-body [data-command] .control-choice-title")].map((item) => item.textContent.replace(/Current|Default/g, "").trim()).join("|");') === "1gpt-5.5|2gpt-5.4|3gpt-5.4-mini|4gpt-5.3-codex-spark", "model picker lost or mangled options");
+  await tmuxSendLine(tmuxName, `bash ${JSON.stringify(path.resolve("test/fixtures/controls/menu-harness.sh"))}`);
+  await wait('!document.querySelector("#control-sheet").hidden && document.querySelector("#control-kind").textContent === "model" && document.querySelectorAll("#control-body [data-command]").length === 7');
+  assert(await js('return [...document.querySelectorAll("#control-body [data-command] .control-choice-title")].map((item) => item.textContent.replace(/Current|Default/g, "").trim()).join("|");') === "1gpt-5.5|2gpt-5.6-sol|3gpt-5.6-terra|4gpt-5.6-luna|5gpt-5.4|6gpt-5.4-mini|7gpt-5.3-codex-spark", "model picker lost or mangled options");
   await sleep(250);
   await shot("model-picker");
   await js('document.querySelector("#control-body [data-command=\\"4\\"]").click(); return true;');
-  await wait('!document.querySelector("#control-sheet").hidden && document.querySelector("#control-kind").textContent === "reasoning" && document.querySelectorAll("#control-body [data-command]").length === 4');
+  await wait('!document.querySelector("#control-sheet").hidden && document.querySelector("#control-kind").textContent === "reasoning" && document.querySelectorAll("#control-body [data-command]").length === 6');
   await sleep(250);
   await shot("reasoning-picker");
-  await js('document.querySelector("#control-body [data-command=\\"3\\"]").click(); return true;');
-  await wait('document.querySelector("#session-runtime").textContent.includes("gpt-5.3-codex-spark") && document.querySelector("#session-runtime").textContent.includes("high reasoning") && document.querySelector("#session-runtime").textContent.includes("fast speed")');
-  await waitForTerminalLogText(disposableSession.id, "selected:4/3");
+  await js('document.querySelector("#control-body [data-command=\\"6\\"]").click(); return true;');
+  await wait('document.querySelector("#session-runtime").textContent.includes("gpt-5.6-luna") && document.querySelector("#session-runtime").textContent.includes("ultra reasoning") && document.querySelector("#session-runtime").textContent.includes("fast speed")');
+  await waitForTerminalLogText(disposableSession.id, "selected:4/6");
   await cleanupDisposable();
 }
 

@@ -395,6 +395,71 @@ pre {
   scrollbar-color: var(--line-strong) transparent;
 }
 
+.codex-footer {
+  flex: 0 0 auto;
+  margin: 0 10px 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--panel-soft) 78%, transparent);
+}
+
+.codex-account {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 7px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.codex-account > div,
+.codex-limit span {
+  min-width: 0;
+  display: grid;
+}
+
+.codex-account strong,
+.codex-account small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-account strong {
+  font-size: 11px;
+}
+
+.codex-account small,
+.codex-limit small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.codex-limits {
+  display: grid;
+  gap: 6px;
+}
+
+.codex-limit {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 7px;
+  align-items: center;
+}
+
+.codex-limit b {
+  font: 800 10px/1 var(--mono);
+}
+
+.codex-limit progress {
+  width: 100%;
+  height: 4px;
+  margin-top: 3px;
+  border: 0;
+  accent-color: var(--accent);
+}
+
 .input-inbox {
   margin: 3px 10px 5px;
   padding: 8px;

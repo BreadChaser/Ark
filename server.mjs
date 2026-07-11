@@ -325,9 +325,13 @@ async function route(req, res) {
     const device = await tmuxDeviceForSession(session);
     const text = String(body.text || "");
     const key = String(body.key || "");
+    const menuIndex = Number(body.menu_index || 0);
     if (key && !CONTROL_KEYS.has(key)) return json(res, 400, { detail: "unsupported control key" });
+    if (menuIndex && (!Number.isInteger(menuIndex) || menuIndex < 1 || menuIndex > 50 || body.control !== true)) return json(res, 400, { detail: "invalid menu index" });
     const suppressMessage = body.control === true || await isCodexControlInput(device, session, text);
-    const result = key
+    const result = menuIndex
+      ? await sendMenuChoice(device, session.tmux_name, menuIndex)
+      : key
       ? await sendKey(device, session.tmux_name, key)
       : await sendText(device, session.tmux_name, text, body.submit !== false);
     if (result.code !== 0 && isMissingTmux(result.output)) {
@@ -461,11 +465,12 @@ async function captureSession(id) {
     payload.transcript_source = "codex-rollout";
     const settings = cachedCodexSettings(session);
     if (settings) payload.codex_state = { ...(payload.codex_state || {}), ...settings, source: "codex-rollout" };
+    payload.codex_usage = cachedCodexUsage(session) || session.codex_usage || null;
   } else if (payload.mode === "chat") {
     payload.messages = await writeMessagesSnapshot(session, payload.messages);
     payload.transcript_source = "terminal-fallback";
   }
-  session = await syncPendingControl(session.id, payload.controls, payload.agent_state, payload.codex_state);
+  session = await syncPendingControl(session.id, payload.controls, payload.agent_state, payload.codex_state, payload.codex_usage);
   payload.pending_control = session.pending_control || null;
   if (payload.pending_control && !payload.controls.some(actionableControl)) payload.controls.unshift(payload.pending_control);
   await writeSessionCapture(session, result.output, payload, { forceTerminalLog: session.pipe_log && !device.local && !pipeSynced });
@@ -1239,6 +1244,12 @@ async function sendKey(device, tmuxName, key) {
   return runOnDevice(device, `tmux send-keys -t ${q(tmuxName)} ${key}`, 15000);
 }
 
+async function sendMenuChoice(device, tmuxName, index) {
+  const target = q(tmuxName);
+  const down = index > 1 ? `; tmux send-keys -t ${target} -N ${index - 1} Down` : "";
+  return runOnDevice(device, `tmux send-keys -t ${target} -N 50 Up${down}; sleep 0.15; tmux send-keys -t ${target} Enter`, 15000);
+}
+
 function openEventStream(req, res, clients, close) {
   res.writeHead(200, {
     "cache-control": "no-store",
@@ -1517,7 +1528,7 @@ function pendingControl(control, previous) {
   return value;
 }
 
-async function syncPendingControl(id, controls, state, codexState = null) {
+async function syncPendingControl(id, controls, state, codexState = null, codexUsage = null) {
   const control = controls.find(actionableControl);
   const misses = control || state === "working" ? 0 : (CONTROL_MISSES.get(id) || 0) + 1;
   if (misses) CONTROL_MISSES.set(id, misses);
@@ -1533,13 +1544,16 @@ async function syncPendingControl(id, controls, state, codexState = null) {
       service_tier: String(codexState.service_tier || ""),
       source: String(codexState.source || ""),
     } : session.codex_state || null;
+    const usage = codexUsage?.primary || codexUsage?.secondary ? codexUsage : session.codex_usage || null;
     const unchanged = next?.id === session.pending_control?.id
       && Boolean(next) === Boolean(session.pending_control)
-      && JSON.stringify(runtime) === JSON.stringify(session.codex_state || null);
+      && JSON.stringify(runtime) === JSON.stringify(session.codex_state || null)
+      && JSON.stringify(usage) === JSON.stringify(session.codex_usage || null);
     if (unchanged) return session;
     if (next) session.pending_control = next;
     else delete session.pending_control;
     if (runtime) session.codex_state = runtime;
+    if (usage) session.codex_usage = usage;
     await writeStore(data);
     await writeSessionFiles(session);
     return session;
@@ -1876,7 +1890,7 @@ async function readCodexTranscript(session, device, rawText) {
   }
   let cache = CODEX_TRANSCRIPTS.get(filePath);
   if (!cache || info.size < cache.offset) {
-    cache = { offset: 0, remainder: "", messages: [], sequence: 0, settings: null };
+    cache = { offset: 0, remainder: "", messages: [], sequence: 0, settings: null, usage: null };
     CODEX_TRANSCRIPTS.set(filePath, cache);
   }
   if (info.size === cache.offset) return cache.messages.map(normalizeMessage);
@@ -1905,6 +1919,8 @@ async function readCodexTranscript(session, device, rawText) {
 }
 
 function updateCodexSettings(cache, row) {
+  const limits = row?.type === "event_msg" && row.payload?.type === "token_count" ? row.payload.rate_limits : null;
+  if (limits?.limit_id === "codex" && (limits.primary || limits.secondary)) cache.usage = codexUsage(limits);
   const settings = row?.type === "turn_context"
     ? { model: row.payload?.model, reasoning_effort: row.payload?.effort || row.payload?.reasoning_effort }
     : row?.type === "event_msg" && row.payload?.type === "thread_settings_applied"
@@ -1919,9 +1935,23 @@ function updateCodexSettings(cache, row) {
   };
 }
 
+function codexUsage(limits) {
+  const normalize = (value) => value ? {
+    used_percent: Math.max(0, Math.min(100, Number(value.used_percent) || 0)),
+    window_minutes: Math.max(0, Number(value.window_minutes) || 0),
+    resets_at: Math.max(0, Number(value.resets_at) || 0),
+  } : null;
+  return { plan_type: String(limits.plan_type || ""), primary: normalize(limits.primary), secondary: normalize(limits.secondary) };
+}
+
 function cachedCodexSettings(session) {
   const filePath = CODEX_ROLLOUTS.get(session.id);
   return filePath ? CODEX_TRANSCRIPTS.get(filePath)?.settings || null : null;
+}
+
+function cachedCodexUsage(session) {
+  const filePath = CODEX_ROLLOUTS.get(session.id);
+  return filePath ? CODEX_TRANSCRIPTS.get(filePath)?.usage || null : null;
 }
 
 function codexTranscriptMessage(row, sequence) {
@@ -2406,6 +2436,8 @@ function selfCheckCore() {
   }, 1);
   if (transcript?.text !== "Clean answer" || transcript.role !== "assistant") throw new Error("structured Codex transcript parsing failed");
   if (codexTranscriptMessage({ type: "response_item", payload: { type: "function_call" } }, 2)) throw new Error("Codex tool call leaked into chat");
+  const usage = codexUsage({ plan_type: "pro", primary: { used_percent: 15, window_minutes: 300, resets_at: 123 }, secondary: { used_percent: 36, window_minutes: 10080, resets_at: 456 } });
+  if (usage.primary.used_percent !== 15 || usage.secondary.window_minutes !== 10080 || usage.plan_type !== "pro") throw new Error("Codex usage limits were not normalized");
   const exactResume = commandForRestart({ tool: "codex", runner_command: "codex --no-alt-screen", codex_session_id: "019f491a-b738-7462-8a3a-418e4532df67" }, true, {});
   if (exactResume !== "codex --no-alt-screen resume '019f491a-b738-7462-8a3a-418e4532df67'") throw new Error("Codex resume lost the exact session id");
   const remotePicker = commandForRestart({ tool: "codex", central_runner: true }, true, { codex: "codex --no-alt-screen" });
@@ -2439,6 +2471,7 @@ function capturePayload(text, session, storedMessages = [], controlText = text) 
     controls,
     agent_state: mode === "chat" ? agentStateFromScreen(session, controlText, controls) : "terminal",
     codex_state: session?.tool === "codex" ? codexStateFromScreen(controlText) : null,
+    codex_usage: session?.tool === "codex" ? session.codex_usage || null : null,
     mode,
     tool: session?.tool || "terminal",
     title: session?.title || "",

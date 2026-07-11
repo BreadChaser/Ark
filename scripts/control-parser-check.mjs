@@ -11,9 +11,9 @@ const cases = {
   "stale-status-approval.txt": { kind: "input", state: "needs_input", choices: 2 },
   "hook-update.txt": { kind: "input", state: "needs_input", choices: 2 },
   "ordinary.txt": { kind: null, state: "ready" },
-  "model.txt": { kind: "model", state: "needs_input", choices: 4, labels: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark"] },
+  "model.txt": { kind: "model", state: "needs_input", choices: 7, labels: ["gpt-5.5", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark"] },
   "model-echoed-command.txt": { kind: "model", state: "needs_input", choices: 4, labels: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark"] },
-  "reasoning.txt": { kind: "reasoning", state: "needs_input", choices: 4, labels: ["Low", "Medium", "High", "Extrahigh"] },
+  "reasoning.txt": { kind: "reasoning", state: "needs_input", choices: 6, labels: ["Low", "Medium", "High", "Extra high", "Max", "Ultra"] },
 };
 
 for (const [name, expected] of Object.entries(cases)) {
@@ -34,3 +34,4 @@ assert.deepEqual(
   codexStateFromScreen("gpt-5.6-sol xhigh fast · ~/Development/ark"),
   { model: "gpt-5.6-sol", reasoning_effort: "xhigh", service_tier: "priority", source: "terminal-screen" },
 );
+assert.equal(codexStateFromScreen("gpt-5.6-luna ultra fast · /tmp")?.reasoning_effort, "ultra");
