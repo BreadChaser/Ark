@@ -711,13 +711,13 @@ async function testCodexControlPrompts() {
   await wait('!document.querySelector("#codex-footer").hidden && document.querySelector("#codex-footer strong").textContent.length > 0');
   await js('activeSession().codex_usage = { plan_type: "pro", primary: { used_percent: 15, resets_at: 1783760535 }, secondary: { used_percent: 36, resets_at: 1784310183 } }; renderCodexFooter(); return true;');
   assert(await js('return document.querySelector("#codex-footer").textContent.includes("15% used") && document.querySelector("#codex-footer").textContent.includes("36% used") && document.querySelectorAll("#codex-footer progress").length === 2;'), "Codex account footer lost usage limits");
-  await tmuxSendLine(tmuxName, "printf 'Context window: 80%% left\\nPermissions: workspace-write\\n'");
+  await tmuxSendLine(tmuxName, "printf 'Model: gpt-5.6-sol\\nDirectory: /tmp\\nPermissions: workspace-write\\nContext window: 80%% left\\n'; read -r");
   await wait('!document.querySelector("#control-sheet").hidden && document.querySelector("#control-kind").textContent === "status"');
   assert((await api(`/api/sessions/${disposableSession.id}/capture`)).agent_state === "ready", "status was classified as needs input");
   await js('document.querySelector("[data-control-close]").click(); return true;');
   await wait('document.querySelector("#control-sheet").hidden');
   await runLocal("tmux", ["respawn-pane", "-k", "-t", tmuxName, "bash"]);
-  await tmuxSendLine(tmuxName, "printf 'Context window: 79%% left\\nPermissions: workspace-write\\n'");
+  await tmuxSendLine(tmuxName, "printf 'Model: gpt-5.6-sol\\nDirectory: /tmp\\nPermissions: workspace-write\\nContext window: 79%% left\\n'; read -r");
   await sleep(2200);
   await js(`openSession(${JSON.stringify(disposableSession.id)}); return true;`);
   assert(await js('return document.querySelector("#control-sheet").hidden;'), "dismissed status control reopened during polling");

@@ -12,10 +12,12 @@ const cases = {
   "stale-status-approval.txt": { kind: "approval", state: "needs_input", choices: 3 },
   "hook-update.txt": { kind: "input", state: "needs_input", choices: 2 },
   "ordinary.txt": { kind: null, state: "ready" },
+  "diff-control.txt": { kind: null, state: "ready" },
   "model.txt": { kind: "model", state: "needs_input", choices: 7, labels: ["gpt-5.5", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark"] },
   "model-echoed-command.txt": { kind: "model", state: "needs_input", choices: 4, labels: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark"] },
   "reasoning.txt": { kind: "reasoning", state: "needs_input", choices: 6, labels: ["Low", "Medium", "High", "Extra high", "Max", "Ultra"] },
   "permissions.txt": { kind: "permissions", state: "needs_input", choices: 3, labels: ["Ask for approval", "Approve for me", "Full Access"] },
+  "permissions-stale.txt": { kind: null, state: "ready" },
 };
 
 for (const [name, expected] of Object.entries(cases)) {

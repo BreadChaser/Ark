@@ -1,0 +1,8 @@
+Update Model Permissions
+› 1. Ask for approval (current)  Workspace access with approval outside it.
+2. Approve for me  Only ask for potentially unsafe actions.
+3. Full Access  Outside files and internet without asking.
+Press enter to confirm or esc to go back
+Permissions updated to Full Access
+• Continuing normal work; no terminal input is required.
+gpt-5.6-sol high fast · /tmp

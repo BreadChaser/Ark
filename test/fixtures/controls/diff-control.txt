@@ -1,0 +1,8 @@
+43 +function permissionsMenu(lines) {
+44 +  const start = lines.findLastIndex((line) => /^Update Model Permissions$/i.test(line));
+47 +  const ask = menu.findIndex((line) => /^(?:›\s*)?1\.\s*Ask for approval\b/i.test(line));
+48 +  const approve = menu.findIndex((line) => /^(?:›\s*)?2\.\s*Approve for me\b/i.test(line));
+49 +  const full = menu.findIndex((line) => /^(?:›\s*)?3\.\s*Full Access\b/i.test(line));
+50 +  const confirm = menu.findIndex((line) => /^Press enter to confirm or esc to go back\b/i.test(line));
+• The parser test passed; no terminal response is required.
+gpt-5.6-sol max · /home/tony/Development/ark
