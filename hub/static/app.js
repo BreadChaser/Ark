@@ -183,6 +183,7 @@ async function init() {
   els.defaultView.addEventListener("change", () => setView(els.defaultView.value));
   els.imageMode.addEventListener("change", () => localStorage.setItem(IMAGE_MODE_KEY, "queue"));
   els.enableNotifications.addEventListener("click", enableNotifications);
+  els.codexFooter.addEventListener("click", toggleGoalAutoResume);
   els.settingsToggle.addEventListener("click", toggleSettings);
   els.settingsRefresh.addEventListener("click", refresh);
   els.saveToolCommands.addEventListener("click", () => saveToolCommands(false));
@@ -495,10 +496,13 @@ function renderCodexFooter() {
   const email = profile?.auth?.email || session.runner_label || "Codex account";
   const label = profile?.label && profile.label !== email ? profile.label : "Codex";
   const usage = session.codex_usage;
+  const warning = usageWarning(usage);
   els.codexFooter.hidden = false;
   els.codexFooter.innerHTML = `
     <div class="codex-account">${toolIcon("codex")}<div><strong>${escapeHtml(email)}</strong><small>${escapeHtml(label)}${usage?.plan_type ? ` · ${escapeHtml(usage.plan_type)}` : ""}</small></div></div>
     ${usage ? `<div class="codex-limits">${usageLimit("5h", usage.primary)}${usageLimit("Weekly", usage.secondary)}</div>` : '<small>Usage appears after Codex responds.</small>'}
+    ${warning ? `<div class="codex-usage-warning" role="status">${escapeHtml(warning)}</div>` : ""}
+    <button class="codex-auto-resume" type="button" data-auto-resume aria-pressed="${Boolean(session.auto_resume_goal)}" title="Send /goal resume after a Codex usage reset">Auto-resume goal: ${session.auto_resume_goal ? "On" : "Off"}</button>
   `;
 }
 
@@ -506,7 +510,35 @@ function usageLimit(label, limit) {
   if (!limit) return "";
   const used = Math.max(0, Math.min(100, Number(limit.used_percent) || 0));
   const reset = limit.resets_at ? ` · resets ${new Date(limit.resets_at * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}` : "";
-  return `<div class="codex-limit"><b>${escapeHtml(label)}</b><span><small>${used}% used${escapeHtml(reset)}</small><progress max="100" value="${used}"></progress></span></div>`;
+  return `<div class="codex-limit${used >= 90 ? " warning" : ""}"><b>${escapeHtml(label)}</b><span><small>${used}% used${escapeHtml(reset)}</small><progress max="100" value="${used}"></progress></span></div>`;
+}
+
+function usageWarning(usage) {
+  const near = [["5h", usage?.primary], ["Weekly", usage?.secondary]].filter(([, limit]) => Number(limit?.used_percent) >= 90);
+  if (!near.length) return "";
+  const exhausted = near.some(([, limit]) => Number(limit.used_percent) >= 100);
+  return `${near.map(([label]) => label).join(" + ")} usage ${exhausted ? "is exhausted" : "is nearly exhausted"}.`;
+}
+
+async function toggleGoalAutoResume(event) {
+  const button = event.target.closest("[data-auto-resume]");
+  if (!button) return;
+  const session = activeSession();
+  if (!session || session.tool !== "codex") return;
+  button.disabled = true;
+  try {
+    const enabled = !session.auto_resume_goal;
+    const data = await api(`/api/sessions/${session.id}/auto-resume`, {
+      method: "POST",
+      body: JSON.stringify({ enabled }),
+    });
+    Object.assign(session, data.session);
+    renderCodexFooter();
+    setStatus(enabled ? "Auto-resume enabled" : "Auto-resume disabled");
+  } catch (error) {
+    button.disabled = false;
+    showError(error.message);
+  }
 }
 
 function renderInputInbox() {

@@ -460,6 +460,41 @@ pre {
   accent-color: var(--accent);
 }
 
+.codex-limit.warning b,
+.codex-limit.warning small {
+  color: var(--warning);
+}
+
+.codex-limit.warning progress {
+  accent-color: var(--warning);
+}
+
+.codex-usage-warning {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--warning) 38%, transparent);
+  border-radius: 9px;
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  font-size: 9px;
+}
+
+.codex-auto-resume {
+  width: 100%;
+  min-height: 28px;
+  margin-top: 8px;
+  padding: 5px 8px;
+  color: var(--muted);
+  background: var(--panel-soft);
+  font-size: 9px;
+}
+
+.codex-auto-resume[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 38%, transparent);
+  background: var(--accent-soft);
+}
+
 .input-inbox {
   margin: 3px 10px 5px;
   padding: 8px;

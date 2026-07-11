@@ -39,6 +39,7 @@ const CODEX_ROLLOUTS = new Map();
 const CODEX_TRANSCRIPTS = new Map();
 const CONTROL_MISSES = new Map();
 let DEVICE_ALIAS_SIGNATURE = "";
+let AUTO_RESUME_BUSY = false;
 const CONTROL_KEYS = new Set(["Enter", "Escape"]);
 
 const DEFAULT_TOOL_COMMANDS = {
@@ -80,6 +81,8 @@ if (process.env.ARK_SELF_CHECK === "trusted-remote") {
   server.listen(PORT, HOST, () => {
     console.log(`Ark listening on http://${HOST}:${PORT}`);
   });
+  setInterval(() => autoResumeGoals().catch(() => {}), 15000).unref();
+  setTimeout(() => autoResumeGoals().catch(() => {}), 2000).unref();
 }
 
 async function route(req, res) {
@@ -109,6 +112,14 @@ async function route(req, res) {
   }
   if (req.method === "GET" && pathname === "/api/sessions") {
     return json(res, 200, { sessions: await listStoredSessions() });
+  }
+  const autoResumeMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/auto-resume$/);
+  if (req.method === "POST" && autoResumeMatch) {
+    const session = await sessionOr404(autoResumeMatch[1]);
+    if (session.tool !== "codex") return json(res, 400, { detail: "auto-resume is only available for Codex sessions" });
+    const updated = await setGoalAutoResume(session.id, (await readJson(req)).enabled === true);
+    autoResumeGoals().catch(() => {});
+    return json(res, 200, { session: publicSession(updated) });
   }
   if (req.method === "GET" && pathname === "/api/session-states") {
     return json(res, 200, { states: await listAgentStates() });
@@ -1508,6 +1519,43 @@ async function listAgentStates() {
   }));
 }
 
+async function autoResumeGoals(now = Date.now()) {
+  if (AUTO_RESUME_BUSY) return;
+  AUTO_RESUME_BUSY = true;
+  try {
+    const sessions = (await readStore()).sessions.filter((session) => session.tool === "codex" && session.auto_resume_goal);
+    for (const session of sessions) {
+      const device = await tmuxDeviceForSession(session);
+      const screen = await captureTmuxScreen(device, session.tmux_name);
+      if (screen.code !== 0) continue;
+      const resetAt = goalUsageResetAt(screen.output, now);
+      const reset = Math.floor((resetAt || 0) / 1000);
+      if (!reset || resetAt > now) continue;
+      const current = (await readStore()).sessions.find((item) => item.id === session.id);
+      if (!current?.auto_resume_goal || reset <= Number(current.auto_resume_last_reset || 0)) continue;
+      const sent = await sendText(device, session.tmux_name, "/goal resume", true);
+      if (sent.code !== 0) continue;
+      await markGoalAutoResumed(session.id, reset);
+      await clearPendingControl(session.id);
+    }
+  } finally {
+    AUTO_RESUME_BUSY = false;
+  }
+}
+
+function goalUsageResetAt(text, now = Date.now()) {
+  const screen = stripAnsi(String(text || ""));
+  if (!/You've hit your usage limit/i.test(screen) || !/Goal hit usage limits\s*\(\/goal resume\)/i.test(screen)) return null;
+  const match = screen.match(/try again at\s+(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if (!match) return null;
+  let hour = Number(match[1]) % 12;
+  if (match[3].toUpperCase() === "PM") hour += 12;
+  const target = new Date(now);
+  target.setHours(hour, Number(match[2]), 0, 0);
+  if (target.getTime() < now - 12 * 60 * 60 * 1000) target.setDate(target.getDate() + 1);
+  return target.getTime();
+}
+
 function actionableControl(control) {
   return Boolean(control && control.kind && control.kind !== "status");
 }
@@ -1603,6 +1651,34 @@ async function touchSession(id) {
     const data = await readStore();
     const found = data.sessions.find((item) => item.id === id);
     if (!found) return null;
+    found.updated_at = Math.floor(Date.now() / 1000);
+    await writeStore(data);
+    return found;
+  });
+  if (session) await writeSessionFiles(session);
+}
+
+async function setGoalAutoResume(id, enabled) {
+  const session = await withMutation("store", async () => {
+    const data = await readStore();
+    const found = data.sessions.find((item) => item.id === id);
+    if (!found) throw Object.assign(new Error(`Unknown session: ${id}`), { status: 404 });
+    if (enabled) found.auto_resume_goal = true;
+    else delete found.auto_resume_goal;
+    found.updated_at = Math.floor(Date.now() / 1000);
+    await writeStore(data);
+    return found;
+  });
+  await writeSessionFiles(session);
+  return session;
+}
+
+async function markGoalAutoResumed(id, reset) {
+  const session = await withMutation("store", async () => {
+    const data = await readStore();
+    const found = data.sessions.find((item) => item.id === id);
+    if (!found) return null;
+    found.auto_resume_last_reset = reset;
     found.updated_at = Math.floor(Date.now() / 1000);
     await writeStore(data);
     return found;
@@ -2440,6 +2516,10 @@ function selfCheckCore() {
   if (codexTranscriptMessage({ type: "response_item", payload: { type: "function_call" } }, 2)) throw new Error("Codex tool call leaked into chat");
   const usage = codexUsage({ plan_type: "pro", primary: { used_percent: 15, window_minutes: 300, resets_at: 123 }, secondary: { used_percent: 36, window_minutes: 10080, resets_at: 456 } });
   if (usage.primary.used_percent !== 15 || usage.secondary.window_minutes !== 10080 || usage.plan_type !== "pro") throw new Error("Codex usage limits were not normalized");
+  const resetNow = new Date(2026, 6, 11, 4, 10).getTime();
+  const resetAt = goalUsageResetAt("You've hit your usage limit. Try again at 4:05 AM.\nGoal hit usage limits (/goal resume)", resetNow);
+  if (resetAt !== new Date(2026, 6, 11, 4, 5).getTime()) throw new Error("Codex goal reset time was not detected");
+  if (goalUsageResetAt("Goal completed normally", resetNow)) throw new Error("normal goal was classified as usage-limited");
   const exactResume = commandForRestart({ tool: "codex", runner_command: "codex --no-alt-screen", codex_session_id: "019f491a-b738-7462-8a3a-418e4532df67" }, true, {});
   if (exactResume !== "codex --no-alt-screen resume '019f491a-b738-7462-8a3a-418e4532df67'") throw new Error("Codex resume lost the exact session id");
   const remotePicker = commandForRestart({ tool: "codex", central_runner: true }, true, { codex: "codex --no-alt-screen" });
