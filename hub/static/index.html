@@ -7,7 +7,7 @@
     <link rel="icon" href="/static/ark-logo.svg?v=3" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
-    <link rel="stylesheet" href="/static/ark-ui.css?v=14" />
+    <link rel="stylesheet" href="/static/ark-ui.css?v=15" />
   </head>
   <body>
     <div class="background-grid" aria-hidden="true"></div>
@@ -234,6 +234,10 @@
               <p>Use the + beside a machine to start Codex, a terminal, OpenCode, or Claude. Existing tmux sessions show under each machine.</p>
             </div>
           </div>
+          <nav id="message-nav" class="message-nav" aria-label="Navigate your messages" hidden>
+            <button id="message-previous" type="button" aria-label="Previous message" title="Previous message">↑</button>
+            <button id="message-next" type="button" aria-label="Next message" title="Next message">↓</button>
+          </nav>
           <div id="xterm" class="xterm-host" hidden></div>
           <pre id="output" class="terminal-output" hidden>No session selected.</pre>
           <div id="quick-actions" class="quick-actions" hidden>
@@ -277,6 +281,6 @@
     <script src="/vendor/xterm/addon-fit.js"></script>
     <script src="/vendor/marked/marked.js"></script>
     <script src="/vendor/dompurify/purify.js"></script>
-    <script src="/static/app.js?v=14"></script>
+    <script src="/static/app.js?v=15"></script>
   </body>
 </html>

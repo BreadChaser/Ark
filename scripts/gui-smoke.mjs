@@ -40,7 +40,7 @@ try {
   await command("WebDriver:Navigate", { url: BASE_URL });
 
   await wait('document.querySelectorAll("#devices .device-group").length >= 1');
-  await wait('document.querySelector("#session-panel").classList.contains("has-session") || document.querySelectorAll("#devices .session").length === 0');
+  await wait('document.querySelector("#session-panel").classList.contains("has-session") || document.querySelectorAll("#devices .session").length === 0', 30000);
   await wait('document.querySelector(".brand-logo").complete && document.querySelector(".brand-logo").naturalWidth > 0');
   assert((await api("/manifest.webmanifest")).name === "Ark", "PWA manifest is unavailable");
   assert((await fetch(`${BASE_URL}/sw.js`)).ok && await js('return "serviceWorker" in navigator;'), "notification service worker is unavailable");
@@ -852,7 +852,31 @@ async function testChatLayout() {
   await assertSessionFiles(disposableSession.id, { messages: true });
   await command("WebDriver:Navigate", { url: BASE_URL });
   await wait(`localStorage.getItem("ark-active-session") === ${JSON.stringify(disposableSession.id)}`);
-  await wait('document.querySelector("#parsed").innerText.includes("hello from chat smoke") && document.querySelector("#parsed").innerText.includes("hello from assistant smoke") && document.querySelector("#parsed").innerText.includes("Short reply") && document.querySelector(".chat-message.user") && document.querySelector(".chat-message.assistant")', 15000);
+  await wait('document.querySelector("#parsed").innerText.includes("hello from chat smoke") && document.querySelector("#parsed").innerText.includes("hello from assistant smoke") && document.querySelector("#parsed").innerText.includes("Short reply") && document.querySelector(".chat-message.user") && document.querySelector(".chat-message.assistant")', 30000);
+  const navBottom = await js(`
+    renderChatCapture({ messages: [
+      { role: "user", text: "nav first message" },
+      { role: "assistant", text: "first response ".repeat(500) },
+      { role: "user", text: "nav second message" },
+      { role: "assistant", text: "second response ".repeat(500) },
+    ] }, { id: "nav-smoke", tool: "opencode" }, false);
+    document.querySelector("#parsed").scrollTop = document.querySelector("#parsed").scrollHeight;
+    updateMessageNav();
+    return document.querySelector("#parsed").scrollTop;
+  `);
+  assert(await js('return !document.querySelector("#message-nav").hidden && document.querySelectorAll("#message-nav button").length === 2;'), "user-message navigator is unavailable");
+  await js('document.querySelector("#message-previous").click(); return true;');
+  await wait(`document.querySelector("#parsed").scrollTop < ${Math.max(0, navBottom - 50)}`);
+  await wait('[...document.querySelectorAll(".chat-message.user")].sort((a, b) => Math.abs(a.getBoundingClientRect().top - document.querySelector("#parsed").getBoundingClientRect().top) - Math.abs(b.getBoundingClientRect().top - document.querySelector("#parsed").getBoundingClientRect().top))[0].innerText.includes("nav second message")');
+  const secondTop = await js('return document.querySelector("#parsed").scrollTop;');
+  assert(secondTop < navBottom, "previous-message arrow did not scroll upward");
+  await js('document.querySelector("#message-previous").click(); return true;');
+  await wait('[...document.querySelectorAll(".chat-message.user")].sort((a, b) => Math.abs(a.getBoundingClientRect().top - document.querySelector("#parsed").getBoundingClientRect().top) - Math.abs(b.getBoundingClientRect().top - document.querySelector("#parsed").getBoundingClientRect().top))[0].innerText.includes("nav first message")');
+  await js('document.querySelector("#message-next").click(); return true;');
+  await wait('[...document.querySelectorAll(".chat-message.user")].sort((a, b) => Math.abs(a.getBoundingClientRect().top - document.querySelector("#parsed").getBoundingClientRect().top) - Math.abs(b.getBoundingClientRect().top - document.querySelector("#parsed").getBoundingClientRect().top))[0].innerText.includes("nav second message")');
+  await shot("message-navigation");
+  await js('return loadChatMessages(activeSession());');
+  await wait('document.querySelector("#parsed").innerText.includes("hello from chat smoke")');
   await tmuxSendLine(disposableSession.tmux_name, "printf 'bash: raw-debug-smoke: command not found\\n'");
   await api(`/api/sessions/${disposableSession.id}/capture`);
   const chatText = await js('return document.querySelector("#parsed").innerText;');

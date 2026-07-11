@@ -90,6 +90,9 @@ const els = {
   sessionStorage: document.querySelector("#session-storage"),
   output: document.querySelector("#output"),
   parsed: document.querySelector("#parsed"),
+  messageNav: document.querySelector("#message-nav"),
+  messagePrevious: document.querySelector("#message-previous"),
+  messageNext: document.querySelector("#message-next"),
   xterm: document.querySelector("#xterm"),
   quickActions: document.querySelector("#quick-actions"),
   controlSheet: document.querySelector("#control-sheet"),
@@ -214,6 +217,9 @@ async function init() {
   els.controlSheet.addEventListener("click", sendQuickCommand);
   els.controlClose.addEventListener("click", closeControlSheet);
   els.parsed.addEventListener("click", openImageViewer);
+  els.parsed.addEventListener("scroll", updateMessageNav, { passive: true });
+  els.messagePrevious.addEventListener("click", () => navigateUserMessage(-1));
+  els.messageNext.addEventListener("click", () => navigateUserMessage(1));
   els.attachmentQueue.addEventListener("click", openImageViewer);
   els.imageViewerClose.addEventListener("click", () => els.imageViewer.close());
   els.imageViewer.addEventListener("click", (event) => {
@@ -1295,6 +1301,7 @@ function renderCapture() {
   els.parsed.classList.toggle("chat-output", mode === "chat");
   els.parsed.classList.toggle("terminal-view", mode !== "chat");
   if (useLiveTerminal) {
+    hideMessageNav();
     els.output.textContent = data?.text || "(live terminal active)";
     if (keepRawBottom) scrollToBottom(els.output);
     return;
@@ -1305,6 +1312,7 @@ function renderCapture() {
     return;
   }
   if (!data) {
+    hideMessageNav();
     els.output.textContent = "No session selected.";
     const device = activeDevice();
     els.parsed.innerHTML = `
@@ -1328,6 +1336,7 @@ function renderCapture() {
 }
 
 function renderTerminalCapture(data, keepBottom) {
+  hideMessageNav();
   els.parsed.innerHTML = "";
   const screen = document.createElement("div");
   screen.className = "terminal-screen";
@@ -1412,6 +1421,45 @@ function renderChatCapture(data, session, keepBottom) {
   }
   els.parsed.append(stream.childElementCount ? stream : emptySurface("No chat output yet."));
   if (keepBottom) scrollToBottom(els.parsed);
+  updateMessageNav();
+}
+
+function hideMessageNav() {
+  els.messageNav.hidden = true;
+  els.sessionPanel.classList.remove("has-message-nav");
+}
+
+function updateMessageNav() {
+  const messages = [...els.parsed.querySelectorAll(".chat-message.user")];
+  const visible = els.parsed.classList.contains("chat-output") && !els.parsed.hidden && messages.length > 1;
+  els.messageNav.hidden = !visible;
+  els.sessionPanel.classList.toggle("has-message-nav", visible);
+  if (!visible) return;
+  const positions = messages.map(messageOffset);
+  const threshold = els.parsed.scrollTop + 32;
+  const previous = positions.findLastIndex((top) => top < threshold);
+  els.messagePrevious.disabled = previous <= 0 && (previous < 0 || Math.abs(positions[previous] - els.parsed.scrollTop) < 56);
+  els.messageNext.disabled = !positions.some((top) => top > threshold);
+}
+
+function navigateUserMessage(direction) {
+  const messages = [...els.parsed.querySelectorAll(".chat-message.user")];
+  if (!messages.length) return;
+  const positions = messages.map(messageOffset);
+  const threshold = els.parsed.scrollTop + 32;
+  let index;
+  if (direction < 0) {
+    index = positions.findLastIndex((top) => top < threshold);
+    if (index >= 0 && Math.abs(positions[index] - els.parsed.scrollTop) < 56) index--;
+  } else {
+    index = positions.findIndex((top) => top > threshold);
+  }
+  if (index < 0) return updateMessageNav();
+  els.parsed.scrollTo({ top: Math.max(0, positions[index] - 12), behavior: "smooth" });
+}
+
+function messageOffset(message) {
+  return message.getBoundingClientRect().top - els.parsed.getBoundingClientRect().top + els.parsed.scrollTop;
 }
 
 function isChatJunk(message) {
