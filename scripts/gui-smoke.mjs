@@ -878,6 +878,13 @@ async function testChatLayout() {
   await command("WebDriver:Navigate", { url: BASE_URL });
   await wait(`localStorage.getItem("ark-active-session") === ${JSON.stringify(disposableSession.id)}`);
   await wait('document.querySelector("#parsed").innerText.includes("hello from chat smoke") && document.querySelector("#parsed").innerText.includes("hello from assistant smoke") && document.querySelector("#parsed").innerText.includes("Short reply") && document.querySelector(".chat-message.user") && document.querySelector(".chat-message.assistant")', 30000);
+  const evidenceColumns = await js(`
+    renderChatCapture({ messages: [{ role: "assistant", text: "- Validation is green:\\n    - synthetic tests\\n    - network tests\\n    - map probe\\n    - ASan run\\n    - Windows viewer\\n    - structure hygiene" }] }, { id: "evidence-grid-smoke", tool: "codex" }, false);
+    return getComputedStyle(document.querySelector(".message-text li > ul")).gridTemplateColumns.split(" ").length;
+  `);
+  assert(evidenceColumns > 1, "nested evidence list did not use the available width");
+  await shot("evidence-grid");
+  await js('return loadChatMessages(activeSession());');
   const navStart = await js(`
     stopPolling();
     renderChatCapture({ messages: [

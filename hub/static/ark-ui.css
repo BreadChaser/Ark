@@ -1183,6 +1183,11 @@ pre {
   align-self: flex-start;
 }
 
+.chat-message.assistant:has(.message-text li > ul) {
+  width: 100%;
+  max-width: min(1240px, 100%);
+}
+
 .chat-message.user {
   align-self: flex-end;
 }
@@ -1238,6 +1243,35 @@ pre {
 
 .message-text li {
   margin: 0.24em 0;
+}
+
+.message-text li > ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: 7px 16px;
+  padding-left: 0;
+  list-style: none;
+}
+
+.message-text li > ul > li {
+  position: relative;
+  margin: 0;
+  padding: 7px 10px 7px 18px;
+  border-left: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 75%);
+}
+
+.message-text li > ul > li::before {
+  content: "";
+  position: absolute;
+  top: 1.05em;
+  left: 7px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .message-text h1,
