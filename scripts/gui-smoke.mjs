@@ -900,6 +900,18 @@ async function testChatLayout() {
   await js('document.querySelector("#message-next").click(); return true;');
   await wait(`document.querySelector("#parsed").scrollTop > ${firstTop + 50}`);
   await shot("message-navigation");
+  await tmuxSendLine(disposableSession.tmux_name, "printf 'assistant: scroll-bottom-smoke '; yes long | head -n 1000 | tr '\\n' ' '; printf '\\n'");
+  await waitForPersistedMessage(disposableSession.id, "scroll-bottom-smoke", "assistant");
+  await js('return loadChatMessages(activeSession());');
+  await wait('document.querySelector("#parsed").innerText.includes("scroll-bottom-smoke")');
+  const reopenedAtBottom = await js(`
+    document.querySelector("#parsed").scrollTop = 100;
+    openSession(activeSession().id);
+    stopPolling();
+    const result = { top: document.querySelector("#parsed").scrollTop, max: document.querySelector("#parsed").scrollHeight - document.querySelector("#parsed").clientHeight };
+    return result;
+  `);
+  assert(reopenedAtBottom.max > 500 && reopenedAtBottom.top >= reopenedAtBottom.max - 2, `opening a chat did not land at the bottom: ${JSON.stringify(reopenedAtBottom)}`);
   await js('startPolling(); return loadChatMessages(activeSession());');
   await wait('document.querySelector("#parsed").innerText.includes("hello from chat smoke")');
   await tmuxSendLine(disposableSession.tmux_name, "printf 'bash: raw-debug-smoke: command not found\\n'");

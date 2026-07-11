@@ -481,6 +481,7 @@ async function captureSession(id) {
     payload.messages = await writeMessagesSnapshot(session, payload.messages);
     payload.transcript_source = "terminal-fallback";
   }
+  if (session.tool === "codex") payload.codex_usage = await accountCodexUsage(session, payload.codex_usage);
   session = await syncPendingControl(session.id, payload.controls, payload.agent_state, payload.codex_state, payload.codex_usage);
   payload.pending_control = session.pending_control || null;
   if (payload.pending_control && !payload.controls.some(actionableControl)) payload.controls.unshift(payload.pending_control);
@@ -1996,7 +1997,7 @@ async function readCodexTranscript(session, device, rawText) {
 
 function updateCodexSettings(cache, row) {
   const limits = row?.type === "event_msg" && row.payload?.type === "token_count" ? row.payload.rate_limits : null;
-  if (limits?.limit_id === "codex" && (limits.primary || limits.secondary)) cache.usage = codexUsage(limits);
+  if (limits?.limit_id === "codex" && (limits.primary || limits.secondary)) cache.usage = codexUsage(limits, Date.parse(row.timestamp || "") / 1000);
   const settings = row?.type === "turn_context"
     ? { model: row.payload?.model, reasoning_effort: row.payload?.effort || row.payload?.reasoning_effort }
     : row?.type === "event_msg" && row.payload?.type === "thread_settings_applied"
@@ -2011,13 +2012,34 @@ function updateCodexSettings(cache, row) {
   };
 }
 
-function codexUsage(limits) {
+function codexUsage(limits, updatedAt = 0) {
   const normalize = (value) => value ? {
     used_percent: Math.max(0, Math.min(100, Number(value.used_percent) || 0)),
     window_minutes: Math.max(0, Number(value.window_minutes) || 0),
     resets_at: Math.max(0, Number(value.resets_at) || 0),
   } : null;
-  return { plan_type: String(limits.plan_type || ""), primary: normalize(limits.primary), secondary: normalize(limits.secondary) };
+  return { plan_type: String(limits.plan_type || ""), primary: normalize(limits.primary), secondary: normalize(limits.secondary), updated_at: Math.max(0, Number(updatedAt) || 0) };
+}
+
+async function accountCodexUsage(session, current) {
+  const key = codexAccountKey(session);
+  const stored = (await readStore()).sessions.filter((item) => codexAccountKey(item) === key).map((item) => item.codex_usage);
+  return mergeCodexUsage([...stored, current]);
+}
+
+function codexAccountKey(session) {
+  const device = session?.runner_device_id || session?.tmux_device_id || session?.device_id || "";
+  const account = session?.runner_account_home || session?.runner_id || session?.runner_label || session?.id || "";
+  return `${device}:${account}`;
+}
+
+function mergeCodexUsage(values) {
+  const usage = values.filter(Boolean);
+  if (!usage.length) return null;
+  const timestamped = usage.filter((item) => Number(item.updated_at) > 0).sort((a, b) => Number(a.updated_at) - Number(b.updated_at));
+  if (timestamped.length) return timestamped.at(-1);
+  const limit = (name) => usage.map((item) => item[name]).filter(Boolean).sort((a, b) => Number(a.resets_at) - Number(b.resets_at) || Number(a.used_percent) - Number(b.used_percent)).at(-1) || null;
+  return { plan_type: usage.findLast((item) => item.plan_type)?.plan_type || "", primary: limit("primary"), secondary: limit("secondary"), updated_at: 0 };
 }
 
 function cachedCodexSettings(session) {
@@ -2516,6 +2538,11 @@ function selfCheckCore() {
   if (codexTranscriptMessage({ type: "response_item", payload: { type: "function_call" } }, 2)) throw new Error("Codex tool call leaked into chat");
   const usage = codexUsage({ plan_type: "pro", primary: { used_percent: 15, window_minutes: 300, resets_at: 123 }, secondary: { used_percent: 36, window_minutes: 10080, resets_at: 456 } });
   if (usage.primary.used_percent !== 15 || usage.secondary.window_minutes !== 10080 || usage.plan_type !== "pro") throw new Error("Codex usage limits were not normalized");
+  const mergedUsage = mergeCodexUsage([
+    codexUsage({ plan_type: "pro", primary: { used_percent: 5, resets_at: 100 }, secondary: { used_percent: 10, resets_at: 200 } }),
+    codexUsage({ plan_type: "pro", primary: { used_percent: 32, resets_at: 300 }, secondary: { used_percent: 24, resets_at: 400 } }),
+  ]);
+  if (mergedUsage.primary.used_percent !== 32 || mergedUsage.secondary.used_percent !== 24) throw new Error("Codex account usage remained session-stale");
   const resetNow = new Date(2026, 6, 11, 4, 10).getTime();
   const resetAt = goalUsageResetAt("You've hit your usage limit. Try again at 4:05 AM.\nGoal hit usage limits (/goal resume)", resetNow);
   if (resetAt !== new Date(2026, 6, 11, 4, 5).getTime()) throw new Error("Codex goal reset time was not detected");

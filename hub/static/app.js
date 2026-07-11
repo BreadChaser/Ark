@@ -50,6 +50,7 @@ const state = {
   dismissedControls: {},
   activeControlKey: null,
   controlFlow: null,
+  forceBottomSessionId: null,
   drafts: {},
   attachmentQueues: {},
   adding: false,
@@ -495,7 +496,7 @@ function renderCodexFooter() {
   }
   const email = profile?.auth?.email || session.runner_label || "Codex account";
   const label = profile?.label && profile.label !== email ? profile.label : "Codex";
-  const usage = session.codex_usage;
+  const usage = accountCodexUsage(session);
   const warning = usageWarning(usage);
   els.codexFooter.hidden = false;
   els.codexFooter.innerHTML = `
@@ -504,6 +505,22 @@ function renderCodexFooter() {
     ${warning ? `<div class="codex-usage-warning" role="status">${escapeHtml(warning)}</div>` : ""}
     <button class="codex-auto-resume" type="button" data-auto-resume aria-pressed="${Boolean(session.auto_resume_goal)}" title="Send /goal resume after a Codex usage reset">Auto-resume goal: ${session.auto_resume_goal ? "On" : "Off"}</button>
   `;
+}
+
+function accountCodexUsage(session) {
+  const key = codexAccountKey(session);
+  const usage = state.sessions.filter((item) => codexAccountKey(item) === key).map((item) => item.codex_usage).filter(Boolean);
+  if (!usage.length) return null;
+  const timestamped = usage.filter((item) => Number(item.updated_at) > 0).sort((a, b) => Number(a.updated_at) - Number(b.updated_at));
+  if (timestamped.length) return timestamped.at(-1);
+  const limit = (name) => usage.map((item) => item[name]).filter(Boolean).sort((a, b) => Number(a.resets_at) - Number(b.resets_at) || Number(a.used_percent) - Number(b.used_percent)).at(-1) || null;
+  return { plan_type: usage.findLast((item) => item.plan_type)?.plan_type || "", primary: limit("primary"), secondary: limit("secondary") };
+}
+
+function codexAccountKey(session) {
+  const device = session?.runner_device_id || session?.tmux_device_id || session?.device_id || "";
+  const account = session?.runner_account_home || session?.runner_id || session?.runner_label || session?.id || "";
+  return `${device}:${account}`;
 }
 
 function usageLimit(label, limit) {
@@ -1192,6 +1209,7 @@ function openSession(sessionId) {
     rememberRepo();
   }
   state.activeSessionId = sessionId;
+  state.forceBottomSessionId = sessionId;
   bindComposerToSession(sessionId);
   state.lastCapture = state.captures[sessionId] || null;
   state.adding = false;
@@ -1304,9 +1322,9 @@ async function recoverMissingSession(session) {
 
 function renderCapture() {
   const data = state.lastCapture;
-  const keepParsedBottom = isNearBottom(els.parsed);
-  const keepRawBottom = isNearBottom(els.output);
   const session = activeSession();
+  const keepParsedBottom = state.forceBottomSessionId === session?.id || isNearBottom(els.parsed);
+  const keepRawBottom = isNearBottom(els.output);
   if (session && data?.tool && session.tool !== data.tool) {
     session.tool = data.tool;
     session.title = data.title || session.title;
@@ -1453,6 +1471,7 @@ function renderChatCapture(data, session, keepBottom) {
   }
   els.parsed.append(stream.childElementCount ? stream : emptySurface("No chat output yet."));
   if (keepBottom) scrollToBottom(els.parsed);
+  if (state.forceBottomSessionId === session?.id) state.forceBottomSessionId = null;
   updateMessageNav();
 }
 
