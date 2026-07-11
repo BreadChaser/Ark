@@ -7,13 +7,15 @@ import { agentStateFromScreen, codexStateFromScreen, parseAgentControls } from "
 const fixtures = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../test/fixtures/controls");
 const cases = {
   "status.txt": { kind: "status", state: "ready", fields: ["Model", "Directory", "Permissions", "Context window"] },
-  "approval.txt": { kind: "input", state: "needs_input", choices: 2 },
-  "stale-status-approval.txt": { kind: "input", state: "needs_input", choices: 2 },
+  "approval.txt": { kind: "approval", state: "needs_input", choices: 3, labels: ["Yes, proceed", "Yes, remember", "No"] },
+  "approval-command-numbers.txt": { kind: "approval", state: "needs_input", choices: 3, labels: ["Yes, proceed", "Yes, remember", "No"] },
+  "stale-status-approval.txt": { kind: "approval", state: "needs_input", choices: 3 },
   "hook-update.txt": { kind: "input", state: "needs_input", choices: 2 },
   "ordinary.txt": { kind: null, state: "ready" },
   "model.txt": { kind: "model", state: "needs_input", choices: 7, labels: ["gpt-5.5", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark"] },
   "model-echoed-command.txt": { kind: "model", state: "needs_input", choices: 4, labels: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark"] },
   "reasoning.txt": { kind: "reasoning", state: "needs_input", choices: 6, labels: ["Low", "Medium", "High", "Extra high", "Max", "Ultra"] },
+  "permissions.txt": { kind: "permissions", state: "needs_input", choices: 3, labels: ["Ask for approval", "Approve for me", "Full Access"] },
 };
 
 for (const [name, expected] of Object.entries(cases)) {

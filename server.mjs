@@ -2428,6 +2428,8 @@ function selfCheckCore() {
   if (mergeChatMessages([], history).length !== history.length) throw new Error("chat history was deduplicated");
   const parsed = parseChatMessages([{ text: "Codex" }, { text: "Updated server.mjs successfully." }]);
   if (!parsed.some((message) => message.text.includes("server.mjs"))) throw new Error("valid file response was filtered");
+  const echoedHook = parseChatMessages([{ text: "pleted)\\nhook context: noisy startup\\n  … +12 lines (ctrl + t to view tr" }]);
+  if (echoedHook.length) throw new Error("echoed shell hook command leaked into chat");
   if ((modelControl("Select Model and Effort").choices || []).length) throw new Error("unsafe model fallback returned choices");
   const transcript = codexTranscriptMessage({
     timestamp: "2026-07-09T00:00:00.000Z",
@@ -2451,9 +2453,9 @@ function selfCheckCore() {
   if (agentStateFromScreen({ tool: "codex" }, "• Working (2s • esc to interrupt)") !== "working") throw new Error("working Codex state was not detected");
   if (agentStateFromScreen({ tool: "codex" }, "Would you like to run this command?\n1. Yes\n2. No\nPress enter to confirm") !== "needs_input") throw new Error("Codex input state was not detected");
   const approval = parseCodexControls("Would you like to run the following command? 1. Yes, proceed 2. No, cancel Press enter to confirm or esc to cancel", parseTerminalLines("Would you like to run the following command?\n1. Yes, proceed\n2. No, cancel\nPress enter to confirm or esc to cancel"));
-  if (approval[0]?.kind !== "input" || approval[0].choices.length !== 2) throw new Error("generic Codex approval prompt was not actionable");
-  const statusThenApproval = "Context window: 80% left\nWould you like to run this command?\n1. Yes\n2. No\nPress enter to confirm";
-  if (parseCodexControls(statusThenApproval, parseTerminalLines(statusThenApproval))[0]?.kind !== "input") throw new Error("stale status hid a newer input prompt");
+  if (approval[0]?.kind !== "approval" || approval[0].choices.length !== 3) throw new Error("Codex command approval prompt was not actionable");
+  const statusThenApproval = "Context window: 80% left\nWould you like to run the following command?\n1. Yes\n2. No\nPress enter to confirm";
+  if (parseCodexControls(statusThenApproval, parseTerminalLines(statusThenApproval))[0]?.kind !== "approval") throw new Error("stale status hid a newer input prompt");
   const confirmation = parseCodexControls("Update hooks now? Press enter to continue or esc to cancel", parseTerminalLines("Update hooks now?\nPress enter to continue or esc to cancel"));
   if (confirmation[0]?.choices?.[0]?.key !== "Enter") throw new Error("generic Codex confirmation keys were not actionable");
 }
@@ -2617,6 +2619,7 @@ function isCodexChromeLine(line) {
     || /^(Explored|Ran|Edited|Read|Listed|Searched|Patched)\b/i.test(line)
     || /^\d{2,5}\s+[+-]\s/.test(line)
     || /^─+\s*Worked for\b/i.test(line)
+    || /\\nhook context:/i.test(line)
     || /^hook context:/i.test(line)
     || /ctrl \+ t to view transcript/i.test(line)
     || /Codex can now generate/i.test(line)

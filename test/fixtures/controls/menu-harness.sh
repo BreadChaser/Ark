@@ -20,6 +20,22 @@ pick() {
   done
 }
 
+if [[ "${1:-}" == "approval" ]]; then
+  printf 'Would you like to run the following command?\nEnvironment: local\nReason: Verify Ark before publishing it.\nCommand: npm run check; printf "32.26 17.10 13.06"; head -100\n› 1. Yes, proceed (y)\n2. Yes, and do not ask again for this prefix (p)\n3. No, and tell Codex what to do differently (esc)\nPress enter to confirm or esc to cancel\n'
+  answer=$(pick 1)
+  clear
+  printf 'picked:%s\n' "$answer"
+  exit
+fi
+
+if [[ "${1:-}" == "permissions" ]]; then
+  printf 'Update Model Permissions\n› 1. Ask for approval (current)  Workspace access with approval outside it.\n2. Approve for me  Only ask for potentially unsafe actions.\n3. Full Access  Outside files and internet without asking.\nPress enter to confirm or esc to go back\n'
+  answer=$(pick 1)
+  clear
+  printf 'permissions:%s\n' "$answer"
+  exit
+fi
+
 printf 'Select Model and Effort\n1. gpt-5.5 (default) Frontier model\n› 2. gpt-5.6-sol (current) Latest frontier agentic coding model.\n3. gpt-5.6-terraBalanced agentic coding model.\n4. gpt-5.6-lunaFast and affordable agentic coding model.\n5. gpt-5.4Strong model for everyday coding.\n6. gpt-5.4-miniSmall, fast model.\n7. gpt-5.3-codex-sparkUltra-fast coding model.\nPress enter to confirm or esc to go back\n'
 model=$(pick 2)
 clear

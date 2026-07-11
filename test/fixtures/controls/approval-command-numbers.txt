@@ -1,0 +1,8 @@
+Would you like to run the following command?
+Environment: local
+Reason: May I inspect load averages and disk usage?
+$ printf 'load 32.26 17.10 13.06'; head -100; sensors 2>&1
+› 1. Yes, proceed (y)
+2. Yes, and don't ask again for commands with this prefix (p)
+3. No, and tell Codex what to do differently (esc)
+Press enter to confirm or esc to cancel

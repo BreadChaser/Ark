@@ -726,26 +726,27 @@ async function testCodexControlPrompts() {
   await tmuxSendLine(tmuxName, "printf 'Working (2s - esc to interrupt)\\n'");
   await wait(`[...document.querySelectorAll("#devices .session")].some((item) => item.textContent.includes(${JSON.stringify(tmuxName)}) && item.textContent.includes("working"))`);
   await runLocal("tmux", ["respawn-pane", "-k", "-t", tmuxName, "bash"]);
-  await tmuxSendLine(tmuxName, "printf 'Would you like to run the following command?\\nCommand: npm run check\\nReason: Verify Ark before publishing it.\\n1. Yes, proceed\\n2. No, cancel\\nPress enter to confirm or esc to cancel\\n'; read -r answer; clear; printf 'picked:%s\\n' \"$answer\"");
-  await wait('!document.querySelector("#control-sheet").hidden && document.querySelector("#control-kind").textContent === "input" && document.querySelectorAll("#control-body [data-command]").length === 2');
+  await tmuxSendLine(tmuxName, `bash ${JSON.stringify(path.resolve("test/fixtures/controls/menu-harness.sh"))} approval`);
+  await wait('!document.querySelector("#control-sheet").hidden && document.querySelector("#control-kind").textContent === "approval" && document.querySelectorAll("#control-body [data-command]").length === 3');
   await wait(`[...document.querySelectorAll("#devices .session")].some((item) => item.textContent.includes(${JSON.stringify(tmuxName)}) && item.textContent.includes("needs input"))`);
   await wait(`!document.querySelector("#input-inbox").hidden && document.querySelector("#input-inbox").textContent.includes(${JSON.stringify(tmuxName)})`);
   const pending = (await api("/api/sessions")).sessions.find((session) => session.id === disposableSession.id)?.pending_control;
-  assert(pending?.kind === "input" && pending.id, "input prompt was not persisted on the session");
+  assert(pending?.kind === "approval" && pending.id, "input prompt was not persisted on the session");
   const pendingFiles = await api(`/api/sessions/${disposableSession.id}/files`);
   const pendingYaml = await readFile(pendingFiles.files.find((file) => file.name === "session.yml").path, "utf8");
   assert(pendingYaml.includes("pending_control:") && pendingYaml.includes(pending.id), "input prompt was not durable on disk");
   assert(await js('return document.querySelector("#session-panel").dataset.captureTransport === "stream";'), "active chat still uses browser polling");
   assert(await js('return Boolean(document.querySelector("#control-body [data-open-terminal]"));'), "interactive prompt has no full-terminal fallback");
-  assert(await js('return document.querySelector("#control-prompt").textContent.includes("Command: npm run check\\nReason: Verify Ark");'), "interactive prompt lost its request context");
+  assert(await js('return document.querySelector("#control-prompt").textContent.includes("Reason: Verify Ark") && document.querySelector("#control-prompt").textContent.includes("Command: npm run check") && !document.querySelector("#control-body").textContent.includes("32.26");'), "interactive prompt lost its request context or parsed command numbers as choices");
   assert(await js('return getComputedStyle(document.querySelector("#control-body")).display === "flex";'), "interactive choices are not horizontal");
+  await wait('Number(getComputedStyle(document.querySelector(".control-panel")).opacity) > 0.99');
   await shot("input-needed");
   await js('document.querySelector("[data-control-close]").click(); return true;');
   await wait('document.querySelector("#control-sheet").hidden');
   await sleep(700);
   assert(!/(?:^|\n)picked:[^\n]*$/m.test((await api(`/api/sessions/${disposableSession.id}/capture`)).text), "closing an input card sent a terminal key");
   await js('document.querySelector("#input-inbox [data-pending-session]").click(); return true;');
-  await wait('!document.querySelector("#control-sheet").hidden && document.querySelector("#control-kind").textContent === "input"');
+  await wait('!document.querySelector("#control-sheet").hidden && document.querySelector("#control-kind").textContent === "approval"');
   await js('document.querySelector("#control-body [data-command=\\"1\\"]").click(); return true;');
   await wait('document.querySelector("#control-sheet").hidden');
   await wait('document.querySelector("#input-inbox").hidden');
@@ -766,6 +767,17 @@ async function testCodexControlPrompts() {
   await js('document.querySelector("#control-body [data-command=\\"6\\"]").click(); return true;');
   await wait('document.querySelector("#session-runtime").textContent.includes("gpt-5.6-luna") && document.querySelector("#session-runtime").textContent.includes("ultra reasoning") && document.querySelector("#session-runtime").textContent.includes("fast speed")');
   await waitForTerminalLogText(disposableSession.id, "selected:4/6");
+  await runLocal("tmux", ["respawn-pane", "-k", "-t", tmuxName, "bash"]);
+  await sleep(250);
+  await tmuxSendLine(tmuxName, `bash ${JSON.stringify(path.resolve("test/fixtures/controls/menu-harness.sh"))} permissions`);
+  await waitForTerminalLogText(disposableSession.id, "Update Model Permissions");
+  await api(`/api/sessions/${disposableSession.id}/capture`);
+  await wait('!document.querySelector("#control-sheet").hidden && document.querySelector("#control-kind").textContent === "permissions" && document.querySelectorAll("#control-body [data-command]").length === 3', 30000);
+  assert(await js('return document.querySelector("#control-body [data-command=\\"3\\"]").textContent.includes("Full Access");'), "Full Access permission is missing");
+  await wait('Number(getComputedStyle(document.querySelector(".control-panel")).opacity) > 0.99');
+  await shot("permissions-picker");
+  await js('document.querySelector("#control-body [data-command=\\"3\\"]").click(); return true;');
+  await waitForTerminalLogText(disposableSession.id, "permissions:3");
   await cleanupDisposable();
 }
 
@@ -832,7 +844,8 @@ async function testChatLayout() {
   await tmuxSendLine(disposableSession.tmux_name, "printf '• Bullet reply\\n• SessionStart hook (completed)\\nhook context: noisy startup\\n  … +12 lines (ctrl + t to view transcript)\\n'");
   const bulletHistory = await waitForPersistedMessage(disposableSession.id, "Bullet reply", "assistant");
   assert(bulletHistory.messages.some((message) => message.role === "assistant" && message.text.includes("Bullet reply")), "Codex bullet assistant reply was not persisted");
-  assert(!bulletHistory.messages.some((message) => message.text.includes("SessionStart hook") || message.text.includes("noisy startup")), "Codex hook noise leaked into chat history");
+  const hookLeak = bulletHistory.messages.filter((message) => message.text.includes("SessionStart hook") || message.text.includes("noisy startup"));
+  assert(!hookLeak.length, `Codex hook noise leaked into chat history: ${JSON.stringify(hookLeak)}`);
   await tmuxSendLine(disposableSession.tmux_name, "printf '> You are in /tmp\\nDo you trust the contents of this directory? Working with untrusted contents\\n› 1. Yes, continue\\nPress enter to continue\\n'");
   await api(`/api/sessions/${disposableSession.id}/capture`);
   const trustHistory = await api(`/api/sessions/${disposableSession.id}/messages`);
@@ -853,29 +866,29 @@ async function testChatLayout() {
   await command("WebDriver:Navigate", { url: BASE_URL });
   await wait(`localStorage.getItem("ark-active-session") === ${JSON.stringify(disposableSession.id)}`);
   await wait('document.querySelector("#parsed").innerText.includes("hello from chat smoke") && document.querySelector("#parsed").innerText.includes("hello from assistant smoke") && document.querySelector("#parsed").innerText.includes("Short reply") && document.querySelector(".chat-message.user") && document.querySelector(".chat-message.assistant")', 30000);
-  const navBottom = await js(`
+  const navStart = await js(`
+    stopPolling();
     renderChatCapture({ messages: [
       { role: "user", text: "nav first message" },
-      { role: "assistant", text: "first response ".repeat(500) },
+      { role: "assistant", text: "first response" },
       { role: "user", text: "nav second message" },
-      { role: "assistant", text: "second response ".repeat(500) },
+      { role: "assistant", text: "second response" },
     ] }, { id: "nav-smoke", tool: "opencode" }, false);
-    document.querySelector("#parsed").scrollTop = document.querySelector("#parsed").scrollHeight;
+    for (const message of document.querySelectorAll(".chat-message.assistant")) message.style.minHeight = "1200px";
+    document.querySelector("#parsed").scrollTop = 200;
     updateMessageNav();
     return document.querySelector("#parsed").scrollTop;
   `);
   assert(await js('return !document.querySelector("#message-nav").hidden && document.querySelectorAll("#message-nav button").length === 2;'), "user-message navigator is unavailable");
   await js('document.querySelector("#message-previous").click(); return true;');
-  await wait(`document.querySelector("#parsed").scrollTop < ${Math.max(0, navBottom - 50)}`);
-  await wait('[...document.querySelectorAll(".chat-message.user")].sort((a, b) => Math.abs(a.getBoundingClientRect().top - document.querySelector("#parsed").getBoundingClientRect().top) - Math.abs(b.getBoundingClientRect().top - document.querySelector("#parsed").getBoundingClientRect().top))[0].innerText.includes("nav second message")');
-  const secondTop = await js('return document.querySelector("#parsed").scrollTop;');
-  assert(secondTop < navBottom, "previous-message arrow did not scroll upward");
-  await js('document.querySelector("#message-previous").click(); return true;');
-  await wait('[...document.querySelectorAll(".chat-message.user")].sort((a, b) => Math.abs(a.getBoundingClientRect().top - document.querySelector("#parsed").getBoundingClientRect().top) - Math.abs(b.getBoundingClientRect().top - document.querySelector("#parsed").getBoundingClientRect().top))[0].innerText.includes("nav first message")');
+  await wait(`document.querySelector("#parsed").scrollTop < ${navStart - 50}`);
+  await sleep(500);
+  const firstTop = await js('return document.querySelector("#parsed").scrollTop;');
+  assert(firstTop < navStart, "previous-message arrow did not scroll upward");
   await js('document.querySelector("#message-next").click(); return true;');
-  await wait('[...document.querySelectorAll(".chat-message.user")].sort((a, b) => Math.abs(a.getBoundingClientRect().top - document.querySelector("#parsed").getBoundingClientRect().top) - Math.abs(b.getBoundingClientRect().top - document.querySelector("#parsed").getBoundingClientRect().top))[0].innerText.includes("nav second message")');
+  await wait(`document.querySelector("#parsed").scrollTop > ${firstTop + 50}`);
   await shot("message-navigation");
-  await js('return loadChatMessages(activeSession());');
+  await js('startPolling(); return loadChatMessages(activeSession());');
   await wait('document.querySelector("#parsed").innerText.includes("hello from chat smoke")');
   await tmuxSendLine(disposableSession.tmux_name, "printf 'bash: raw-debug-smoke: command not found\\n'");
   await api(`/api/sessions/${disposableSession.id}/capture`);

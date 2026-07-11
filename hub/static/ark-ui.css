@@ -1721,10 +1721,13 @@ pre {
 
 .control-panel {
   position: relative;
+  z-index: 1;
   width: min(680px, 100%);
   max-height: min(680px, calc(100dvh - 32px));
   padding: 22px;
   overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
   border: 1px solid var(--line-strong);
   border-radius: 24px;
   background: var(--panel-solid);
@@ -1759,13 +1762,23 @@ pre {
   color: var(--muted);
 }
 
+.control-sheet[data-control-kind="approval"] #control-prompt,
 .control-sheet[data-control-kind="input"] #control-prompt {
+  max-height: min(220px, 34dvh);
   padding: 11px 13px;
+  overflow: auto;
   border: 1px solid var(--line);
   border-radius: 12px;
   color: var(--text);
   background: var(--panel-soft);
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.control-sheet[data-control-kind="approval"] #control-prompt {
+  font: 12px/1.5 var(--mono);
 }
 
 .control-body {
@@ -1789,19 +1802,27 @@ pre {
 }
 
 .control-sheet[data-control-kind="model"] .control-body,
+.control-sheet[data-control-kind="permissions"] .control-body,
 .control-sheet[data-control-kind="reasoning"] .control-body,
 .control-sheet[data-control-kind="status"] .control-body {
   grid-template-columns: 1fr;
 }
 
+.control-sheet[data-control-kind="approval"] .control-body,
 .control-sheet[data-control-kind="input"] .control-body {
   display: flex;
-  overflow-x: auto;
+  flex-wrap: wrap;
 }
 
-.control-sheet[data-control-kind="input"] .control-choice {
-  min-width: 170px;
-  flex: 1 0 170px;
+.control-sheet[data-control-kind="approval"] .control-choice:not(.control-secondary),
+.control-sheet[data-control-kind="input"] .control-choice:not(.control-secondary) {
+  min-width: min(170px, 100%);
+  flex: 1 1 170px;
+}
+
+.control-sheet[data-control-kind="approval"] .control-secondary,
+.control-sheet[data-control-kind="input"] .control-secondary {
+  flex: 1 0 100%;
 }
 
 .control-sheet[data-control-kind="model"] .control-choice,
