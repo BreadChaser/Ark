@@ -387,19 +387,22 @@ async function assertThemeContrast(theme) {
 
 async function assertThemeEffects(theme) {
   const effects = await js(`
-    const grid = getComputedStyle(document.querySelector(".background-grid"));
+    const grid = getComputedStyle(document.querySelector(".background-grid"), "::before");
+    const diagonal = getComputedStyle(document.querySelector(".background-grid"), "::after");
     const overlay = getComputedStyle(document.body, "::before");
     const message = document.querySelector(".message-text");
     const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim().replace("#", "");
     const rgb = [0, 2, 4].map((offset) => parseInt(bg.slice(offset, offset + 2), 16) / 255);
     const luminance = rgb.map((value) => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
     return {
-      grid: grid.backgroundImage.includes("repeating-linear-gradient"),
-      diagonalGrid: grid.backgroundImage.includes("135deg"),
+      grid: grid.backgroundImage.includes("linear-gradient"),
+      diagonalGrid: diagonal.backgroundImage.includes("135deg"),
       gridAnimation: grid.animationName,
+      diagonalAnimation: diagonal.animationName,
       gridDuration: grid.animationDuration,
       gridWillChange: grid.willChange,
-      gridTransform: grid.transform,
+      gridBloom: grid.filter,
+      diagonalBloom: diagonal.filter,
       scanlines: Number(overlay.opacity),
       overlayAnimation: overlay.animationName,
       textAnimation: message ? getComputedStyle(message).animationName : "none",
@@ -411,8 +414,10 @@ async function assertThemeEffects(theme) {
   assert(effects.grid, `${theme} theme lost its grid texture`);
   assert(effects.diagonalGrid, `${theme} theme lost its diagonal grid layer`);
   assert(effects.gridAnimation === "grid-drift", `${theme} grid is not drifting slowly`);
+  assert(effects.diagonalAnimation === "diagonal-drift", `${theme} diagonal grid is not drifting independently`);
   assert(effects.gridDuration === "180s", `${theme} grid drift is not slow: ${effects.gridDuration}`);
-  assert(effects.gridWillChange === "auto" && effects.gridTransform === "none", `${theme} grid still uses flickering subpixel transforms`);
+  assert(effects.gridWillChange === "transform", `${theme} grid is not compositor animated`);
+  assert(effects.gridBloom !== "none" && effects.diagonalBloom !== "none", `${theme} grid bloom is missing`);
   assert(effects.buttonRadius === "11px", `${theme} changed button shape to ${effects.buttonRadius}`);
   assert(effects.panelRadius === "24px", `${theme} changed panel shape to ${effects.panelRadius}`);
   if (theme === "ark") assert(effects.scanlines > 0, "Amber CRT scanlines are disabled");
@@ -746,7 +751,7 @@ async function testCodexControlPrompts() {
   assert(!capture.pending_control, "answered input prompt remained pending");
 
   await runLocal("tmux", ["respawn-pane", "-k", "-t", tmuxName, "bash"]);
-  await tmuxSendLine(tmuxName, "printf 'Select Model and Effort\\n› 1. gpt-5.5 (current)    Frontier model for complex coding, research, and real-world work.\\n2. gpt-5.4Strong model for everyday coding.\\n3. gpt-5.4-miniSmall, fast, and cost-efficient model for simpler coding tasks.\\n4. gpt-5.3-codex-sparkUltra-fast coding model.\\nPress enter to confirm or esc to go back\\n'; read -r model; clear; printf 'Select Reasoning Level for gpt-5.3-codex-spark\\n1.LowFast responses with lighter reasoning\\n2.MediumBalances speed and reasoning depth for everyday tasks\\n› 3. High (default)  Greater reasoning depth for complex problems\\n4.ExtrahighExtra high reasoning depth for complex problems\\nPress enter to confirm or esc to go back\\n'; read -r effort; clear; printf 'selected:%s/%s\\ngpt-5.3-codex-spark high · /tmp\\n' \"$model\" \"$effort\"");
+  await tmuxSendLine(tmuxName, "printf 'Select Model and Effort\\n› 1. gpt-5.5 (current)    Frontier model for complex coding, research, and real-world work.\\n2. gpt-5.4Strong model for everyday coding.\\n3. gpt-5.4-miniSmall, fast, and cost-efficient model for simpler coding tasks.\\n4. gpt-5.3-codex-sparkUltra-fast coding model.\\nPress enter to confirm or esc to go back\\n'; read -r model; clear; printf 'Select Reasoning Level for gpt-5.3-codex-spark\\n1.LowFast responses with lighter reasoning\\n2.MediumBalances speed and reasoning depth for everyday tasks\\n› 3. High (default)  Greater reasoning depth for complex problems\\n4.ExtrahighExtra high reasoning depth for complex problems\\nPress enter to confirm or esc to go back\\n'; read -r effort; clear; printf 'selected:%s/%s\\ngpt-5.3-codex-spark high fast · /tmp\\n' \"$model\" \"$effort\"");
   await wait('!document.querySelector("#control-sheet").hidden && document.querySelector("#control-kind").textContent === "model" && document.querySelectorAll("#control-body [data-command]").length === 4');
   assert(await js('return [...document.querySelectorAll("#control-body [data-command] .control-choice-title")].map((item) => item.textContent.replace(/Current|Default/g, "").trim()).join("|");') === "1gpt-5.5|2gpt-5.4|3gpt-5.4-mini|4gpt-5.3-codex-spark", "model picker lost or mangled options");
   await sleep(250);
@@ -756,7 +761,7 @@ async function testCodexControlPrompts() {
   await sleep(250);
   await shot("reasoning-picker");
   await js('document.querySelector("#control-body [data-command=\\"3\\"]").click(); return true;');
-  await wait('document.querySelector("#session-runtime").textContent.includes("gpt-5.3-codex-spark") && document.querySelector("#session-runtime").textContent.includes("high reasoning")');
+  await wait('document.querySelector("#session-runtime").textContent.includes("gpt-5.3-codex-spark") && document.querySelector("#session-runtime").textContent.includes("high reasoning") && document.querySelector("#session-runtime").textContent.includes("fast speed")');
   await waitForTerminalLogText(disposableSession.id, "selected:4/3");
   await cleanupDisposable();
 }

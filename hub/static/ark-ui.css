@@ -127,15 +127,35 @@ body {
 .background-grid {
   position: fixed;
   z-index: -1;
-  inset: -64px;
+  inset: 0;
+  overflow: hidden;
   pointer-events: none;
+}
+
+.background-grid::before,
+.background-grid::after {
+  position: absolute;
+  content: "";
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+.background-grid::before {
+  inset: -64px;
   background:
-    repeating-linear-gradient(90deg, var(--grid-line) 0 1px, transparent 1px 32px),
-    repeating-linear-gradient(0deg, var(--grid-line) 0 1px, transparent 1px 32px),
-    linear-gradient(135deg, transparent 49.7%, color-mix(in srgb, var(--grid-line) 65%, transparent) 50%, transparent 50.3%);
-  background-position: 0 0, 0 0, 0 0;
-  background-size: auto, auto, 280px 280px;
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(0deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 32px 32px;
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--grid-line) 72%, transparent));
   animation: grid-drift 180s linear infinite;
+}
+
+.background-grid::after {
+  inset: -280px;
+  background: linear-gradient(135deg, transparent 49.7%, color-mix(in srgb, var(--grid-line) 72%, transparent) 50%, transparent 50.3%);
+  background-size: 280px 280px;
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--grid-line) 72%, transparent));
+  animation: diagonal-drift 180s linear infinite;
 }
 
 .svg-sprite {
@@ -204,7 +224,12 @@ body::after {
 }
 
 @keyframes grid-drift {
-  to { background-position: 64px 64px, 64px 64px, -280px -280px; }
+  from { transform: translate3d(-32px, -32px, 0); }
+  to { transform: translate3d(0, 0, 0); }
+}
+
+@keyframes diagonal-drift {
+  to { transform: translate3d(-280px, -280px, 0); }
 }
 
 :root[data-theme="ark"] :is(.terminal-output, .xterm-host) {
@@ -2100,7 +2125,8 @@ body.sidebar-collapsed #sidebar-toggle::after {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .background-grid {
+  .background-grid::before,
+  .background-grid::after {
     animation: none !important;
   }
 

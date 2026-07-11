@@ -80,6 +80,7 @@ const els = {
   sessionRuntime: document.querySelector("#session-runtime"),
   sessionModel: document.querySelector("#session-model"),
   sessionReasoning: document.querySelector("#session-reasoning"),
+  sessionSpeed: document.querySelector("#session-speed"),
   status: document.querySelector("#status"),
   sessionPanel: document.querySelector("#session-panel"),
   sessionKind: document.querySelector("#session-kind"),
@@ -666,6 +667,7 @@ function renderSessionRuntime(session) {
   if (!runtime?.model) return;
   els.sessionModel.textContent = runtime.model;
   els.sessionReasoning.textContent = runtime.reasoning_effort ? `${runtime.reasoning_effort} reasoning` : "Reasoning unknown";
+  els.sessionSpeed.textContent = runtime.service_tier === "priority" ? "fast speed" : runtime.service_tier ? "standard speed" : "speed unknown";
 }
 
 function renderSessionSummary(session, device) {

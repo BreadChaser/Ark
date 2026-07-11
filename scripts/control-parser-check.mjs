@@ -32,5 +32,5 @@ for (const [name, expected] of Object.entries(cases)) {
 
 assert.deepEqual(
   codexStateFromScreen("gpt-5.6-sol xhigh fast · ~/Development/ark"),
-  { model: "gpt-5.6-sol", reasoning_effort: "xhigh", source: "terminal-screen" },
+  { model: "gpt-5.6-sol", reasoning_effort: "xhigh", service_tier: "priority", source: "terminal-screen" },
 );

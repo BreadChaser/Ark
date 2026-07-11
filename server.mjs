@@ -1530,6 +1530,7 @@ async function syncPendingControl(id, controls, state, codexState = null) {
     const runtime = codexState?.model ? {
       model: String(codexState.model),
       reasoning_effort: String(codexState.reasoning_effort || ""),
+      service_tier: String(codexState.service_tier || ""),
       source: String(codexState.source || ""),
     } : session.codex_state || null;
     const unchanged = next?.id === session.pending_control?.id
@@ -1912,9 +1913,9 @@ function updateCodexSettings(cache, row) {
   if (!settings?.model) return;
   cache.settings = {
     model: String(settings.model),
-    reasoning_effort: String(settings.reasoning_effort || ""),
-    service_tier: String(settings.service_tier || ""),
-    cwd: String(settings.cwd || ""),
+    reasoning_effort: String(settings.reasoning_effort || cache.settings?.reasoning_effort || ""),
+    service_tier: String(settings.service_tier || cache.settings?.service_tier || ""),
+    cwd: String(settings.cwd || cache.settings?.cwd || ""),
   };
 }
 
