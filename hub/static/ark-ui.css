@@ -1196,6 +1196,31 @@ pre {
   margin-top: -11px;
 }
 
+.chat-message.assistant:has(+ .chat-message.assistant.continued),
+.chat-message.assistant.continued {
+  padding-left: 12px;
+  border-left: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line));
+}
+
+.chat-message.assistant.continued {
+  margin-top: -21px;
+}
+
+.chat-message.assistant.continued .message-text {
+  position: relative;
+  padding-top: 11px;
+}
+
+.chat-message.assistant.continued .message-text::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 4px;
+  width: 72px;
+  height: 1px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 55%, var(--line)), transparent);
+}
+
 .message-role {
   padding: 0 4px;
   color: var(--faint);
@@ -2046,11 +2071,6 @@ body.sidebar-collapsed #sidebar-toggle::after {
 @media (min-width: 1500px) {
   .chat-stream {
     width: min(1320px, 100%);
-  }
-
-  .chat-message.assistant {
-    width: 100%;
-    max-width: min(1200px, 94%);
   }
 
   .chat-message.assistant:has(.message-text li > ul) {

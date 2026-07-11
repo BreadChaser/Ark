@@ -884,6 +884,17 @@ async function testChatLayout() {
   `);
   assert(evidenceColumns > 1, "nested evidence list did not use the available width");
   await shot("evidence-grid");
+  const updateStack = await js(`
+    renderChatCapture({ messages: [
+      { role: "assistant", text: "First progress update." },
+      { role: "assistant", text: "Second progress update." },
+      { role: "assistant", text: "Final progress update." },
+    ] }, { id: "update-stack-smoke", tool: "codex" }, false);
+    const continued = document.querySelector(".chat-message.assistant.continued");
+    return { margin: getComputedStyle(continued).marginTop, rail: getComputedStyle(continued).borderLeftStyle, divider: getComputedStyle(continued.querySelector(".message-text"), "::before").width };
+  `);
+  assert(updateStack.margin === "-21px" && updateStack.rail === "solid" && updateStack.divider === "72px", `assistant updates did not form a compact stack: ${JSON.stringify(updateStack)}`);
+  await shot("update-stack");
   await js('return loadChatMessages(activeSession());');
   const navStart = await js(`
     stopPolling();
@@ -934,7 +945,7 @@ async function testChatLayout() {
   await wait('document.querySelector("#parsed").classList.contains("chat-output") && document.querySelector("#parsed").innerText.includes("Short reply")');
   await command("WebDriver:SetWindowRect", { width: 2048, height: 1152 });
   const wideLayout = await js('return { chat: document.querySelector(".chat-stream").clientWidth, assistant: document.querySelector(".chat-message.assistant").clientWidth, composer: document.querySelector(".composer").clientWidth };');
-  assert(wideLayout.chat >= 1280 && wideLayout.assistant >= 1180 && wideLayout.composer >= 1280, `fullscreen chat wastes space: ${JSON.stringify(wideLayout)}`);
+  assert(wideLayout.chat >= 1280 && wideLayout.assistant <= 1040 && wideLayout.composer >= 1280, `fullscreen chat lost its readable measure: ${JSON.stringify(wideLayout)}`);
   await shot("wide-chat");
   await command("WebDriver:SetWindowRect", { width: 390, height: 900 });
   await command("WebDriver:Navigate", { url: BASE_URL });
