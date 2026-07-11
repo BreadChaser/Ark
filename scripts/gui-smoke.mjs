@@ -933,8 +933,8 @@ async function testChatLayout() {
   await js('document.querySelector("#view-parsed").click(); return true;');
   await wait('document.querySelector("#parsed").classList.contains("chat-output") && document.querySelector("#parsed").innerText.includes("Short reply")');
   await command("WebDriver:SetWindowRect", { width: 2048, height: 1152 });
-  const wideLayout = await js('return { chat: document.querySelector(".chat-stream").clientWidth, composer: document.querySelector(".composer").clientWidth };');
-  assert(wideLayout.chat >= 1080 && wideLayout.composer >= 1080, `fullscreen chat wastes space: ${JSON.stringify(wideLayout)}`);
+  const wideLayout = await js('return { chat: document.querySelector(".chat-stream").clientWidth, assistant: document.querySelector(".chat-message.assistant").clientWidth, composer: document.querySelector(".composer").clientWidth };');
+  assert(wideLayout.chat >= 1280 && wideLayout.assistant >= 1180 && wideLayout.composer >= 1280, `fullscreen chat wastes space: ${JSON.stringify(wideLayout)}`);
   await shot("wide-chat");
   await command("WebDriver:SetWindowRect", { width: 390, height: 900 });
   await command("WebDriver:Navigate", { url: BASE_URL });

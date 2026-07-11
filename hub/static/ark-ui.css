@@ -2043,6 +2043,25 @@ body.sidebar-collapsed #sidebar-toggle::after {
   animation-name: pop-in;
 }
 
+@media (min-width: 1500px) {
+  .chat-stream {
+    width: min(1320px, 100%);
+  }
+
+  .chat-message.assistant {
+    width: 100%;
+    max-width: min(1200px, 94%);
+  }
+
+  .chat-message.assistant:has(.message-text li > ul) {
+    max-width: min(1280px, 100%);
+  }
+
+  .composer {
+    width: min(1320px, calc(100% - 26px));
+  }
+}
+
 @media (max-width: 760px) {
   .message-image {
     max-width: min(100%, 180px);
