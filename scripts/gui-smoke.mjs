@@ -180,6 +180,7 @@ try {
   disposableTmuxNames.delete(disposableSession.tmux_name);
   disposableSession = null;
 
+  await testSessionOrganization();
   await testStoppedTmuxRestore();
   await testAdoptedScrollbackImport();
   await testCodexControlPrompts();
@@ -674,6 +675,66 @@ async function testStoppedTmuxRestore() {
   disposableSession = null;
 }
 
+async function testSessionOrganization() {
+  const names = [`Ark-name-smoke-a-${Date.now()}`, `Ark-name-smoke-b-${Date.now()}`];
+  const sessions = [];
+  try {
+    for (const tmux_name of names) {
+      const created = await api("/api/sessions", {
+        method: "POST",
+        body: JSON.stringify({ device_id: "local", cwd: "/tmp", tool: "terminal", tmux_name }),
+      });
+      sessions.push(created.session);
+      disposableTmuxNames.add(tmux_name);
+    }
+    await tmuxSendLine(names[0], "sleep 30");
+    let automatic;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      await api("/api/devices/local/tmux");
+      automatic = (await api("/api/sessions")).sessions.find((session) => session.id === sessions[0].id);
+      if (automatic?.title === "sleep") break;
+      await sleep(100);
+    }
+    assert(automatic?.title === "sleep" && !automatic.title_overridden, `terminal did not adopt its running command name: ${JSON.stringify(automatic)}`);
+
+    await js(`localStorage.setItem("ark-active-session", ${JSON.stringify(sessions[0].id)}); return true;`);
+    await command("WebDriver:Navigate", { url: BASE_URL });
+    await wait(`document.querySelector('[data-session-id="${sessions[0].id}"] [data-session-rename]')`);
+    await js(`window.prompt = () => "Pinned monitor"; document.querySelector('[data-session-id="${sessions[0].id}"] [data-session-rename]').click(); return true;`);
+    await wait(`document.querySelector('[data-session-id="${sessions[0].id}"] .session-label').textContent.includes("Pinned monitor")`);
+    await api("/api/devices/local/tmux");
+    const renamed = (await api("/api/sessions")).sessions.find((session) => session.id === sessions[0].id);
+    assert(renamed?.title === "Pinned monitor" && renamed.title_overridden === true, "automatic naming overwrote a renamed session");
+
+    const before = (await api("/api/sessions")).sessions.filter((session) => session.device_id === "local");
+    const alphabetical = [...before].sort((a, b) => String(a.title || a.tmux_name).replace(/^(codex|terminal|opencode|claude)\s*-\s*/i, "").localeCompare(String(b.title || b.tmux_name).replace(/^(codex|terminal|opencode|claude)\s*-\s*/i, ""), undefined, { sensitivity: "base" }));
+    assert(before.length >= 2 && before.map((session) => session.id).join() === alphabetical.map((session) => session.id).join(), "sessions are not alphabetical by default");
+    await js(`
+      const source = document.querySelector('[data-session-id="${before[0].id}"]');
+      const target = document.querySelector('[data-session-id="${before[1].id}"]');
+      const transfer = new DataTransfer();
+      source.dispatchEvent(new DragEvent("dragstart", { bubbles: true, dataTransfer: transfer }));
+      target.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: transfer, clientY: target.getBoundingClientRect().bottom }));
+      target.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer, clientY: target.getBoundingClientRect().bottom }));
+      source.dispatchEvent(new DragEvent("dragend", { bubbles: true, dataTransfer: transfer }));
+      return true;
+    `);
+    let after;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      after = (await api("/api/sessions")).sessions.filter((session) => session.device_id === "local");
+      if (after[1]?.id === before[0].id) break;
+      await sleep(100);
+    }
+    const expected = [...before];
+    [expected[0], expected[1]] = [expected[1], expected[0]];
+    assert(after.map((session) => session.id).join() === expected.map((session) => session.id).join(), "manual session order was not persisted");
+    await shot("session-organization");
+  } finally {
+    for (const session of sessions) await fetch(`${BASE_URL}/api/sessions/${session.id}?kill=true`, { method: "DELETE" }).catch(() => {});
+    for (const name of names) disposableTmuxNames.delete(name);
+  }
+}
+
 async function testAdoptedScrollbackImport() {
   const tmuxName = `Ark-adopt-smoke-${Date.now()}`;
   const marker = `ARK_ADOPT_SCROLLBACK_${Date.now()}`;
@@ -895,6 +956,11 @@ async function testChatLayout() {
   `);
   assert(updateStack.margin === "-21px" && updateStack.rail === "solid" && updateStack.divider === "72px", `assistant updates did not form a compact stack: ${JSON.stringify(updateStack)}`);
   await shot("update-stack");
+  await command("WebDriver:SetWindowRect", { width: 2048, height: 1152 });
+  const updateTiles = await js('return { columns: getComputedStyle(document.querySelector(".chat-stream")).gridTemplateColumns.split(" ").length, width: document.querySelector(".chat-message.assistant").clientWidth };');
+  assert(updateTiles.columns === 2 && updateTiles.width < 800, `high-resolution updates did not tile: ${JSON.stringify(updateTiles)}`);
+  await shot("update-tiles");
+  await command("WebDriver:SetWindowRect", { width: 1440, height: 1000 });
   await js('return loadChatMessages(activeSession());');
   const navStart = await js(`
     stopPolling();

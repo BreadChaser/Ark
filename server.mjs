@@ -113,6 +113,15 @@ async function route(req, res) {
   if (req.method === "GET" && pathname === "/api/sessions") {
     return json(res, 200, { sessions: await listStoredSessions() });
   }
+  if (req.method === "PUT" && pathname === "/api/sessions/order") {
+    const body = await readJson(req);
+    return json(res, 200, { sessions: await reorderSessions(body.device_id, body.ids) });
+  }
+  const sessionMetaMatch = pathname.match(/^\/api\/sessions\/([^/]+)$/);
+  if (req.method === "PATCH" && sessionMetaMatch) {
+    const updated = await renameSession(sessionMetaMatch[1], (await readJson(req)).title);
+    return json(res, 200, { session: publicSession(updated) });
+  }
   const autoResumeMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/auto-resume$/);
   if (req.method === "POST" && autoResumeMatch) {
     const session = await sessionOr404(autoResumeMatch[1]);
@@ -195,6 +204,7 @@ async function route(req, res) {
     const launchCommand = withProfileEnv(commandForSession(tool, runner.command, images), await resolveLaunchEnv(runner.env, runner.env_from_secrets));
     const result = await startTmux(tmuxDevice, tmuxName, sessionTmuxCwd({ central_runner: centralRunner, cwd: body.cwd }), launchCommand);
     if (result.code !== 0) return json(res, 502, { detail: result.output });
+    const initialTitle = `${tool} - ${path.basename(body.cwd) || body.cwd}`;
     const session = await upsertSession({
       device_id: device.id,
       device_label: device.label,
@@ -216,7 +226,8 @@ async function route(req, res) {
       central_runner: centralRunner,
       target_ssh: sshTarget(device),
       pipe_log: true,
-      title: `${tool} - ${path.basename(body.cwd) || body.cwd}`,
+      title: initialTitle,
+      auto_title_base: initialTitle,
     });
     await enableTmuxPipeLog(tmuxDevice, session);
     const contextPrompt = centralRunnerContext(device, body.cwd, tool);
@@ -247,6 +258,7 @@ async function route(req, res) {
       tool: body.tool || "terminal",
       pipe_log: true,
       title: body.tmux_name,
+      auto_title_base: body.tmux_name,
     });
     await importSessionScrollback(device, session);
     return json(res, 200, { session });
@@ -258,7 +270,7 @@ async function route(req, res) {
     const result = await listTmux(device);
     if (result.code !== 0) return json(res, 502, { detail: result.output });
     await adoptDiscoveredTmux(device, result.sessions);
-    return json(res, 200, { sessions: result.sessions });
+    return json(res, 200, { sessions: result.sessions, stored_sessions: await listStoredSessions() });
   }
 
   const toolsMatch = pathname.match(/^\/api\/devices\/([^/]+)\/tools$/);
@@ -1075,14 +1087,23 @@ function toolLabel(tool) {
 }
 
 async function adoptDiscoveredTmux(device, tmuxSessions) {
-  const created = await withMutation("store", async () => {
+  const changed = await withMutation("store", async () => {
     const data = await readStore();
     const found = [];
     const now = Math.floor(Date.now() / 1000);
     for (const tmux of tmuxSessions) {
       if (!tmux.name) continue;
       const existing = data.sessions.find((item) => (item.tmux_device_id || item.device_id) === device.id && item.tmux_name === tmux.name);
-      if (existing) continue;
+      if (existing) {
+        const baseChanged = !existing.auto_title_base;
+        if (baseChanged) existing.auto_title_base = existing.title || existing.tmux_name;
+        const title = automaticSessionTitle(existing, tmux);
+        if (baseChanged || (!existing.title_overridden && title !== existing.title)) {
+          if (!existing.title_overridden) existing.title = title;
+          found.push({ session: existing, created: false });
+        }
+        continue;
+      }
       const tool = inferToolFromCommand(tmux.command);
       const session = {
         id: crypto.randomUUID(),
@@ -1094,18 +1115,26 @@ async function adoptDiscoveredTmux(device, tmuxSessions) {
         cwd: tmux.cwd || "~",
         tool,
         pipe_log: true,
-        title: tool === "terminal" ? tmux.name : `${tool} - ${path.basename(tmux.cwd || "") || tmux.name}`,
+        title: automaticSessionTitle({ tool, cwd: tmux.cwd, tmux_name: tmux.name }, tmux),
+        auto_title_base: tmux.name,
       };
       data.sessions.push(session);
-      found.push(session);
+      found.push({ session, created: true });
     }
     if (found.length) await writeStore(data);
     return found;
   });
-  for (const session of created) {
+  for (const { session, created } of changed) {
     await writeSessionFiles(session);
-    await importSessionScrollback(device, session);
+    if (created) await importSessionScrollback(device, session);
   }
+}
+
+function automaticSessionTitle(session, tmux = {}) {
+  const tool = session.tool || inferToolFromCommand(tmux.command);
+  if (tool !== "terminal") return session.auto_title_base || session.title || `${tool} - ${path.basename(session.cwd || tmux.cwd || "") || session.tmux_name || tmux.name}`;
+  const command = commandName(tmux.command);
+  return command && !["bash", "dash", "fish", "sh", "tmux", "zsh"].includes(command) ? command : session.auto_title_base || session.title || session.tmux_name || tmux.name || "Terminal";
 }
 
 function isMissingTmux(output) {
@@ -1496,9 +1525,18 @@ function exec(file, args, timeout) {
 
 async function listStoredSessions() {
   const data = await readStore();
-  const sessions = data.sessions.sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
+  const sessions = data.sessions.sort(compareSessions);
   await Promise.all(sessions.map((session) => writeSessionFiles(session)));
   return sessions.map(publicSession);
+}
+
+function compareSessions(a, b) {
+  const device = String(a.device_label || a.device_id || "").localeCompare(String(b.device_label || b.device_id || ""));
+  if (device) return device;
+  const aOrder = Number.isInteger(a.sort_order) ? a.sort_order : Infinity;
+  const bOrder = Number.isInteger(b.sort_order) ? b.sort_order : Infinity;
+  const name = (session) => String(session.title || session.tmux_name || "").replace(/^(?:codex|terminal|opencode|claude)\s*-\s*/i, "");
+  return aOrder - bOrder || name(a).localeCompare(name(b), undefined, { sensitivity: "base" });
 }
 
 async function listAgentStates() {
@@ -1624,6 +1662,38 @@ async function clearPendingControl(id) {
 
 function publicSession(session) {
   return { ...session, storage_path: sessionDir(session.id) };
+}
+
+function httpError(status, message) {
+  return Object.assign(new Error(message), { status });
+}
+
+async function renameSession(id, value) {
+  const title = String(value || "").trim();
+  if (!title || title.length > 80) throw httpError(400, "session name must be 1 to 80 characters");
+  const session = await withMutation("store", async () => {
+    const data = await readStore();
+    const found = data.sessions.find((item) => item.id === id);
+    if (!found) throw httpError(404, `Unknown session: ${id}`);
+    found.title = title;
+    found.title_overridden = true;
+    await writeStore(data);
+    return found;
+  });
+  await writeSessionFiles(session);
+  return session;
+}
+
+async function reorderSessions(deviceId, ids) {
+  if (!deviceId || !Array.isArray(ids) || new Set(ids).size !== ids.length) throw httpError(400, "invalid session order");
+  await withMutation("store", async () => {
+    const data = await readStore();
+    const sessions = data.sessions.filter((session) => session.device_id === deviceId);
+    if (sessions.length !== ids.length || sessions.some((session) => !ids.includes(session.id))) throw httpError(400, "session order must include every session on the device");
+    ids.forEach((id, index) => { data.sessions.find((session) => session.id === id).sort_order = index; });
+    await writeStore(data);
+  });
+  return listStoredSessions();
 }
 
 async function upsertSession(patch) {
@@ -2543,6 +2613,10 @@ function selfCheckCore() {
     codexUsage({ plan_type: "pro", primary: { used_percent: 32, resets_at: 300 }, secondary: { used_percent: 24, resets_at: 400 } }),
   ]);
   if (mergedUsage.primary.used_percent !== 32 || mergedUsage.secondary.used_percent !== 24) throw new Error("Codex account usage remained session-stale");
+  if (automaticSessionTitle({ tool: "terminal", tmux_name: "Ark-TEST" }, { command: "htop" }) !== "htop") throw new Error("terminal running command was not used as its automatic title");
+  if (automaticSessionTitle({ tool: "terminal", tmux_name: "Ark-TEST" }, { command: "bash" }) !== "Ark-TEST") throw new Error("idle shell replaced its tmux session name");
+  const orderedSessions = [{ title: "terminal - Zulu" }, { title: "codex - Alpha" }].sort(compareSessions);
+  if (orderedSessions[0].title !== "codex - Alpha") throw new Error("sessions were not alphabetical by their displayed names");
   const resetNow = new Date(2026, 6, 11, 4, 10).getTime();
   const resetAt = goalUsageResetAt("You've hit your usage limit. Try again at 4:05 AM.\nGoal hit usage limits (/goal resume)", resetNow);
   if (resetAt !== new Date(2026, 6, 11, 4, 5).getTime()) throw new Error("Codex goal reset time was not detected");

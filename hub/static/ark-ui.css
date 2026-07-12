@@ -675,6 +675,61 @@ pre {
   font-weight: 800;
 }
 
+.session-row {
+  position: relative;
+  border-radius: var(--radius-sm);
+  cursor: grab;
+}
+
+.session-row > .session {
+  width: 100%;
+}
+
+.session-row.dragging {
+  opacity: 0.45;
+  cursor: grabbing;
+}
+
+.session-row.drop-target {
+  background: var(--accent-soft);
+  outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.session-actions {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 3px;
+  width: 25px;
+  display: flex;
+  justify-content: center;
+  border-radius: 7px;
+  background: var(--panel-solid);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.session-row:hover .session-actions,
+.session-row:focus-within .session-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.device-group .session-actions button {
+  width: 20px !important;
+  min-height: 24px !important;
+  justify-content: center !important;
+  padding: 0 !important;
+  color: var(--faint);
+  font: 700 13px/1 var(--mono);
+}
+
+.device-group .session-actions button:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .session-label {
   min-width: 0;
   display: inline-flex;
@@ -2079,6 +2134,41 @@ body.sidebar-collapsed #sidebar-toggle::after {
 
   .composer {
     width: min(1320px, calc(100% - 26px));
+  }
+}
+
+@media (min-width: 1800px) {
+  .chat-stream {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+  }
+
+  .chat-message {
+    grid-column: 1 / -1;
+  }
+
+  .chat-message.user {
+    justify-self: end;
+  }
+
+  .chat-message.assistant:has(+ .chat-message.assistant.continued),
+  .chat-message.assistant.continued {
+    width: 100%;
+    max-width: none;
+    grid-column: auto;
+    margin-top: 0;
+    border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
+    border-radius: var(--radius-card);
+    background: color-mix(in srgb, var(--panel-soft) 55%, transparent);
+  }
+
+  .chat-message.assistant.continued .message-text::before {
+    display: none;
+  }
+
+  .chat-message.assistant:has(.message-text li > ul) {
+    grid-column: 1 / -1;
   }
 }
 

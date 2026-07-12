@@ -310,6 +310,7 @@ async function loadTmux(deviceId, options = {}) {
   try {
     const data = await api(`/api/devices/${encodeURIComponent(deviceId)}/tmux`);
     state.tmux[deviceId] = data.sessions;
+    if (data.stored_sessions) state.sessions = data.stored_sessions;
     delete state.tmuxErrors[deviceId];
   } catch (error) {
     state.tmux[deviceId] = [];
@@ -662,6 +663,10 @@ function renderDeviceGroup(device, target = els.devices) {
     menu.append(empty);
   }
   for (const session of owned) {
+    const row = document.createElement("div");
+    row.className = "session-row";
+    row.dataset.sessionId = session.id;
+    row.draggable = true;
     const child = document.createElement("button");
     const stopped = sessionIsStopped(session);
     const agentState = sessionStateName(session, stopped);
@@ -670,7 +675,28 @@ function renderDeviceGroup(device, target = els.devices) {
     child.title = sessionDetail(session);
     if (session.id === state.activeSessionId) child.setAttribute("aria-current", "page");
     child.onclick = () => openSession(session.id);
-    menu.append(child);
+    child.ondblclick = (event) => { event.preventDefault(); renameSession(session); };
+    const actions = document.createElement("span");
+    actions.className = "session-actions";
+    actions.innerHTML = `
+      <button type="button" data-session-rename title="Rename" aria-label="Rename ${escapeHtml(sessionDisplayName(session))}">✎</button>
+    `;
+    actions.querySelector("[data-session-rename]").onclick = () => renameSession(session);
+    row.ondragstart = (event) => {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", session.id);
+      row.classList.add("dragging");
+    };
+    row.ondragend = () => row.classList.remove("dragging");
+    row.ondragover = (event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; row.classList.add("drop-target"); };
+    row.ondragleave = () => row.classList.remove("drop-target");
+    row.ondrop = (event) => {
+      event.preventDefault();
+      row.classList.remove("drop-target");
+      dropSession(event.dataTransfer.getData("text/plain"), session.id, event.clientY > row.getBoundingClientRect().top + row.offsetHeight / 2);
+    };
+    row.append(child, actions);
+    menu.append(row);
   }
   for (const tmux of tmuxOnly) {
     const child = document.createElement("button");
@@ -2158,6 +2184,51 @@ function attachmentFilename(attachment) {
 function sessionDisplayName(session) {
   const title = String(session?.title || session?.tmux_name || "Session");
   return title.replace(/^(?:codex|terminal|opencode|claude)\s*-\s*/i, "");
+}
+
+async function renameSession(session) {
+  const title = prompt("Rename session", sessionDisplayName(session));
+  if (title === null || !title.trim() || title.trim() === sessionDisplayName(session)) return;
+  try {
+    const data = await api(`/api/sessions/${encodeURIComponent(session.id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title: title.trim() }),
+    });
+    Object.assign(session, data.session);
+    renderSidebar();
+    renderMain();
+  } catch (error) {
+    showError(error.message);
+  }
+}
+
+function dropSession(sourceId, targetId, after) {
+  if (!sourceId || sourceId === targetId) return;
+  const target = state.sessions.find((item) => item.id === targetId);
+  const sessions = state.sessions.filter((item) => item.device_id === target?.device_id);
+  const source = sessions.find((item) => item.id === sourceId);
+  if (!target || !source) return;
+  sessions.splice(sessions.indexOf(source), 1);
+  sessions.splice(sessions.indexOf(target) + Number(after), 0, source);
+  saveSessionOrder(target.device_id, sessions);
+}
+
+async function saveSessionOrder(deviceId, sessions) {
+  sessions.forEach((session, index) => { session.sort_order = index; });
+  let index = 0;
+  state.sessions = state.sessions.map((session) => session.device_id === deviceId ? sessions[index++] : session);
+  renderSidebar();
+  try {
+    state.sessions = (await api("/api/sessions/order", {
+      method: "PUT",
+      body: JSON.stringify({ device_id: deviceId, ids: sessions.map((session) => session.id) }),
+    })).sessions;
+    renderSidebar();
+  } catch (error) {
+    state.sessions = (await api("/api/sessions")).sessions;
+    renderSidebar();
+    showError(error.message);
+  }
 }
 
 function toolIcon(tool) {
