@@ -706,11 +706,15 @@ async function listTmux(device) {
   const format = "#S\t#{session_windows}\t#{session_attached}\t#{session_created}\t#{pane_current_path}\t#{pane_current_command}";
   const result = await runOnDevice(device, `tmux list-sessions -F ${q(format)}`, 15000);
   if (result.code !== 0) {
-    if (result.output.toLowerCase().includes("no server running")) return { code: 0, output: "", sessions: [] };
+    if (isMissingTmux(result.output)) return { code: 0, output: "", sessions: [] };
     return { ...result, sessions: [] };
   }
 
-  const sessions = result.output.split(/\r?\n/).filter(Boolean).map((line) => {
+  return { code: 0, output: result.output, sessions: parseTmuxSessions(result.output) };
+}
+
+function parseTmuxSessions(output) {
+  return output.split(/\r?\n/).filter((line) => line.split("\t").length >= 6).map((line) => {
     const [name, windows, attached, created, cwd, command] = [...line.split("\t"), "", "", "", "", "", ""];
     return {
       name,
@@ -722,7 +726,6 @@ async function listTmux(device) {
       ark: name.startsWith("Ark-"),
     };
   });
-  return { code: 0, output: result.output, sessions };
 }
 
 async function listTools(device) {
@@ -1147,7 +1150,7 @@ function automaticSessionTitle(session, tmux = {}) {
 }
 
 function isMissingTmux(output) {
-  return /can't find (pane|session)|no server running/i.test(String(output || ""));
+  return /can't find (pane|session)|no server running|error connecting to .*no such file or directory/i.test(String(output || ""));
 }
 
 function inferToolFromCommand(command) {
@@ -2657,6 +2660,9 @@ function selfCheckCore() {
     [{ id: "ts-work", label: "work", host_name: "work", host: "100.64.0.8", dns_name: "work.tailnet.ts.net", tailscale_ips: ["100.64.0.8"], source: "tailscale", status: "online" }],
   );
   if (mergedDevices.length !== 1 || mergedDevices[0].id !== "device-work" || mergedDevices[0].routes.length !== 2) throw new Error("SSH and Tailscale device identities were not merged");
+  const tmuxSessions = parseTmuxSessions("Warning: Permanently added host\nArk-TEST\t1\t0\t123\t/tmp\tbash");
+  if (tmuxSessions.length !== 1 || tmuxSessions[0].name !== "Ark-TEST") throw new Error("SSH diagnostics leaked into tmux sessions");
+  if (!isMissingTmux("error connecting to /tmp/tmux-1000/default (No such file or directory)")) throw new Error("idle tmux server was treated as unavailable");
   const history = [
     { id: "u1", role: "user", text: "repeat" },
     { id: "a1", role: "assistant", text: "same answer" },

@@ -517,7 +517,7 @@ function renderSidebar() {
   const primary = [];
   const other = [];
   for (const device of state.devices) {
-    if (device.status === "offline" || state.tmuxErrors[device.id]) {
+    if (device.status === "offline") {
       offline.push(device);
       continue;
     }
