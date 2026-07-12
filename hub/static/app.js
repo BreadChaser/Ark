@@ -413,7 +413,8 @@ function startSessionStateStream() {
 }
 
 async function refreshTmux() {
-  await loadTmux(state.activeDeviceId);
+  const deviceIds = new Set([state.activeDeviceId, activeSession()?.tmux_device_id].filter(Boolean));
+  await Promise.all([...deviceIds].map((deviceId) => loadTmux(deviceId)));
   state.sessions = (await api("/api/sessions")).sessions;
   renderTmuxList();
   renderSidebar();

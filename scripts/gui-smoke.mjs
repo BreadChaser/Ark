@@ -1102,6 +1102,7 @@ async function testCentralRunnerRemoteChat() {
   await command("WebDriver:Navigate", { url: BASE_URL });
   await wait(`localStorage.getItem("ark-active-session") === ${JSON.stringify(disposableSession.id)}`);
   await wait('document.querySelector("#session-detail").textContent.includes("controller on")');
+  await wait(`!document.querySelector('[data-session-id="${disposableSession.id}"] .session').classList.contains("stopped")`);
   await wait('document.querySelector("#status").textContent === "Connected"', 15000);
   await shot("central-runner-remote");
   await api(`/api/sessions/${disposableSession.id}?kill=true`, { method: "DELETE" });
