@@ -548,7 +548,7 @@ function mergeDiscoveredDevices(sshDevices, tailscaleDevices) {
       os: match.os || ssh.os,
       status: match.status,
       source: "ssh-config+tailscale",
-      alias_ids: [ssh.id, match.id],
+      alias_ids: [...new Set([ssh.id, ...(ssh.alias_ids || []), match.id])],
       routes: [
         { source: "ssh-config", host: ssh.host, user: ssh.user || null },
         { source: "tailscale", host: match.host, user: ssh.user || null },
@@ -594,9 +594,12 @@ async function migrateDeviceAliases(devices) {
       }
       if (dirty) changed.push(session);
     }
-    if (!changed.length) return;
+    const compacted = collapseDuplicateSessions(data.sessions);
+    const compactedChanged = compacted.length !== data.sessions.length;
+    data.sessions = compacted;
+    if (!changed.length && !compactedChanged) return;
     await writeStore(data);
-    await Promise.all(changed.map(writeSessionFiles));
+    await Promise.all(changed.filter((session) => data.sessions.includes(session)).map(writeSessionFiles));
   });
   DEVICE_ALIAS_SIGNATURE = signature;
 }
@@ -623,31 +626,33 @@ async function writeDeviceInventory(devices) {
 
 async function sshConfigDevices() {
   const configPath = path.join(os.homedir(), ".ssh", "config");
-  let text = "";
   try {
-    text = await readFile(configPath, "utf8");
+    return parseSshConfigDevices(await readFile(configPath, "utf8"));
   } catch {
     return [];
   }
+}
 
+function parseSshConfigDevices(text) {
   const devices = [];
   let hosts = [];
   let options = {};
   const flush = () => {
-    for (const alias of hosts) {
-      if (/[*?!]/.test(alias)) continue;
-      devices.push({
-        id: `ssh-${slug(alias)}`,
-        label: alias,
-        host: options.hostname || alias,
-        user: options.user || null,
-        os: null,
-        dns_name: null,
-        local: false,
-        source: "ssh-config",
-        status: "unknown",
-      });
-    }
+    const aliases = hosts.filter((alias) => !/[*?!]/.test(alias));
+    const alias = aliases.find((item) => item !== options.hostname) || aliases[0];
+    if (!alias) return;
+    devices.push({
+      id: `ssh-${slug(alias)}`,
+      alias_ids: aliases.map((item) => `ssh-${slug(item)}`),
+      label: alias,
+      host: options.hostname || alias,
+      user: options.user || null,
+      os: null,
+      dns_name: null,
+      local: false,
+      source: "ssh-config",
+      status: "unknown",
+    });
   };
 
   for (const raw of text.split(/\r?\n/)) {
@@ -666,6 +671,26 @@ async function sshConfigDevices() {
   }
   flush();
   return devices;
+}
+
+function collapseDuplicateSessions(sessions) {
+  const unique = new Map();
+  for (const session of sessions) {
+    const key = `${session.tmux_device_id || session.device_id}\0${session.tmux_name || session.id}`;
+    const current = unique.get(key);
+    const score = (item) => Number(Boolean(item.tmux_device_id)) * 4 + Number(Boolean(item.runner_id || item.runner_command)) * 2 + Number(item.tool !== "terminal");
+    if (!current || score(session) > score(current)) {
+      if (current?.title_overridden && !session.title_overridden) {
+        session.title = current.title;
+        session.title_overridden = true;
+      }
+      unique.set(key, session);
+    } else if (session.title_overridden && !current.title_overridden) {
+      current.title = session.title;
+      current.title_overridden = true;
+    }
+  }
+  return [...unique.values()];
 }
 
 async function tailscaleDevices() {
@@ -2719,6 +2744,13 @@ function selfCheckCore() {
     [{ id: "ts-work", label: "work", host_name: "work", host: "100.64.0.8", dns_name: "work.tailnet.ts.net", tailscale_ips: ["100.64.0.8"], source: "tailscale", status: "online" }],
   );
   if (mergedDevices.length !== 1 || mergedDevices[0].id !== "device-work" || mergedDevices[0].routes.length !== 2) throw new Error("SSH and Tailscale device identities were not merged");
+  const sshAliases = parseSshConfigDevices("Host laptop 100.64.0.8\n  HostName 100.64.0.8\n  User tony\n");
+  if (sshAliases.length !== 1 || sshAliases[0].label !== "laptop" || !sshAliases[0].alias_ids.includes("ssh-100.64.0.8")) throw new Error("SSH host aliases created duplicate devices");
+  const deduplicatedSessions = collapseDuplicateSessions([
+    { id: "legacy", device_id: "device-laptop", tmux_name: "Ark-TEST", tool: "terminal" },
+    { id: "live", device_id: "ts-target", tmux_device_id: "device-laptop", tmux_name: "Ark-TEST", tool: "codex", runner_id: "codex" },
+  ]);
+  if (deduplicatedSessions.length !== 1 || deduplicatedSessions[0].id !== "live") throw new Error("stale tmux session duplicate was not removed");
   const tmuxSessions = parseTmuxSessions("Warning: Permanently added host\nArk-TEST\t1\t0\t123\t/tmp\tbash");
   if (tmuxSessions.length !== 1 || tmuxSessions[0].name !== "Ark-TEST") throw new Error("SSH diagnostics leaked into tmux sessions");
   if (!isMissingTmux("error connecting to /tmp/tmux-1000/default (No such file or directory)")) throw new Error("idle tmux server was treated as unavailable");
