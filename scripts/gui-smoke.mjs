@@ -43,6 +43,8 @@ try {
   await wait('document.querySelector("#session-panel").classList.contains("has-session") || document.querySelectorAll("#devices .session").length === 0', 30000);
   await wait('document.querySelector(".brand-logo").complete && document.querySelector(".brand-logo").naturalWidth > 0');
   assert((await api("/manifest.webmanifest")).name === "Ark", "PWA manifest is unavailable");
+  const doneSound = await fetch(`${BASE_URL}/static/done.wav?v=2`);
+  assert(doneSound.headers.get("content-type") === "audio/wav" && (await doneSound.arrayBuffer()).byteLength > 1000, "completion sound is not browser-playable");
   assert((await fetch(`${BASE_URL}/sw.js`)).ok && await js('return "serviceWorker" in navigator;'), "notification service worker is unavailable");
   assert(await js('return document.body.dataset.sessionStateTransport === "stream";'), "session states still use browser polling");
   await sleep(200);
@@ -344,6 +346,7 @@ async function assertSelectedSessionChrome() {
   await wait('document.querySelectorAll("#devices .session.active[aria-current=page]").length === 1');
   assert(await js('return sessionIsDone({ ready_at: 20, viewed_at: 10 }, "ready") && !sessionIsDone({ ready_at: 20, viewed_at: 20 }, "ready");'), "done state does not behave like an unread completion");
   assert(await js('return agentSoundKind("working", "ready") === "done" && agentSoundKind("ready", "needs_input") === "input" && agentSoundKind("ready", "ready") === "";'), "agent sounds do not follow state transitions");
+  assert(await js('return sessionStateLabel({}, "usage") === "usage";'), "usage-limited session state is unavailable");
   const chrome = await js(`
     const active = document.querySelector("#devices .session.active[aria-current=page]");
     return {

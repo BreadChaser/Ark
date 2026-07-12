@@ -98,6 +98,25 @@
   --mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
+@supports (-moz-appearance: none) {
+  :root {
+    --panel: rgba(13, 24, 34, 0.48);
+  }
+
+  :root[data-theme="light"] {
+    --panel: rgba(205, 213, 210, 0.6);
+  }
+
+  :root[data-theme="ark"] {
+    --panel: rgba(12, 9, 5, 0.48);
+  }
+
+  .sidebar,
+  .session-panel {
+    backdrop-filter: none;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
@@ -817,6 +836,11 @@ pre {
 
 .session.agent-done .session-state {
   color: var(--done);
+  font-weight: 800;
+}
+
+.session.agent-usage .session-state {
+  color: var(--warning);
   font-weight: 800;
 }
 

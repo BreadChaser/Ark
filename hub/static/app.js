@@ -66,7 +66,7 @@ const state = {
   terminalSessionId: null,
   terminalResize: null,
   terminalObserver: null,
-  audio: null,
+  audio: {},
   soundVolume: Math.max(0, Math.min(1, Number(localStorage.getItem(SOUND_VOLUME_KEY) ?? 60) / 100)),
 };
 
@@ -369,6 +369,7 @@ function applySessionStates(states) {
     session.pending_control = item.pending_control || null;
     session.ready_at = Math.max(Number(item.ready_at || 0), Number(session.ready_at || 0));
     session.viewed_at = Math.max(Number(item.viewed_at || 0), Number(session.viewed_at || 0));
+    session.usage_limited_until = Number(item.usage_limited_until || 0);
     playAgentTransition(previous[item.id], item.state);
     if (item.id === state.activeSessionId && sessionIsDone(session, item.state)) markSessionViewed(session);
   }
@@ -738,6 +739,7 @@ function sessionStateName(session, stopped) {
   if (stopped) return "stopped";
   if (session.tool === "terminal") return "terminal";
   const value = state.sessionStates[session.id];
+  if (value === "usage") return "usage";
   if (sessionIsDone(session, value)) return "done";
   return ["working", "needs_input", "ready", "unknown"].includes(value) ? value : "unknown";
 }
@@ -750,6 +752,7 @@ function sessionStateLabel(session, value) {
   return {
     working: "working",
     done: "done",
+    usage: "usage",
     needs_input: "needs input",
     ready: "ready",
     stopped: "stopped",
@@ -1357,7 +1360,7 @@ function applyCapture(sessionId, data) {
   const session = state.sessions.find((item) => item.id === sessionId);
   if (!session || activeSession()?.id !== sessionId) return;
   if (data.mode === "chat") state.chatMessages[session.id] = data.messages || [];
-  const nextAgentState = data.pending_control ? "needs_input" : data.agent_state;
+  const nextAgentState = Number(data.usage_limited_until || 0) > Math.floor(Date.now() / 1000) ? "usage" : data.pending_control ? "needs_input" : data.agent_state;
   const stateChanged = nextAgentState && state.sessionStates[session.id] !== nextAgentState;
   const pendingChanged = session.pending_control?.id !== data.pending_control?.id;
   if (nextAgentState) {
@@ -1367,6 +1370,7 @@ function applyCapture(sessionId, data) {
   session.pending_control = data.pending_control || null;
   if (data.codex_state?.model) session.codex_state = data.codex_state;
   if (data.codex_usage) session.codex_usage = data.codex_usage;
+  session.usage_limited_until = Number(data.usage_limited_until || 0);
   state.captures[session.id] = data;
   state.lastCapture = data;
   renderSessionRuntime(session);
@@ -2138,16 +2142,13 @@ function agentSoundKind(previous, next) {
 }
 
 function armSounds() {
-  const AudioContext = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContext) return null;
-  state.audio ||= new AudioContext();
-  if (state.audio.state === "suspended") state.audio.resume().catch(() => {});
-  return state.audio;
+  soundPlayer("done").load();
+  soundPlayer("input").load();
 }
 
 function playAgentTransition(previous, next) {
   const kind = agentSoundKind(previous, next);
-  if (kind && state.audio) playAgentSound(kind);
+  if (kind) playAgentSound(kind);
 }
 
 async function previewAgentSound(kind) {
@@ -2160,25 +2161,26 @@ async function previewAgentSound(kind) {
 }
 
 async function playAgentSound(kind) {
-  if (!state.audio || state.soundVolume === 0) return false;
-  if (state.audio.state === "suspended") await state.audio.resume().catch(() => {});
-  if (state.audio.state !== "running") return false;
-  const now = state.audio.currentTime;
-  const notes = kind === "done" ? [[659, 0, 0.14], [880, 0.12, 0.22]] : [[220, 0, 0.13], [165, 0.14, 0.2]];
-  const peak = state.soundVolume * (kind === "done" ? 0.28 : 0.36);
-  for (const [frequency, delay, duration] of notes) {
-    const oscillator = state.audio.createOscillator();
-    const gain = state.audio.createGain();
-    oscillator.type = kind === "done" ? "sine" : "triangle";
-    oscillator.frequency.value = frequency;
-    gain.gain.setValueAtTime(0.0001, now + delay);
-    gain.gain.exponentialRampToValueAtTime(peak, now + delay + 0.015);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + delay + duration);
-    oscillator.connect(gain).connect(state.audio.destination);
-    oscillator.start(now + delay);
-    oscillator.stop(now + delay + duration);
+  if (state.soundVolume === 0) return false;
+  const audio = soundPlayer(kind);
+  audio.volume = state.soundVolume;
+  audio.currentTime = 0;
+  try {
+    await audio.play();
+    return true;
+  } catch {
+    return false;
   }
-  return true;
+}
+
+function soundPlayer(kind) {
+  if (!state.audio[kind]) {
+    const audio = new Audio(`/static/${kind === "done" ? "done" : "needs-input"}.wav?v=2`);
+    audio.preload = "auto";
+    audio.playsInline = true;
+    state.audio[kind] = audio;
+  }
+  return state.audio[kind];
 }
 
 async function registerNotificationWorker() {

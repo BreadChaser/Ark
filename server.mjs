@@ -498,8 +498,10 @@ async function captureSession(id) {
     payload.transcript_source = "terminal-fallback";
   }
   if (session.tool === "codex") payload.codex_usage = await accountCodexUsage(session, payload.codex_usage);
-  session = await syncPendingControl(session.id, payload.controls, payload.agent_state, payload.codex_state, payload.codex_usage);
+  const usageLimitedUntil = session.tool === "codex" ? codexUsageLimitUntil(screen.code === 0 ? screen.output : result.output, payload.codex_usage) : 0;
+  session = await syncPendingControl(session.id, payload.controls, payload.agent_state, payload.codex_state, payload.codex_usage, usageLimitedUntil);
   payload.pending_control = session.pending_control || null;
+  payload.usage_limited_until = session.usage_limited_until || 0;
   if (payload.pending_control && !payload.controls.some(actionableControl)) payload.controls.unshift(payload.pending_control);
   await writeSessionCapture(session, result.output, payload, { forceTerminalLog: session.pipe_log && !device.local && !pipeSynced });
   return payload;
@@ -1548,14 +1550,20 @@ async function listAgentStates() {
   return Promise.all(sessions.map(async (session) => {
     try {
       const live = CAPTURE_STREAMS.get(session.id)?.payload;
-      if (live) return { id: session.id, state: live.pending_control ? "needs_input" : live.agent_state, pending_control: live.pending_control || null, ready_at: session.ready_at || 0, viewed_at: session.viewed_at || 0 };
+      if (live) {
+        const usageUntil = Number(live.usage_limited_until || session.usage_limited_until || 0);
+        const state = usageUntil > Math.floor(Date.now() / 1000) ? "usage" : live.pending_control ? "needs_input" : live.agent_state;
+        return { id: session.id, state, pending_control: live.pending_control || null, ready_at: session.ready_at || 0, viewed_at: session.viewed_at || 0, usage_limited_until: usageUntil };
+      }
       const device = await tmuxDeviceForSession(session);
       const screen = await captureTmuxScreen(device, session.tmux_name);
       if (screen.code !== 0) return { id: session.id, state: isMissingTmux(screen.output) ? "stopped" : "unknown" };
       const controls = parseAgentControls(session.tool, screen.output);
       const state = agentStateFromScreen(session, screen.output, controls);
       const current = await syncPendingControl(session.id, controls, state);
-      return { id: session.id, state: current.pending_control ? "needs_input" : state, pending_control: current.pending_control || null, ready_at: current.ready_at || 0, viewed_at: current.viewed_at || 0 };
+      const usageUntil = Number(current.usage_limited_until || 0);
+      const effectiveState = usageUntil > Math.floor(Date.now() / 1000) ? "usage" : current.pending_control ? "needs_input" : state;
+      return { id: session.id, state: effectiveState, pending_control: current.pending_control || null, ready_at: current.ready_at || 0, viewed_at: current.viewed_at || 0, usage_limited_until: usageUntil };
     } catch {
       return { id: session.id, state: "unknown" };
     }
@@ -1588,7 +1596,13 @@ async function autoResumeGoals(now = Date.now()) {
 
 function goalUsageResetAt(text, now = Date.now()) {
   const screen = stripAnsi(String(text || ""));
-  if (!/You've hit your usage limit/i.test(screen) || !/Goal hit usage limits\s*\(\/goal resume\)/i.test(screen)) return null;
+  if (!/Goal hit usage limits\s*\(\/goal resume\)/i.test(screen)) return null;
+  return codexUsageResetAt(screen, now);
+}
+
+function codexUsageResetAt(text, now = Date.now()) {
+  const screen = stripAnsi(String(text || ""));
+  if (!/You've hit your usage limit/i.test(screen)) return null;
   const match = screen.match(/try again at\s+(\d{1,2}):(\d{2})\s*(AM|PM)/i);
   if (!match) return null;
   let hour = Number(match[1]) % 12;
@@ -1597,6 +1611,15 @@ function goalUsageResetAt(text, now = Date.now()) {
   target.setHours(hour, Number(match[2]), 0, 0);
   if (target.getTime() < now - 12 * 60 * 60 * 1000) target.setDate(target.getDate() + 1);
   return target.getTime();
+}
+
+function codexUsageLimitUntil(text, usage, now = Date.now()) {
+  const screenReset = codexUsageResetAt(text, now);
+  if (screenReset) return Math.floor(screenReset / 1000);
+  const resets = [usage?.primary, usage?.secondary]
+    .filter((limit) => Number(limit?.used_percent) >= 100 && Number(limit?.resets_at) * 1000 > now)
+    .map((limit) => Number(limit.resets_at));
+  return resets.length ? Math.min(...resets) : 0;
 }
 
 function actionableControl(control) {
@@ -1619,7 +1642,7 @@ function pendingControl(control, previous) {
   return value;
 }
 
-async function syncPendingControl(id, controls, state, codexState = null, codexUsage = null) {
+async function syncPendingControl(id, controls, state, codexState = null, codexUsage = null, usageLimitedUntil = 0) {
   const control = controls.find(actionableControl);
   const misses = control || state === "working" ? 0 : (CONTROL_MISSES.get(id) || 0) + 1;
   if (misses) CONTROL_MISSES.set(id, misses);
@@ -1636,18 +1659,24 @@ async function syncPendingControl(id, controls, state, codexState = null, codexU
       source: String(codexState.source || ""),
     } : session.codex_state || null;
     const usage = codexUsage?.primary || codexUsage?.secondary ? codexUsage : session.codex_usage || null;
+    const now = Math.floor(Date.now() / 1000);
+    const nextUsageLimitedUntil = Number(usageLimitedUntil || 0) > now ? Number(usageLimitedUntil) : Number(session.usage_limited_until || 0) > now ? Number(session.usage_limited_until) : 0;
     const stateChanged = state !== session.agent_state;
     const unchanged = next?.id === session.pending_control?.id
       && Boolean(next) === Boolean(session.pending_control)
       && JSON.stringify(runtime) === JSON.stringify(session.codex_state || null)
       && JSON.stringify(usage) === JSON.stringify(session.codex_usage || null)
+      && nextUsageLimitedUntil === Number(session.usage_limited_until || 0)
       && !stateChanged;
     if (unchanged) return session;
     if (next) session.pending_control = next;
     else delete session.pending_control;
     if (runtime) session.codex_state = runtime;
     if (usage) session.codex_usage = usage;
-    if (completedAgentState(session.agent_state, state)) session.ready_at = Math.floor(Date.now() / 1000);
+    if (nextUsageLimitedUntil) session.usage_limited_until = nextUsageLimitedUntil;
+    else delete session.usage_limited_until;
+    if (nextUsageLimitedUntil) session.viewed_at = Math.max(Number(session.viewed_at || 0), Number(session.ready_at || 0));
+    if (!nextUsageLimitedUntil && completedAgentState(session.agent_state, state)) session.ready_at = Math.floor(Date.now() / 1000);
     session.agent_state = state;
     await writeStore(data);
     await writeSessionFiles(session);
@@ -2607,6 +2636,7 @@ function selfCheckTrustedRemote() {
 
 function selfCheckCore() {
   if (contentType("ark-logo.svg") !== "image/svg+xml") throw new Error("SVG content type is not renderable");
+  if (contentType("done.wav") !== "audio/wav") throw new Error("sound effect content type is not playable");
   const mergedDevices = mergeDiscoveredDevices(
     [{ id: "ssh-work", label: "work", host: "work.tailnet.ts.net", user: "tony", source: "ssh-config", status: "unknown" }],
     [{ id: "ts-work", label: "work", host_name: "work", host: "100.64.0.8", dns_name: "work.tailnet.ts.net", tailscale_ips: ["100.64.0.8"], source: "tailscale", status: "online" }],
@@ -2647,6 +2677,7 @@ function selfCheckCore() {
   const resetAt = goalUsageResetAt("You've hit your usage limit. Try again at 4:05 AM.\nGoal hit usage limits (/goal resume)", resetNow);
   if (resetAt !== new Date(2026, 6, 11, 4, 5).getTime()) throw new Error("Codex goal reset time was not detected");
   if (goalUsageResetAt("Goal completed normally", resetNow)) throw new Error("normal goal was classified as usage-limited");
+  if (codexUsageLimitUntil("You've hit your usage limit. Try again at 4:05 AM.", null, resetNow) !== Math.floor(resetAt / 1000)) throw new Error("Codex usage reset was not classified outside goal mode");
   const exactResume = commandForRestart({ tool: "codex", runner_command: "codex --no-alt-screen", codex_session_id: "019f491a-b738-7462-8a3a-418e4532df67" }, true, {});
   if (exactResume !== "codex --no-alt-screen resume '019f491a-b738-7462-8a3a-418e4532df67'") throw new Error("Codex resume lost the exact session id");
   const remotePicker = commandForRestart({ tool: "codex", central_runner: true }, true, { codex: "codex --no-alt-screen" });
@@ -2896,6 +2927,7 @@ function contentType(filePath) {
     ".jpeg": "image/jpeg",
     ".gif": "image/gif",
     ".webp": "image/webp",
+    ".wav": "audio/wav",
     ".webmanifest": "application/manifest+json",
   }[path.extname(filePath).toLowerCase()] || "application/octet-stream";
 }
