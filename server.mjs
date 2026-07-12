@@ -2637,6 +2637,7 @@ function selfCheckTrustedRemote() {
 function selfCheckCore() {
   if (contentType("ark-logo.svg") !== "image/svg+xml") throw new Error("SVG content type is not renderable");
   if (contentType("done.wav") !== "audio/wav") throw new Error("sound effect content type is not playable");
+  if (contentType("done.mp3") !== "audio/mpeg") throw new Error("MP3 sound effect content type is not playable");
   const mergedDevices = mergeDiscoveredDevices(
     [{ id: "ssh-work", label: "work", host: "work.tailnet.ts.net", user: "tony", source: "ssh-config", status: "unknown" }],
     [{ id: "ts-work", label: "work", host_name: "work", host: "100.64.0.8", dns_name: "work.tailnet.ts.net", tailscale_ips: ["100.64.0.8"], source: "tailscale", status: "online" }],
@@ -2928,6 +2929,7 @@ function contentType(filePath) {
     ".gif": "image/gif",
     ".webp": "image/webp",
     ".wav": "audio/wav",
+    ".mp3": "audio/mpeg",
     ".webmanifest": "application/manifest+json",
   }[path.extname(filePath).toLowerCase()] || "application/octet-stream";
 }

@@ -1041,6 +1041,40 @@ pre {
   letter-spacing: 0.09em;
 }
 
+.sound-gallery,
+.sound-group {
+  display: grid;
+  gap: 6px;
+}
+
+.sound-group + .sound-group {
+  margin-top: 4px;
+}
+
+.sound-group > strong {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.sound-choice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding-left: 10px;
+  border-left: 2px solid transparent;
+}
+
+.sound-choice.selected {
+  border-left-color: var(--accent);
+}
+
+.sound-choice button {
+  min-width: 52px;
+  padding: 5px 8px;
+}
+
 .settings-section label {
   display: grid;
   gap: 5px;

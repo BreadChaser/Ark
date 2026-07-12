@@ -8,7 +8,22 @@ const DEFAULT_TOOL_KEY = "ark-default-tool";
 const IMAGE_MODE_KEY = "ark-image-mode";
 const NOTIFIED_CONTROLS_KEY = "ark-notified-controls";
 const SOUND_VOLUME_KEY = "ark-sound-volume";
-const SOUND_VERSION = "4";
+const SOUND_CHOICE_KEYS = { done: "ark-done-sound", input: "ark-input-sound" };
+const SOUND_VERSION = "5";
+const SOUND_CHOICES = {
+  done: [
+    { id: "ark", label: "Ark chime", file: "done.wav" },
+    { id: "arrival", label: "Arrival", file: "sounds/done-arrival.mp3" },
+    { id: "spark", label: "Spark", file: "sounds/done-spark.mp3" },
+    { id: "resolve", label: "Resolve", file: "sounds/done-resolve.mp3" },
+  ],
+  input: [
+    { id: "ark", label: "Ark alert", file: "needs-input.wav" },
+    { id: "warning", label: "Warning", file: "sounds/input-warning.mp3" },
+    { id: "urgent", label: "Urgent", file: "sounds/input-urgent.mp3" },
+    { id: "busy", label: "Busy signal", file: "sounds/input-busy.mp3" },
+  ],
+};
 const DEFAULT_REPO = "~/Development";
 const URL_SESSION_ID = new URLSearchParams(window.location.search).get("session");
 const storedSidebarCollapsed = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
@@ -69,6 +84,10 @@ const state = {
   terminalObserver: null,
   audio: {},
   soundVolume: Math.max(0, Math.min(1, Number(localStorage.getItem(SOUND_VOLUME_KEY) ?? 60) / 100)),
+  soundChoices: Object.fromEntries(Object.entries(SOUND_CHOICES).map(([kind, choices]) => {
+    const stored = localStorage.getItem(SOUND_CHOICE_KEYS[kind]);
+    return [kind, choices.some(({ id }) => id === stored) ? stored : "ark"];
+  })),
 };
 
 const els = {
@@ -140,8 +159,7 @@ const els = {
   defaultView: document.querySelector("#default-view"),
   imageMode: document.querySelector("#image-mode"),
   enableNotifications: document.querySelector("#enable-notifications"),
-  testDoneSound: document.querySelector("#test-done-sound"),
-  testInputSound: document.querySelector("#test-input-sound"),
+  soundGallery: document.querySelector("#sound-gallery"),
   soundVolume: document.querySelector("#sound-volume"),
   soundVolumeValue: document.querySelector("#sound-volume-value"),
   soundStatus: document.querySelector("#sound-status"),
@@ -197,13 +215,13 @@ async function init() {
   els.defaultView.addEventListener("change", () => setView(els.defaultView.value));
   els.imageMode.addEventListener("change", () => localStorage.setItem(IMAGE_MODE_KEY, "queue"));
   els.enableNotifications.addEventListener("click", enableNotifications);
-  els.testDoneSound.addEventListener("click", () => previewAgentSound("done"));
-  els.testInputSound.addEventListener("click", () => previewAgentSound("input"));
+  els.soundGallery.addEventListener("click", handleSoundChoice);
   els.soundVolume.addEventListener("input", () => {
     state.soundVolume = Number(els.soundVolume.value) / 100;
     els.soundVolumeValue.value = `${els.soundVolume.value}%`;
     localStorage.setItem(SOUND_VOLUME_KEY, els.soundVolume.value);
   });
+  renderSoundChoices();
   els.codexFooter.addEventListener("click", toggleGoalAutoResume);
   els.settingsToggle.addEventListener("click", toggleSettings);
   els.settingsRefresh.addEventListener("click", refresh);
@@ -2147,23 +2165,51 @@ function armSounds() {
   soundPlayer("input").load();
 }
 
+function renderSoundChoices() {
+  els.soundGallery.innerHTML = Object.entries(SOUND_CHOICES).map(([kind, choices]) => `
+    <section class="sound-group">
+      <strong>${kind === "done" ? "Complete" : "Needs attention"}</strong>
+      ${choices.map(({ id, label }) => `
+        <div class="sound-choice${state.soundChoices[kind] === id ? " selected" : ""}">
+          <span>${label}</span>
+          <button type="button" data-sound-preview="${kind}:${id}" aria-label="Play ${label}">Play</button>
+          <button type="button" data-sound-use="${kind}:${id}"${state.soundChoices[kind] === id ? " disabled" : ""}>${state.soundChoices[kind] === id ? "Using" : "Use"}</button>
+        </div>`).join("")}
+    </section>`).join("");
+}
+
+function handleSoundChoice(event) {
+  const preview = event.target.closest("[data-sound-preview]");
+  const use = event.target.closest("[data-sound-use]");
+  const value = preview?.dataset.soundPreview || use?.dataset.soundUse;
+  if (!value) return;
+  const [kind, choice] = value.split(":");
+  if (preview) return previewAgentSound(kind, choice);
+  state.soundChoices[kind] = choice;
+  localStorage.setItem(SOUND_CHOICE_KEYS[kind], choice);
+  delete state.audio[kind];
+  renderSoundChoices();
+  previewAgentSound(kind, choice);
+}
+
 function playAgentTransition(previous, next) {
   const kind = agentSoundKind(previous, next);
   if (kind) playAgentSound(kind);
 }
 
-async function previewAgentSound(kind) {
+async function previewAgentSound(kind, choice = state.soundChoices[kind]) {
   armSounds();
-  const played = await playAgentSound(kind, true);
+  const played = await playAgentSound(kind, true, choice);
+  const label = SOUND_CHOICES[kind].find(({ id }) => id === choice)?.label || choice;
   els.soundStatus.textContent = state.soundVolume === 0
     ? "Sound is muted."
-    : played ? `Played ${kind === "done" ? "done" : "needs input"} v${SOUND_VERSION} at ${Math.round(state.soundVolume * 100)}%.`
+    : played ? `Played ${label} at ${Math.round(state.soundVolume * 100)}%.`
       : "This browser blocked audio. Tap the page, then try again.";
 }
 
-async function playAgentSound(kind, fresh = false) {
+async function playAgentSound(kind, fresh = false, choice = state.soundChoices[kind]) {
   if (state.soundVolume === 0) return false;
-  const audio = soundPlayer(kind, fresh);
+  const audio = soundPlayer(kind, fresh, choice);
   audio.volume = state.soundVolume;
   audio.currentTime = 0;
   try {
@@ -2174,12 +2220,14 @@ async function playAgentSound(kind, fresh = false) {
   }
 }
 
-function soundPlayer(kind, fresh = false) {
+function soundPlayer(kind, fresh = false, choice = state.soundChoices[kind]) {
   if (fresh || !state.audio[kind]) {
-    const audio = new Audio(`/static/${kind === "done" ? "done" : "needs-input"}.wav?v=${SOUND_VERSION}${fresh ? `&preview=${Date.now()}` : ""}`);
+    const file = SOUND_CHOICES[kind].find(({ id }) => id === choice)?.file || SOUND_CHOICES[kind][0].file;
+    const audio = new Audio(`/static/${file}?v=${SOUND_VERSION}${fresh ? `&preview=${Date.now()}` : ""}`);
     audio.preload = "auto";
     audio.playsInline = true;
-    state.audio[kind] = audio;
+    if (!fresh) state.audio[kind] = audio;
+    return audio;
   }
   return state.audio[kind];
 }

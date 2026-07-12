@@ -7,7 +7,7 @@
     <link rel="icon" href="/static/ark-logo.svg?v=3" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
-    <link rel="stylesheet" href="/static/ark-ui.css?v=26" />
+    <link rel="stylesheet" href="/static/ark-ui.css?v=27" />
   </head>
   <body>
     <div class="background-grid" aria-hidden="true"></div>
@@ -100,10 +100,7 @@
                 Sound volume <output id="sound-volume-value">60%</output>
                 <input id="sound-volume" type="range" min="0" max="100" step="5" value="60" />
               </label>
-              <div class="inline-actions">
-                <button id="test-done-sound" type="button">Test done</button>
-                <button id="test-input-sound" type="button">Test needs input</button>
-              </div>
+              <div id="sound-gallery" class="sound-gallery" aria-label="Notification sound choices"></div>
               <small id="sound-status" class="settings-note">Sounds activate after a click or key press.</small>
               <small id="notification-status" class="settings-note">Ark can notify this device when a session needs you.</small>
             </section>
@@ -290,6 +287,6 @@
     <script src="/vendor/xterm/addon-fit.js"></script>
     <script src="/vendor/marked/marked.js"></script>
     <script src="/vendor/dompurify/purify.js"></script>
-    <script src="/static/app.js?v=26"></script>
+    <script src="/static/app.js?v=27"></script>
   </body>
 </html>
