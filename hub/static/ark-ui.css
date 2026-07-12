@@ -1246,6 +1246,10 @@ pre {
   white-space: nowrap;
 }
 
+.session-actions-toggle {
+  display: none;
+}
+
 .parsed-output,
 .xterm-host,
 .terminal-output {
@@ -2301,7 +2305,7 @@ body.sidebar-collapsed #sidebar-toggle::after {
   }
 
   .topbar {
-    height: 58px;
+    height: 52px;
     padding: 1px 4px 5px 6px;
   }
 
@@ -2318,17 +2322,20 @@ body.sidebar-collapsed #sidebar-toggle::after {
     display: none;
   }
 
-  .session-runtime {
-    grid-column: 1 / -1;
-  }
-
-  .session-runtime span {
-    padding-inline: 5px;
-    font-size: 9px;
+  .session-runtime,
+  .quick-actions {
+    display: none !important;
   }
 
   .settings-toggle {
-    padding-inline: 8px;
+    min-width: 36px;
+    padding: 0;
+    font-size: 0;
+  }
+
+  .settings-toggle::before {
+    content: "⚙";
+    font-size: 18px;
   }
 
   .settings-menu {
@@ -2338,7 +2345,7 @@ body.sidebar-collapsed #sidebar-toggle::after {
   }
 
   .workspace {
-    height: calc(100dvh - 66px);
+    height: calc(100dvh - 60px);
   }
 
   .session-panel {
@@ -2347,18 +2354,46 @@ body.sidebar-collapsed #sidebar-toggle::after {
 
   .session-toolbar {
     min-height: 42px;
+    position: relative;
     gap: 5px;
     padding: 5px 6px;
-    overflow-x: auto;
-    scrollbar-width: none;
   }
 
   .session-toolbar > .inline-actions {
-    flex: 0 0 auto;
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 6px);
+    right: 6px;
+    display: none;
+    min-width: 132px;
+    padding: 5px;
+    border: 1px solid var(--line-strong);
+    border-radius: 14px;
+    background: var(--panel-solid);
+    box-shadow: var(--shadow);
+  }
+
+  .session-panel.session-actions-open .session-toolbar > .inline-actions {
+    display: grid;
   }
 
   .session-toolbar > .inline-actions button {
-    padding-inline: 7px;
+    min-height: 36px;
+    padding-inline: 10px;
+    text-align: left;
+  }
+
+  .session-actions-toggle {
+    display: grid;
+    place-items: center;
+    min-width: 34px;
+    min-height: 34px;
+    margin-left: auto;
+    padding: 0;
+    border-color: transparent;
+    color: var(--muted);
+    background: transparent;
+    font-size: 17px;
   }
 
   .parsed-output {
@@ -2366,7 +2401,12 @@ body.sidebar-collapsed #sidebar-toggle::after {
   }
 
   .message-nav {
-    left: 4px;
+    top: 50%;
+    right: 4px;
+    left: auto;
+    border-color: transparent;
+    background: color-mix(in srgb, var(--panel-solid) 62%, transparent);
+    box-shadow: none;
   }
 
   .message-nav button {
@@ -2375,7 +2415,7 @@ body.sidebar-collapsed #sidebar-toggle::after {
   }
 
   .session-panel.has-message-nav .chat-output {
-    padding-left: 42px;
+    padding-left: 8px;
   }
 
   .chat-output {
@@ -2403,10 +2443,6 @@ body.sidebar-collapsed #sidebar-toggle::after {
   .chat-message.assistant .message-text {
     padding-left: 2px;
     font-size: 13px;
-  }
-
-  .quick-actions {
-    margin-bottom: 6px;
   }
 
   .composer {

@@ -150,6 +150,7 @@ const els = {
   resume: document.querySelector("#resume"),
   forget: document.querySelector("#forget"),
   kill: document.querySelector("#kill"),
+  sessionActionsToggle: document.querySelector("#session-actions-toggle"),
   viewParsed: document.querySelector("#view-parsed"),
   viewRaw: document.querySelector("#view-raw"),
   theme: document.querySelector("#theme"),
@@ -274,6 +275,10 @@ async function init() {
   els.resume.addEventListener("click", () => restartSession(true));
   els.forget.addEventListener("click", () => deleteSession(false));
   els.kill.addEventListener("click", () => deleteSession(true));
+  els.sessionActionsToggle.addEventListener("click", () => {
+    const open = els.sessionPanel.classList.toggle("session-actions-open");
+    els.sessionActionsToggle.setAttribute("aria-expanded", String(open));
+  });
   els.viewParsed.addEventListener("click", () => setView("parsed"));
   els.viewRaw.addEventListener("click", () => setView("raw"));
   els.repo.addEventListener("change", rememberRepo);
@@ -1283,6 +1288,8 @@ async function adoptSession(tmux) {
 }
 
 function openSession(sessionId) {
+  els.sessionPanel.classList.remove("session-actions-open");
+  els.sessionActionsToggle.setAttribute("aria-expanded", "false");
   if (state.activeSessionId !== sessionId) hideControlSheet();
   const session = state.sessions.find((item) => item.id === sessionId);
   if (session) {
@@ -2099,7 +2106,7 @@ function updateViewLabels(mode) {
 function setSessionControls(enabled, stopped = false) {
   els.workspace.classList.toggle("has-session", enabled);
   els.sessionPanel.classList.toggle("has-session", enabled);
-  for (const control of [els.input, els.send, els.attachImage, els.interrupt, els.restart, els.resume, els.forget, els.kill]) {
+  for (const control of [els.input, els.send, els.attachImage, els.interrupt, els.restart, els.resume, els.forget, els.kill, els.sessionActionsToggle]) {
     control.disabled = !enabled;
   }
   for (const control of [els.input, els.send, els.attachImage, els.interrupt]) control.disabled = !enabled || stopped;
