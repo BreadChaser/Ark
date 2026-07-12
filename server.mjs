@@ -360,7 +360,7 @@ async function route(req, res) {
     const suppressMessage = body.control === true || await isCodexControlInput(device, session, text);
     const submitKey = !suppressMessage && body.submit !== false && text && session.tool === "codex"
       ? submitKeyForSession(session, (await captureTmuxScreen(device, session.tmux_name)).output)
-      : "C-m";
+      : "Enter";
     const result = menuIndex
       ? await sendMenuChoice(device, session.tmux_name, menuIndex, menuCurrent)
       : key
@@ -1290,14 +1290,14 @@ async function captureTmuxScreen(device, tmuxName) {
   return runOnDevice(device, `tmux capture-pane -pt ${q(tmuxName)} -e`, 15000);
 }
 
-async function sendText(device, tmuxName, text, submit, key = "C-m") {
+async function sendText(device, tmuxName, text, submit, key = "Enter") {
   const submitKey = submit ? ` \\; send-keys -t ${q(tmuxName)} ${key}` : "";
   return runOnDevice(device, `tmux send-keys -t ${q(tmuxName)} -l ${q(text)}${submitKey}`, 15000);
 }
 
 function submitKeyForSession(session, screen) {
   const controls = parseAgentControls(session.tool, screen);
-  return session.tool === "codex" && agentStateFromScreen(session, screen, controls) === "working" ? "Tab" : "C-m";
+  return session.tool === "codex" && (session.agent_state === "working" || agentStateFromScreen(session, screen, controls) === "working") ? "Tab" : "Enter";
 }
 
 async function sendKey(device, tmuxName, key) {
@@ -2765,7 +2765,7 @@ function selfCheckCore() {
   if (mergedDrift.length !== 2 || mergedDrift.at(-1)?.text !== "live update") throw new Error("live commentary was hidden behind a pending user message");
   if (agentStateFromScreen({ tool: "codex" }, "• Working (2s • esc to interrupt)") !== "working") throw new Error("working Codex state was not detected");
   if (submitKeyForSession({ tool: "codex" }, "• Working (2s • esc to interrupt)") !== "Tab") throw new Error("working Codex message was not queued");
-  if (submitKeyForSession({ tool: "codex" }, "› Write tests") !== "C-m") throw new Error("ready Codex message was not submitted");
+  if (submitKeyForSession({ tool: "codex" }, "› Write tests") !== "Enter") throw new Error("ready Codex message was not submitted");
   if (agentStateFromScreen({ tool: "codex" }, "Would you like to run this command?\n1. Yes\n2. No\nPress enter to confirm") !== "needs_input") throw new Error("Codex input state was not detected");
   const approval = parseCodexControls("Would you like to run the following command? 1. Yes, proceed 2. No, cancel Press enter to confirm or esc to cancel", parseTerminalLines("Would you like to run the following command?\n1. Yes, proceed\n2. No, cancel\nPress enter to confirm or esc to cancel"));
   if (approval[0]?.kind !== "approval" || approval[0].choices.length !== 3) throw new Error("Codex command approval prompt was not actionable");
