@@ -2437,11 +2437,6 @@ function startTerminalStream(session) {
     if (fit) terminal.loadAddon(fit);
     els.xterm.innerHTML = "";
     terminal.open(els.xterm);
-    terminal.attachCustomWheelEventHandler((event) => {
-      if (!event.deltaY) return true;
-      terminal.scrollLines(Math.sign(event.deltaY) * Math.max(1, Math.ceil(Math.abs(event.deltaY) / 40)));
-      return false;
-    });
     terminal.onData((data) => {
       data = stripTerminalProbeResponses(data);
       if (!data) return;

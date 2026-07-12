@@ -1288,7 +1288,8 @@ async function captureTmuxScreen(device, tmuxName) {
 }
 
 async function sendText(device, tmuxName, text, submit) {
-  return runOnDevice(device, `tmux send-keys -t ${q(tmuxName)} -l ${q(submit ? `${text}\r` : text)}`, 15000);
+  const enter = submit ? ` \\; send-keys -t ${q(tmuxName)} C-m` : "";
+  return runOnDevice(device, `tmux send-keys -t ${q(tmuxName)} -l ${q(text)}${enter}`, 15000);
 }
 
 async function sendKey(device, tmuxName, key) {
@@ -1437,7 +1438,7 @@ async function appendTerminalLog(session, data) {
 }
 
 function terminalAttachCommand(session, device) {
-  const script = withUserPath(`tmux set-option -t ${q(session.tmux_name)} status off >/dev/null 2>&1 || true; tmux attach-session -t ${q(session.tmux_name)}`);
+  const script = withUserPath(`tmux set-option -t ${q(session.tmux_name)} status off >/dev/null 2>&1 || true; tmux set-option -t ${q(session.tmux_name)} mouse on; tmux attach-session -t ${q(session.tmux_name)}`);
   if (device.local) return { file: "bash", args: ["-lc", script], cwd: os.homedir() };
   const target = device.user ? `${device.user}@${device.host}` : device.host;
   return {
