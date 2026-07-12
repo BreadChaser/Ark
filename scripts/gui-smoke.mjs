@@ -495,7 +495,7 @@ async function assertDiagnostics() {
   assert(diagnostics.features.codex_chrome_filter, "diagnostics missing codex_chrome_filter feature");
   assert(diagnostics.features.codex_trust_input_suppression, "diagnostics missing codex_trust_input_suppression feature");
   assert(diagnostics.features.codex_bullet_reply_capture, "diagnostics missing codex_bullet_reply_capture feature");
-  assert(diagnostics.features.tmux_submit_delay, "diagnostics missing tmux_submit_delay feature");
+  assert(diagnostics.features.tmux_atomic_submit, "diagnostics missing tmux_atomic_submit feature");
   assert(diagnostics.features.keyboard_composer_send, "diagnostics missing keyboard_composer_send feature");
   assert(diagnostics.features.generic_chat_image_prompt, "diagnostics missing generic_chat_image_prompt feature");
   assert(Array.isArray(diagnostics.tool_devices) && diagnostics.tool_devices.length, "diagnostics missing tool_devices");

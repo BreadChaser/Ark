@@ -1679,6 +1679,7 @@ async function sendInput() {
       if (sent.message) state.chatMessages[session.id] = mergeLocalChatMessages(state.chatMessages[session.id] || [], [sent.message]);
       renderCapture();
     }
+    if (sent.queued) setStatus("Queued for Codex");
     await capture();
   } catch (error) {
     state.sentChat[session.id] = (state.sentChat[session.id] || []).filter((message) => message.id !== pendingId);

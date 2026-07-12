@@ -358,11 +358,14 @@ async function route(req, res) {
     if (menuIndex && (!Number.isInteger(menuIndex) || menuIndex < 1 || menuIndex > 50 || body.control !== true)) return json(res, 400, { detail: "invalid menu index" });
     if (menuCurrent && (!Number.isInteger(menuCurrent) || menuCurrent < 1 || menuCurrent > 50 || !menuIndex)) return json(res, 400, { detail: "invalid current menu index" });
     const suppressMessage = body.control === true || await isCodexControlInput(device, session, text);
+    const submitKey = !suppressMessage && body.submit !== false && text && session.tool === "codex"
+      ? submitKeyForSession(session, (await captureTmuxScreen(device, session.tmux_name)).output)
+      : "C-m";
     const result = menuIndex
       ? await sendMenuChoice(device, session.tmux_name, menuIndex, menuCurrent)
       : key
       ? await sendKey(device, session.tmux_name, key)
-      : await sendText(device, session.tmux_name, text, body.submit !== false);
+      : await sendText(device, session.tmux_name, text, body.submit !== false, submitKey);
     if (result.code !== 0 && isMissingTmux(result.output)) {
       return json(res, 410, { detail: "This tmux session is stopped. Use Resume or Restart." });
     }
@@ -377,7 +380,7 @@ async function route(req, res) {
       });
     }
     await touchSession(session.id);
-  return json(res, 200, { ok: true, message });
+  return json(res, 200, { ok: true, message, queued: submitKey === "Tab" });
   }
 
   const imageMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/(?:images|attachments)$/);
@@ -1078,7 +1081,7 @@ async function diagnostics() {
       codex_chrome_filter: true,
       codex_trust_input_suppression: true,
       codex_bullet_reply_capture: true,
-      tmux_submit_delay: true,
+      tmux_atomic_submit: true,
       keyboard_composer_send: true,
       generic_chat_image_prompt: true,
       gui_smoke: true,
@@ -1287,9 +1290,14 @@ async function captureTmuxScreen(device, tmuxName) {
   return runOnDevice(device, `tmux capture-pane -pt ${q(tmuxName)} -e`, 15000);
 }
 
-async function sendText(device, tmuxName, text, submit) {
-  const enter = submit ? ` \\; send-keys -t ${q(tmuxName)} C-m` : "";
-  return runOnDevice(device, `tmux send-keys -t ${q(tmuxName)} -l ${q(text)}${enter}`, 15000);
+async function sendText(device, tmuxName, text, submit, key = "C-m") {
+  const submitKey = submit ? ` \\; send-keys -t ${q(tmuxName)} ${key}` : "";
+  return runOnDevice(device, `tmux send-keys -t ${q(tmuxName)} -l ${q(text)}${submitKey}`, 15000);
+}
+
+function submitKeyForSession(session, screen) {
+  const controls = parseAgentControls(session.tool, screen);
+  return session.tool === "codex" && agentStateFromScreen(session, screen, controls) === "working" ? "Tab" : "C-m";
 }
 
 async function sendKey(device, tmuxName, key) {
@@ -2756,6 +2764,8 @@ function selfCheckCore() {
   );
   if (mergedDrift.length !== 2 || mergedDrift.at(-1)?.text !== "live update") throw new Error("live commentary was hidden behind a pending user message");
   if (agentStateFromScreen({ tool: "codex" }, "• Working (2s • esc to interrupt)") !== "working") throw new Error("working Codex state was not detected");
+  if (submitKeyForSession({ tool: "codex" }, "• Working (2s • esc to interrupt)") !== "Tab") throw new Error("working Codex message was not queued");
+  if (submitKeyForSession({ tool: "codex" }, "› Write tests") !== "C-m") throw new Error("ready Codex message was not submitted");
   if (agentStateFromScreen({ tool: "codex" }, "Would you like to run this command?\n1. Yes\n2. No\nPress enter to confirm") !== "needs_input") throw new Error("Codex input state was not detected");
   const approval = parseCodexControls("Would you like to run the following command? 1. Yes, proceed 2. No, cancel Press enter to confirm or esc to cancel", parseTerminalLines("Would you like to run the following command?\n1. Yes, proceed\n2. No, cancel\nPress enter to confirm or esc to cancel"));
   if (approval[0]?.kind !== "approval" || approval[0].choices.length !== 3) throw new Error("Codex command approval prompt was not actionable");
