@@ -2175,7 +2175,7 @@ async function playAgentSound(kind) {
 
 function soundPlayer(kind) {
   if (!state.audio[kind]) {
-    const audio = new Audio(`/static/${kind === "done" ? "done" : "needs-input"}.wav?v=2`);
+    const audio = new Audio(`/static/${kind === "done" ? "done" : "needs-input"}.wav?v=3`);
     audio.preload = "auto";
     audio.playsInline = true;
     state.audio[kind] = audio;
