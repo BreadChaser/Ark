@@ -1845,7 +1845,10 @@ async function loadChatMessages(session) {
   try {
     const data = await api(`/api/sessions/${session.id}/messages`);
     state.chatMessages[session.id] = data.messages || [];
-    if (activeSession()?.id === session.id) renderCapture();
+    if (activeSession()?.id === session.id) {
+      state.forceBottomSessionId = session.id;
+      renderCapture();
+    }
   } catch {}
 }
 
