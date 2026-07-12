@@ -1288,9 +1288,7 @@ async function captureTmuxScreen(device, tmuxName) {
 }
 
 async function sendText(device, tmuxName, text, submit) {
-  let script = `tmux send-keys -t ${q(tmuxName)} -l ${q(text)}`;
-  if (submit) script += `; sleep 0.5; tmux send-keys -t ${q(tmuxName)} Enter`;
-  return runOnDevice(device, script, 15000);
+  return runOnDevice(device, `tmux send-keys -t ${q(tmuxName)} -l ${q(submit ? `${text}\r` : text)}`, 15000);
 }
 
 async function sendKey(device, tmuxName, key) {
