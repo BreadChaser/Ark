@@ -43,7 +43,7 @@ try {
   await wait('document.querySelector("#session-panel").classList.contains("has-session") || document.querySelectorAll("#devices .session").length === 0', 30000);
   await wait('document.querySelector(".brand-logo").complete && document.querySelector(".brand-logo").naturalWidth > 0');
   assert((await api("/manifest.webmanifest")).name === "Ark", "PWA manifest is unavailable");
-  const doneSound = await fetch(`${BASE_URL}/static/done.wav?v=3`);
+  const doneSound = await fetch(`${BASE_URL}/static/done.wav?v=4`);
   assert(doneSound.headers.get("content-type") === "audio/wav" && (await doneSound.arrayBuffer()).byteLength > 1000, "completion sound is not browser-playable");
   assert((await fetch(`${BASE_URL}/sw.js`)).ok && await js('return "serviceWorker" in navigator;'), "notification service worker is unavailable");
   assert(await js('return document.body.dataset.sessionStateTransport === "stream";'), "session states still use browser polling");

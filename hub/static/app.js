@@ -8,6 +8,7 @@ const DEFAULT_TOOL_KEY = "ark-default-tool";
 const IMAGE_MODE_KEY = "ark-image-mode";
 const NOTIFIED_CONTROLS_KEY = "ark-notified-controls";
 const SOUND_VOLUME_KEY = "ark-sound-volume";
+const SOUND_VERSION = "4";
 const DEFAULT_REPO = "~/Development";
 const URL_SESSION_ID = new URLSearchParams(window.location.search).get("session");
 const storedSidebarCollapsed = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
@@ -2153,16 +2154,16 @@ function playAgentTransition(previous, next) {
 
 async function previewAgentSound(kind) {
   armSounds();
-  const played = await playAgentSound(kind);
+  const played = await playAgentSound(kind, true);
   els.soundStatus.textContent = state.soundVolume === 0
     ? "Sound is muted."
-    : played ? `Played ${kind === "done" ? "done" : "needs input"} at ${Math.round(state.soundVolume * 100)}%.`
+    : played ? `Played ${kind === "done" ? "done" : "needs input"} v${SOUND_VERSION} at ${Math.round(state.soundVolume * 100)}%.`
       : "This browser blocked audio. Tap the page, then try again.";
 }
 
-async function playAgentSound(kind) {
+async function playAgentSound(kind, fresh = false) {
   if (state.soundVolume === 0) return false;
-  const audio = soundPlayer(kind);
+  const audio = soundPlayer(kind, fresh);
   audio.volume = state.soundVolume;
   audio.currentTime = 0;
   try {
@@ -2173,9 +2174,9 @@ async function playAgentSound(kind) {
   }
 }
 
-function soundPlayer(kind) {
-  if (!state.audio[kind]) {
-    const audio = new Audio(`/static/${kind === "done" ? "done" : "needs-input"}.wav?v=3`);
+function soundPlayer(kind, fresh = false) {
+  if (fresh || !state.audio[kind]) {
+    const audio = new Audio(`/static/${kind === "done" ? "done" : "needs-input"}.wav?v=${SOUND_VERSION}${fresh ? `&preview=${Date.now()}` : ""}`);
     audio.preload = "auto";
     audio.playsInline = true;
     state.audio[kind] = audio;
