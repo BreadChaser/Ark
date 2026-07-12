@@ -489,7 +489,7 @@ async function captureSession(id) {
     payload.transcript_source = "codex-rollout";
     const settings = cachedCodexSettings(session);
     if (settings) payload.codex_state = { ...(payload.codex_state || {}), ...settings, source: "codex-rollout" };
-    payload.codex_usage = payload.codex_usage || cachedCodexUsage(session) || session.codex_usage || null;
+    payload.codex_usage = cachedCodexUsage(session) || payload.codex_usage || session.codex_usage || null;
     if (payload.agent_state !== "needs_input") payload.agent_state = cachedCodexTaskState(session) || payload.agent_state;
   } else if (payload.mode === "chat") {
     payload.messages = await writeMessagesSnapshot(session, payload.messages);
@@ -1713,7 +1713,7 @@ async function clearPendingControl(id) {
 }
 
 function publicSession(session) {
-  return { ...session, storage_path: sessionDir(session.id) };
+  return { ...session, codex_usage: mergeCodexUsage([session.codex_usage]) || null, storage_path: sessionDir(session.id) };
 }
 
 function httpError(status, message) {
@@ -2155,7 +2155,7 @@ function updateCodexSettings(cache, row) {
   if (row?.type === "event_msg" && row.payload?.type === "task_started") cache.taskState = "working";
   if (row?.type === "event_msg" && row.payload?.type === "task_complete") cache.taskState = "ready";
   const limits = row?.type === "event_msg" && row.payload?.type === "token_count" ? row.payload.rate_limits : null;
-  if (limits?.limit_id === "codex" && (limits.primary || limits.secondary)) cache.usage = codexUsage(limits, Date.parse(row.timestamp || "") / 1000);
+  if (limits?.limit_id?.startsWith("codex") && (limits.primary || limits.secondary)) cache.usage = mergeCodexUsage([cache.usage, codexUsage(limits, Date.parse(row.timestamp || "") / 1000)]);
   const settings = row?.type === "turn_context"
     ? { model: row.payload?.model, reasoning_effort: row.payload?.effort || row.payload?.reasoning_effort }
     : row?.type === "event_msg" && row.payload?.type === "thread_settings_applied"
@@ -2176,7 +2176,35 @@ function codexUsage(limits, updatedAt = 0) {
     window_minutes: Math.max(0, Number(value.window_minutes) || 0),
     resets_at: Math.max(0, Number(value.resets_at) || 0),
   } : null;
-  return { plan_type: String(limits.plan_type || ""), primary: normalize(limits.primary), secondary: normalize(limits.secondary), updated_at: Math.max(0, Number(updatedAt) || 0) };
+  const entry = {
+    limit_id: String(limits.limit_id || "codex"),
+    limit_name: String(limits.limit_name || ""),
+    plan_type: String(limits.plan_type || ""),
+    primary: normalize(limits.primary),
+    secondary: normalize(limits.secondary),
+    updated_at: Math.max(0, Number(updatedAt) || 0),
+  };
+  return summarizeCodexUsage({ [entry.limit_id]: entry });
+}
+
+function codexWeeklyLimit(entry) {
+  return [entry?.primary, entry?.secondary].find((limit) => Number(limit?.window_minutes) >= 10080) || null;
+}
+
+function summarizeCodexUsage(entries) {
+  const values = Object.values(entries || {}).filter(Boolean);
+  const latest = (items) => items.sort((a, b) => Number(a.updated_at) - Number(b.updated_at)).at(-1) || null;
+  const standard = latest(values.filter((entry) => entry.limit_id === "codex"));
+  const spark = latest(values.filter((entry) => /spark/i.test(`${entry.limit_id} ${entry.limit_name}`)));
+  const primary = codexWeeklyLimit(standard);
+  const secondary = codexWeeklyLimit(spark);
+  return {
+    plan_type: latest(values.filter((entry) => entry.plan_type))?.plan_type || "",
+    primary,
+    secondary,
+    updated_at: Math.max(0, ...values.map((entry) => Number(entry.updated_at) || 0)),
+    limits: entries,
+  };
 }
 
 function codexUsageFromScreen(text, now = Date.now()) {
@@ -2201,7 +2229,7 @@ function codexUsageFromScreen(text, now = Date.now()) {
     const next = starts[index + 1] ?? screen.length;
     const status = screen.slice(starts[index], next);
     const limit = (label, window_minutes) => {
-      const match = status.match(new RegExp(`${label} limit:\\s*(\\d{1,3})%\\s+left(?:\\s*\\(resets\\s+([^)]*)\\))?(?:\\s*\\n\\s*[│|]?\\s*\\(resets\\s+([^)]*)\\))?`, "i"));
+      const match = status.match(new RegExp(`(?:^|\\n)\\s*(?:[│|]\\s*)?${label} limit:\\s*(\\d{1,3})%\\s+left(?:\\s*\\(resets\\s+([^)]*)\\))?(?:\\s*\\n\\s*[│|]?\\s*\\(resets\\s+([^)]*)\\))?`, "i"));
       if (!match) return null;
       return { used_percent: 100 - Number(match[1]), window_minutes, resets_at: resetAt(match[2] || match[3]) };
     };
@@ -2209,7 +2237,10 @@ function codexUsageFromScreen(text, now = Date.now()) {
     const secondary = limit("GPT[- ]5\\.3[- ]Codex[- ]Spark(?:\\s+weekly)?", 10080);
     if (!primary && !secondary) continue;
     const plan_type = status.match(/\bAccount:\s*.*?\(([^)]+)\)/i)?.[1]?.toLowerCase() || "";
-    return codexUsage({ plan_type, primary, secondary }, now / 1000);
+    return mergeCodexUsage([
+      primary && codexUsage({ limit_id: "codex", plan_type, primary }, now / 1000),
+      secondary && codexUsage({ limit_id: "codex_spark", limit_name: "GPT-5.3-Codex-Spark", plan_type, primary: secondary }, now / 1000),
+    ]);
   }
   return null;
 }
@@ -2227,12 +2258,24 @@ function codexAccountKey(session) {
 }
 
 function mergeCodexUsage(values) {
-  const usage = values.filter(Boolean);
-  if (!usage.length) return null;
-  const timestamped = usage.filter((item) => Number(item.updated_at) > 0).sort((a, b) => Number(a.updated_at) - Number(b.updated_at));
-  if (timestamped.length) return timestamped.at(-1);
-  const limit = (name) => usage.map((item) => item[name]).filter(Boolean).sort((a, b) => Number(a.resets_at) - Number(b.resets_at) || Number(a.used_percent) - Number(b.used_percent)).at(-1) || null;
-  return { plan_type: usage.findLast((item) => item.plan_type)?.plan_type || "", primary: limit("primary"), secondary: limit("secondary"), updated_at: 0 };
+  const entries = {};
+  for (const usage of values.filter(Boolean)) {
+    const legacy = !usage.limits ? {
+      codex: {
+        limit_id: "codex",
+        limit_name: "",
+        plan_type: String(usage.plan_type || ""),
+        primary: usage.primary || null,
+        secondary: usage.secondary || null,
+        updated_at: Math.max(0, Number(usage.updated_at) || 0),
+      },
+    } : usage.limits;
+    for (const [key, entry] of Object.entries(legacy)) {
+      if (!entry) continue;
+      if (!entries[key] || Number(entry.updated_at) >= Number(entries[key].updated_at)) entries[key] = entry;
+    }
+  }
+  return Object.keys(entries).length ? summarizeCodexUsage(entries) : null;
 }
 
 function cachedCodexSettings(session) {
@@ -2742,8 +2785,8 @@ function selfCheckCore() {
   }, 1);
   if (transcript?.text !== "Clean answer" || transcript.role !== "assistant") throw new Error("structured Codex transcript parsing failed");
   if (codexTranscriptMessage({ type: "response_item", payload: { type: "function_call" } }, 2)) throw new Error("Codex tool call leaked into chat");
-  const usage = codexUsage({ plan_type: "pro", primary: { used_percent: 15, window_minutes: 300, resets_at: 123 }, secondary: { used_percent: 36, window_minutes: 10080, resets_at: 456 } });
-  if (usage.primary.used_percent !== 15 || usage.secondary.window_minutes !== 10080 || usage.plan_type !== "pro") throw new Error("Codex usage limits were not normalized");
+  const usage = codexUsage({ limit_id: "codex", plan_type: "pro", primary: { used_percent: 15, window_minutes: 10080, resets_at: 123 } });
+  if (usage.primary.used_percent !== 15 || usage.secondary || usage.plan_type !== "pro") throw new Error("Codex usage limits were not normalized");
   const statusUsage = codexUsageFromScreen("│ >_ OpenAI Codex\n│ Model: gpt-5.6-sol\n│ Account: tony@example.com (Pro)\n│ Weekly limit: 39% left\n│   (resets 23:02 on 17 Jul)\n│ GPT-5.3-Codex-Spark weekly limit: 81% left", new Date(2026, 6, 12, 4, 0).getTime());
   if (statusUsage?.primary.used_percent !== 61 || statusUsage.secondary?.used_percent !== 19 || statusUsage.plan_type !== "pro") throw new Error("Codex weekly status usage was not parsed");
   const scrollbackUsage = codexUsageFromScreen("│ >_ OpenAI Codex\n│ Model: gpt-5.6-sol\n│ Weekly limit: 59% left\n│ GPT-5.3-Codex-Spark weekly limit: 100% left\n\nnew terminal output\n\n│ >_ OpenAI Codex\n│ Model: gpt-5.6-sol\n│ Account: tony@example.com (Pro)\n│ Weekly limit: 38% left\n│ GPT-5.3-Codex-Spark weekly limit: 72% left", new Date(2026, 6, 12, 4, 0).getTime());
@@ -2751,8 +2794,8 @@ function selfCheckCore() {
   const scrollbackPayload = capturePayload("ordinary current terminal screen", { tool: "codex" }, [], "ordinary current terminal screen", "│ >_ OpenAI Codex\n│ Model: gpt-5.6-sol\n│ Weekly limit: 38% left\n│ GPT-5.3-Codex-Spark weekly limit: 72% left");
   if (scrollbackPayload.codex_usage?.primary.used_percent !== 62 || scrollbackPayload.codex_usage.secondary?.used_percent !== 28) throw new Error("Codex weekly usage was limited to the visible terminal screen");
   const mergedUsage = mergeCodexUsage([
-    codexUsage({ plan_type: "pro", primary: { used_percent: 5, resets_at: 100 }, secondary: { used_percent: 10, resets_at: 200 } }),
-    codexUsage({ plan_type: "pro", primary: { used_percent: 32, resets_at: 300 }, secondary: { used_percent: 24, resets_at: 400 } }),
+    codexUsage({ limit_id: "codex", plan_type: "pro", primary: { used_percent: 32, window_minutes: 10080, resets_at: 300 } }),
+    codexUsage({ limit_id: "codex_bengalfox", limit_name: "GPT-5.3-Codex-Spark", plan_type: "pro", primary: { used_percent: 24, window_minutes: 10080, resets_at: 400 } }),
   ]);
   if (mergedUsage.primary.used_percent !== 32 || mergedUsage.secondary.used_percent !== 24) throw new Error("Codex account usage remained session-stale");
   if (automaticSessionTitle({ tool: "terminal", tmux_name: "Ark-TEST" }, { command: "htop" }) !== "htop") throw new Error("terminal running command was not used as its automatic title");
@@ -2761,6 +2804,9 @@ function selfCheckCore() {
   if (orderedSessions[0].title !== "codex - Alpha") throw new Error("sessions were not alphabetical by their displayed names");
   if (!completedAgentState("working", "ready") || completedAgentState("needs_input", "ready")) throw new Error("unread completion transition was misclassified");
   const taskCache = { taskState: null, settings: null, usage: null };
+  updateCodexSettings(taskCache, { timestamp: "2026-07-12T21:00:00.000Z", type: "event_msg", payload: { type: "token_count", rate_limits: { limit_id: "codex", plan_type: "pro", primary: { used_percent: 61, window_minutes: 10080 } } } });
+  updateCodexSettings(taskCache, { timestamp: "2026-07-12T21:01:00.000Z", type: "event_msg", payload: { type: "token_count", rate_limits: { limit_id: "codex_bengalfox", limit_name: "GPT-5.3-Codex-Spark", plan_type: "pro", primary: { used_percent: 0, window_minutes: 10080 } } } });
+  if (taskCache.usage?.primary?.used_percent !== 61 || taskCache.usage.secondary?.used_percent !== 0) throw new Error("separate Codex and Spark usage records were not merged");
   updateCodexSettings(taskCache, { type: "event_msg", payload: { type: "task_started" } });
   if (taskCache.taskState !== "working") throw new Error("Codex task start was not detected");
   updateCodexSettings(taskCache, { type: "event_msg", payload: { type: "task_complete" } });

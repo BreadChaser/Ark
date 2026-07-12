@@ -564,7 +564,7 @@ function renderCodexFooter() {
   els.codexFooter.hidden = false;
   els.codexFooter.innerHTML = `
     <div class="codex-account">${toolIcon("codex")}<div><strong>${escapeHtml(email)}</strong><small>${escapeHtml(label)}${usage?.plan_type ? ` · ${escapeHtml(usage.plan_type)}` : ""}</small></div></div>
-    ${hasUsage ? `<div class="codex-limits">${usageLimit("Weekly", usage.primary)}${usageLimit("GPT-5.3 Codex Spark weekly", usage.secondary)}</div>` : '<small>Weekly usage appears after Codex responds.</small>'}
+    ${hasUsage ? `<div class="codex-limits">${usageLimit("Weekly", usage.primary)}${usageLimit("GPT-5.3 Codex Spark", usage.secondary)}</div>` : '<small>Weekly usage appears after Codex responds.</small>'}
     ${warning ? `<div class="codex-usage-warning" role="status">${escapeHtml(warning)}</div>` : ""}
   `;
 }
@@ -599,7 +599,7 @@ function usageLimit(label, limit) {
 }
 
 function usageWarning(usage) {
-  const near = [["Weekly", usage?.primary], ["GPT-5.3 Codex Spark weekly", usage?.secondary]].filter(([, limit]) => Number(limit?.used_percent) >= 90);
+  const near = [["Weekly", usage?.primary], ["GPT-5.3 Codex Spark", usage?.secondary]].filter(([, limit]) => Number(limit?.used_percent) >= 90);
   if (!near.length) return "";
   const exhausted = near.some(([, limit]) => Number(limit.used_percent) >= 100);
   return `${near.map(([label]) => label).join(" + ")} usage ${exhausted ? "is exhausted" : "is nearly exhausted"}.`;
