@@ -679,7 +679,7 @@ function renderDeviceGroup(device, target = els.devices) {
     const actions = document.createElement("span");
     actions.className = "session-actions";
     actions.innerHTML = `
-      <button type="button" data-session-rename title="Rename" aria-label="Rename ${escapeHtml(sessionDisplayName(session))}">✎</button>
+      <button type="button" data-session-rename title="Rename" aria-label="Rename ${escapeHtml(sessionDisplayName(session))}"><svg class="edit-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 11.5 2.5 14l2.5-.5L13 5.5 10.5 3 3 11.5Z"/><path d="m9.5 4 2.5 2.5"/></svg></button>
     `;
     actions.querySelector("[data-session-rename]").onclick = () => renameSession(session);
     row.ondragstart = (event) => {

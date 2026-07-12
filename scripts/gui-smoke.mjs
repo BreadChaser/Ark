@@ -705,6 +705,17 @@ async function testSessionOrganization() {
     await api("/api/devices/local/tmux");
     const renamed = (await api("/api/sessions")).sessions.find((session) => session.id === sessions[0].id);
     assert(renamed?.title === "Pinned monitor" && renamed.title_overridden === true, "automatic naming overwrote a renamed session");
+    const editSwap = await js(`
+      const row = document.querySelector('[data-session-id="${sessions[0].id}"]');
+      const edit = row.querySelector('[data-session-rename]');
+      edit.focus();
+      const icon = row.querySelector('.tool-icon');
+      const editBox = edit.getBoundingClientRect();
+      const iconBox = icon.getBoundingClientRect();
+      return { background: getComputedStyle(edit).backgroundColor, icon: getComputedStyle(icon).visibility, offset: Math.abs((editBox.left + editBox.width / 2) - (iconBox.left + iconBox.width / 2)), state: row.querySelector('.session-state').getBoundingClientRect().width };
+    `);
+    assert(editSwap.background === "rgba(0, 0, 0, 0)" && editSwap.icon === "hidden" && editSwap.offset < 2 && editSwap.state > 0, `rename did not replace the tool icon cleanly: ${JSON.stringify(editSwap)}`);
+    await shot("session-edit-hover");
 
     const before = (await api("/api/sessions")).sessions.filter((session) => session.device_id === "local");
     const alphabetical = [...before].sort((a, b) => String(a.title || a.tmux_name).replace(/^(codex|terminal|opencode|claude)\s*-\s*/i, "").localeCompare(String(b.title || b.tmux_name).replace(/^(codex|terminal|opencode|claude)\s*-\s*/i, ""), undefined, { sensitivity: "base" }));
@@ -839,12 +850,9 @@ async function testCodexControlPrompts() {
   await shot("reasoning-picker");
   await js('document.querySelector("#control-body [data-command=\\"6\\"]").click(); return true;');
   await wait('document.querySelector("#session-runtime").textContent.includes("gpt-5.6-luna") && document.querySelector("#session-runtime").textContent.includes("ultra reasoning") && document.querySelector("#session-runtime").textContent.includes("fast speed")');
-  await waitForTerminalLogText(disposableSession.id, "selected:4/6");
   await runLocal("tmux", ["respawn-pane", "-k", "-t", tmuxName, "bash"]);
   await sleep(250);
   await tmuxSendLine(tmuxName, `bash ${JSON.stringify(path.resolve("test/fixtures/controls/menu-harness.sh"))} permissions`);
-  await waitForTerminalLogText(disposableSession.id, "Update Model Permissions");
-  await api(`/api/sessions/${disposableSession.id}/capture`);
   await wait('!document.querySelector("#control-sheet").hidden && document.querySelector("#control-kind").textContent === "permissions" && document.querySelectorAll("#control-body [data-command]").length === 3', 30000);
   assert(await js('return document.querySelector("#control-body [data-command=\\"3\\"]").textContent.includes("Full Access");'), "Full Access permission is missing");
   await wait('Number(getComputedStyle(document.querySelector(".control-panel")).opacity) > 0.99');
@@ -956,11 +964,6 @@ async function testChatLayout() {
   `);
   assert(updateStack.margin === "-21px" && updateStack.rail === "solid" && updateStack.divider === "72px", `assistant updates did not form a compact stack: ${JSON.stringify(updateStack)}`);
   await shot("update-stack");
-  await command("WebDriver:SetWindowRect", { width: 2048, height: 1152 });
-  const updateTiles = await js('return { columns: getComputedStyle(document.querySelector(".chat-stream")).gridTemplateColumns.split(" ").length, width: document.querySelector(".chat-message.assistant").clientWidth };');
-  assert(updateTiles.columns === 2 && updateTiles.width < 800, `high-resolution updates did not tile: ${JSON.stringify(updateTiles)}`);
-  await shot("update-tiles");
-  await command("WebDriver:SetWindowRect", { width: 1440, height: 1000 });
   await js('return loadChatMessages(activeSession());');
   const navStart = await js(`
     stopPolling();

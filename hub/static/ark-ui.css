@@ -667,7 +667,7 @@ pre {
 
 .session.active {
   color: var(--text);
-  background: var(--accent-soft) !important;
+  background: color-mix(in srgb, var(--accent-soft) 45%, transparent) !important;
 }
 
 .session.active > span {
@@ -681,6 +681,16 @@ pre {
   cursor: grab;
 }
 
+.device-group .session-row,
+.device-group .session-row:hover {
+  width: 100%;
+  min-height: 0;
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
 .session-row > .session {
   width: 100%;
 }
@@ -691,20 +701,18 @@ pre {
 }
 
 .session-row.drop-target {
-  background: var(--accent-soft);
-  outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  background: transparent;
 }
 
 .session-actions {
   position: absolute;
   z-index: 2;
   top: 50%;
-  left: 3px;
-  width: 25px;
+  left: 8px;
+  width: 16px;
   display: flex;
   justify-content: center;
-  border-radius: 7px;
-  background: var(--panel-solid);
+  background: transparent;
   opacity: 0;
   pointer-events: none;
   transform: translateY(-50%);
@@ -716,18 +724,41 @@ pre {
   pointer-events: auto;
 }
 
+.session-row:hover .session-label .tool-icon,
+.session-row:focus-within .session-label .tool-icon {
+  visibility: hidden;
+}
+
+.session-row:hover > .session {
+  background: color-mix(in srgb, var(--panel-soft) 72%, transparent);
+}
+
+.session-row.drop-target > .session {
+  background: color-mix(in srgb, var(--accent-soft) 45%, transparent);
+}
+
 .device-group .session-actions button {
-  width: 20px !important;
-  min-height: 24px !important;
+  width: 16px !important;
+  min-height: 20px !important;
   justify-content: center !important;
   padding: 0 !important;
   color: var(--faint);
   font: 700 13px/1 var(--mono);
 }
 
+.edit-icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .device-group .session-actions button:hover {
   color: var(--accent);
-  background: var(--accent-soft);
+  background: transparent;
 }
 
 .session-label {
@@ -2134,41 +2165,6 @@ body.sidebar-collapsed #sidebar-toggle::after {
 
   .composer {
     width: min(1320px, calc(100% - 26px));
-  }
-}
-
-@media (min-width: 1800px) {
-  .chat-stream {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-content: start;
-  }
-
-  .chat-message {
-    grid-column: 1 / -1;
-  }
-
-  .chat-message.user {
-    justify-self: end;
-  }
-
-  .chat-message.assistant:has(+ .chat-message.assistant.continued),
-  .chat-message.assistant.continued {
-    width: 100%;
-    max-width: none;
-    grid-column: auto;
-    margin-top: 0;
-    border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
-    border-radius: var(--radius-card);
-    background: color-mix(in srgb, var(--panel-soft) 55%, transparent);
-  }
-
-  .chat-message.assistant.continued .message-text::before {
-    display: none;
-  }
-
-  .chat-message.assistant:has(.message-text li > ul) {
-    grid-column: 1 / -1;
   }
 }
 
