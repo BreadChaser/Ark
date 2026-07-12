@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>ARK VM audit — 2026-07-12</title>
+  <style>
+    body { max-width: 900px; margin: 40px auto; padding: 0 20px; color: #17212b; background: #f6f8fa; font: 16px/1.5 system-ui, sans-serif; }
+    main { padding: 28px; border-radius: 14px; background: #fff; box-shadow: 0 2px 12px #0001; }
+    h1 { margin-top: 0; } .pass { color: #087443; font-weight: 700; } .note { color: #8a5800; font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; } th, td { padding: 9px; border-bottom: 1px solid #d8dee4; text-align: left; vertical-align: top; }
+    th { width: 34%; } code { padding: 1px 4px; border-radius: 4px; background: #eef2f5; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>ARK VM audit</h1>
+    <p class="pass">Pass, with one manual laptop SSH permission repair.</p>
+    <table>
+      <tr><th>Proxmox guest</th><td>VM 100 is running with QEMU guest agent, 4 vCPU, 6 GB RAM, 100 GB thin disk, VirtIO networking, and boot enabled.</td></tr>
+      <tr><th>ARK service</th><td>Enabled and active as the <code>tony</code> user. User lingering is enabled, so it starts after a VM reboot.</td></tr>
+      <tr><th>Private access</th><td>Health endpoint passed over LAN and Tailscale. Firewall rules permit port 4873 only from the LAN and Tailscale.</td></tr>
+      <tr><th>Runtime</th><td>Node, npm, Git, tmux, Tailscale, Codex CLI, and bubblewrap are installed. The VM has about 75 GB free.</td></tr>
+      <tr><th>Persistent state</th><td>ARK YAML/JSON stores parse cleanly. <code>secrets.yml</code> is mode 600. Codex history and ARK state are present.</td></tr>
+      <tr><th>Devices</th><td>Laptop tmux discovery passed with seven sessions. Jelly is online and tmux-ready with zero active sessions.</td></tr>
+      <tr><th>UI and source checks</th><td><code>npm run check</code> and the isolated browser smoke suite passed. Source and VM are synced on <code>ce93dcb</code>.</td></tr>
+      <tr><th>Chat delivery</th><td>Ready Codex sessions receive Enter; working Codex sessions receive Tab so the message is queued rather than left in the composer.</td></tr>
+    </table>
+    <h2>Manual follow-up</h2>
+    <p class="note">The laptop has a world-writable system SSH include. Fix it locally with:</p>
+    <p><code>sudo chmod 644 /etc/ssh/ssh_config.d/20-systemd-ssh-proxy.conf</code></p>
+    <p>This does not block ARK's VM-to-laptop route, but it prevents locally running Codex from trusting the laptop's SSH client configuration.</p>
+  </main>
+</body>
+</html>
