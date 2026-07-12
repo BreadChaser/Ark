@@ -202,7 +202,7 @@ async function route(req, res) {
 
     const tmuxName = String(body.tmux_name || "").trim() || newTmuxName();
     const images = sessionImages(body.images);
-    const centralRunner = tool !== "terminal" && !device.local;
+    const centralRunner = tool !== "terminal" && tool !== "codex" && !device.local;
     const tmuxDevice = centralRunner ? localDevice : device;
     const runner = tool === "terminal" ? terminalRunner() : await selectToolRunner(tmuxDevice, tool, body.profile_id, settings);
     const launchCommand = withProfileEnv(commandForSession(tool, runner.command, images), await resolveLaunchEnv(runner.env, runner.env_from_secrets));
@@ -737,7 +737,7 @@ async function listTools(device) {
       tools.push({ tool, command: "", available: true, path: "", runner_source: "builtin" });
       continue;
     }
-    const runnerDevice = device.local ? device : localDevice;
+    const runnerDevice = device.local || tool === "codex" ? device : localDevice;
     const resolved = await selectToolRunner(runnerDevice, tool, "", { tool_commands: toolCommands }, { quiet: true });
     tools.push({
       tool,
@@ -751,7 +751,7 @@ async function listTools(device) {
       runner_source: resolved?.source || "",
       runner_device_id: runnerDevice.id,
       runner_device_label: runnerDevice.label,
-      central_runner: !device.local,
+      central_runner: !device.local && tool !== "codex",
     });
   }
   return tools;

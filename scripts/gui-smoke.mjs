@@ -1151,10 +1151,16 @@ async function testRemoteTerminalPipeLog() {
 }
 
 async function maybeTestRemoteCodexCentralRunner() {
-  const remote = (await api("/api/devices")).devices.find((device) => !device.local && device.status !== "offline");
+  const devices = (await api("/api/devices")).devices.filter((device) => !device.local && device.status !== "offline");
+  let remote = null;
+  for (const device of devices) {
+    const tools = await api(`/api/devices/${encodeURIComponent(device.id)}/tools`).catch(() => null);
+    if (tools?.tools.some((tool) => tool.tool === "codex" && tool.available)) {
+      remote = device;
+      break;
+    }
+  }
   if (!remote) return;
-  const tools = await api("/api/devices/local/tools");
-  if (!tools.tools.find((tool) => tool.tool === "codex" && tool.available)) return;
   const created = await api("/api/sessions", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -1164,9 +1170,9 @@ async function maybeTestRemoteCodexCentralRunner() {
   disposableTmuxNames.add(disposableSession.tmux_name);
   try {
     assert(disposableSession.device_id === remote.id, "real Codex remote session lost target device");
-    assert(disposableSession.central_runner, "real Codex remote session did not use central runner");
-    assert(disposableSession.tmux_device_id === "local", `expected local tmux device, got ${disposableSession.tmux_device_id || "missing"}`);
-    assert(disposableSession.runner_device_id === "local", `expected local runner device, got ${disposableSession.runner_device_id || "missing"}`);
+    assert(!disposableSession.central_runner, "remote Codex session did not use the selected device");
+    assert(disposableSession.tmux_device_id === remote.id, `expected remote tmux device, got ${disposableSession.tmux_device_id || "missing"}`);
+    assert(disposableSession.runner_device_id === remote.id, `expected remote runner device, got ${disposableSession.runner_device_id || "missing"}`);
     await waitForCodexReady(disposableSession.id);
     await api(`/api/sessions/${disposableSession.id}/send`, {
       method: "POST",
