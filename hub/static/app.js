@@ -1567,7 +1567,12 @@ function renderChatCapture(data, session, keepBottom) {
   }
   els.parsed.append(stream.childElementCount ? stream : emptySurface("No chat output yet."));
   if (keepBottom) scrollToBottom(els.parsed);
-  if (state.forceBottomSessionId === session?.id) state.forceBottomSessionId = null;
+  if (state.forceBottomSessionId === session?.id) {
+    setTimeout(() => {
+      if (activeSession()?.id === session.id) scrollToBottom(els.parsed);
+    }, 150);
+    state.forceBottomSessionId = null;
+  }
   updateMessageNav();
 }
 

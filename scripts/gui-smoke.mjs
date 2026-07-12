@@ -1013,8 +1013,10 @@ async function testChatLayout() {
     document.querySelector("#parsed").scrollTop = 100;
     openSession(activeSession().id);
     stopPolling();
-    const result = { top: document.querySelector("#parsed").scrollTop, max: document.querySelector("#parsed").scrollHeight - document.querySelector("#parsed").clientHeight };
-    return result;
+    return new Promise((resolve) => setTimeout(() => resolve({
+      top: document.querySelector("#parsed").scrollTop,
+      max: document.querySelector("#parsed").scrollHeight - document.querySelector("#parsed").clientHeight,
+    }), 250));
   `);
   assert(reopenedAtBottom.max > 500 && reopenedAtBottom.top >= reopenedAtBottom.max - 2, `opening a chat did not land at the bottom: ${JSON.stringify(reopenedAtBottom)}`);
   await js('startPolling(); return loadChatMessages(activeSession());');
