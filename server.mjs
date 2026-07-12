@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createReadStream } from "node:fs";
-import { appendFile, mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
+import { appendFile, copyFile, mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -2090,25 +2090,33 @@ function isStoredChatJunk(message) {
 }
 
 async function readCodexTranscript(session, device, rawText) {
-  if (session.tool !== "codex" || !device.local) return null;
+  if (session.tool !== "codex") return null;
   const filePath = await codexRolloutPath(session, device, rawText);
   if (!filePath) return null;
+  let readablePath = filePath;
+  if (!device.local) {
+    try {
+      readablePath = await mirrorRemoteTranscript(session, device, filePath);
+    } catch {
+      return null;
+    }
+  }
   let info;
   try {
-    info = await stat(filePath);
+    info = await stat(readablePath);
   } catch {
     CODEX_ROLLOUTS.delete(session.id);
     return null;
   }
-  let cache = CODEX_TRANSCRIPTS.get(filePath);
+  let cache = CODEX_TRANSCRIPTS.get(session.id);
   if (!cache || info.size < cache.offset) {
     cache = { offset: 0, remainder: "", messages: [], sequence: 0, settings: null, usage: null, taskState: null };
-    CODEX_TRANSCRIPTS.set(filePath, cache);
+    CODEX_TRANSCRIPTS.set(session.id, cache);
   }
   if (info.size === cache.offset) return cache.messages.map(normalizeMessage);
   const chunks = [];
   let bytes = 0;
-  for await (const chunk of createReadStream(filePath, { start: cache.offset })) {
+  for await (const chunk of createReadStream(readablePath, { start: cache.offset })) {
     chunks.push(chunk);
     bytes += chunk.length;
   }
@@ -2128,6 +2136,43 @@ async function readCodexTranscript(session, device, rawText) {
     if (message) cache.messages.push(message);
   }
   return cache.messages.map(normalizeMessage);
+}
+
+async function mirrorRemoteTranscript(session, device, remotePath) {
+  return withMutation(`codex-transcript:${session.id}`, async () => {
+    const dir = path.join(DATA, "transcripts");
+    const localPath = path.join(dir, `${slug(session.id)}.jsonl`);
+    await mkdir(dir, { recursive: true });
+    let localSize = 0;
+    try {
+      localSize = (await stat(localPath)).size;
+    } catch {
+      try {
+        await copyFile(remotePath, localPath);
+        localSize = (await stat(localPath)).size;
+      } catch {
+        await writeFile(localPath, "");
+      }
+    }
+    const remote = await runOnDevice(device, `stat -c %s -- ${q(remotePath)}`, 5000);
+    const remoteSize = remote.code === 0 ? Number(remote.output.trim()) : NaN;
+    if (!Number.isSafeInteger(remoteSize) || remoteSize < 0) throw new Error(remote.output || "remote transcript unavailable");
+    if (localSize > remoteSize) {
+      await writeFile(localPath, "");
+      localSize = 0;
+    }
+    const chunkSize = 4 * 1024 * 1024;
+    while (localSize < remoteSize) {
+      const length = Math.min(chunkSize, remoteSize - localSize);
+      const chunk = await runOnDevice(device, `tail -c +${localSize + 1} -- ${q(remotePath)} | head -c ${length} | base64 -w0`, 15000);
+      if (chunk.code !== 0) throw new Error(chunk.output || "remote transcript sync failed");
+      const data = Buffer.from(chunk.output, "base64");
+      if (data.length !== length) throw new Error("remote transcript sync was incomplete");
+      await appendFile(localPath, data);
+      localSize += data.length;
+    }
+    return localPath;
+  });
 }
 
 function updateCodexSettings(cache, row) {
@@ -2180,18 +2225,15 @@ function mergeCodexUsage(values) {
 }
 
 function cachedCodexSettings(session) {
-  const filePath = CODEX_ROLLOUTS.get(session.id);
-  return filePath ? CODEX_TRANSCRIPTS.get(filePath)?.settings || null : null;
+  return CODEX_TRANSCRIPTS.get(session.id)?.settings || null;
 }
 
 function cachedCodexUsage(session) {
-  const filePath = CODEX_ROLLOUTS.get(session.id);
-  return filePath ? CODEX_TRANSCRIPTS.get(filePath)?.usage || null : null;
+  return CODEX_TRANSCRIPTS.get(session.id)?.usage || null;
 }
 
 function cachedCodexTaskState(session) {
-  const filePath = CODEX_ROLLOUTS.get(session.id);
-  return filePath ? CODEX_TRANSCRIPTS.get(filePath)?.taskState || null : null;
+  return CODEX_TRANSCRIPTS.get(session.id)?.taskState || null;
 }
 
 function codexTranscriptMessage(row, sequence) {
