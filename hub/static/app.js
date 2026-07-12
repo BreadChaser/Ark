@@ -281,6 +281,14 @@ async function init() {
   });
   els.viewParsed.addEventListener("click", () => setView("parsed"));
   els.viewRaw.addEventListener("click", () => setView("raw"));
+  let resizeTimer;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      const session = activeSession();
+      if (session && session.tool !== "terminal" && state.view === "parsed") scrollToBottom(els.parsed);
+    }, 80);
+  });
   els.repo.addEventListener("change", rememberRepo);
   els.input.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey) {
@@ -1655,6 +1663,7 @@ function isNearBottom(element) {
 
 function scrollToBottom(element) {
   element.scrollTop = element.scrollHeight;
+  requestAnimationFrame(() => { element.scrollTop = element.scrollHeight; });
 }
 
 async function sendInput() {
@@ -2088,6 +2097,8 @@ function activeSession() {
 
 function setView(view) {
   state.view = view === "raw" ? "raw" : "parsed";
+  const session = activeSession();
+  if (state.view === "parsed" && session?.tool !== "terminal") state.forceBottomSessionId = session.id;
   localStorage.setItem(VIEW_KEY, state.view);
   els.defaultView.value = state.view;
   els.viewParsed.classList.toggle("active", state.view === "parsed");

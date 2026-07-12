@@ -1032,6 +1032,10 @@ async function testChatLayout() {
   await shot("chat-terminal");
   await js('document.querySelector("#view-parsed").click(); return true;');
   await wait('document.querySelector("#parsed").classList.contains("chat-output") && document.querySelector("#parsed").innerText.includes("Short reply")');
+  const terminalReturnAtBottom = await js('return new Promise((resolve) => setTimeout(() => resolve({ top: document.querySelector("#parsed").scrollTop, max: document.querySelector("#parsed").scrollHeight - document.querySelector("#parsed").clientHeight }), 250));');
+  assert(terminalReturnAtBottom.top >= terminalReturnAtBottom.max - 2, `returning from Terminal did not land at the bottom: ${JSON.stringify(terminalReturnAtBottom)}`);
+  const resizedAtBottom = await js('document.querySelector("#parsed").scrollTop = 100; window.dispatchEvent(new Event("resize")); return new Promise((resolve) => setTimeout(() => resolve({ top: document.querySelector("#parsed").scrollTop, max: document.querySelector("#parsed").scrollHeight - document.querySelector("#parsed").clientHeight }), 250));');
+  assert(resizedAtBottom.top >= resizedAtBottom.max - 2, `resizing a chat did not return to the bottom: ${JSON.stringify(resizedAtBottom)}`);
   await command("WebDriver:SetWindowRect", { width: 2048, height: 1152 });
   const wideLayout = await js('return { chat: document.querySelector(".chat-stream").clientWidth, assistant: document.querySelector(".chat-message.assistant").clientWidth, composer: document.querySelector(".composer").clientWidth };');
   assert(wideLayout.chat >= 1280 && wideLayout.assistant <= 1040 && wideLayout.composer >= 1280, `fullscreen chat lost its readable measure: ${JSON.stringify(wideLayout)}`);
