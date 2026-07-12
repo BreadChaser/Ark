@@ -25,6 +25,10 @@ preserved. The migration deliberately excluded unrelated scratch files at the
 ARK data root. Existing remote tmux processes were not moved: processes cannot
 be migrated safely; their stored sessions are reattached over SSH instead.
 
+The hub has a dedicated outbound SSH identity for the laptop. Its private key
+is host configuration, not ARK application state; retain it in the VM backup
+alongside `~/.ssh/config`.
+
 ## Verification record
 
 The 2026-07-12 audit verified VM/QEMU-agent health, service enablement,

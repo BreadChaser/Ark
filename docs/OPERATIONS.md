@@ -31,6 +31,12 @@ only when the host firewall provides that boundary.
 Use SSH keys for the ARK user. A password is optional and is only needed for a
 local VM-console login, not for normal SSH administration.
 
+The hub also needs an outbound key for every remote device it manages. The
+current hub uses `~/.ssh/ark_hub_ed25519`; its public key is authorized for
+the laptop and the SSH config maps the laptop's Tailscale address to that key.
+Back up this private key with the VM's protected host configuration, never in
+the repository or ARK application state.
+
 ## State and backups
 
 ARK state is under `~/.local/share/ark/`:
