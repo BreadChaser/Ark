@@ -137,6 +137,8 @@ const els = {
   defaultView: document.querySelector("#default-view"),
   imageMode: document.querySelector("#image-mode"),
   enableNotifications: document.querySelector("#enable-notifications"),
+  testDoneSound: document.querySelector("#test-done-sound"),
+  testInputSound: document.querySelector("#test-input-sound"),
   notificationStatus: document.querySelector("#notification-status"),
   toolStatus: document.querySelector("#tool-status"),
   profileStatus: document.querySelector("#profile-status"),
@@ -187,6 +189,8 @@ async function init() {
   els.defaultView.addEventListener("change", () => setView(els.defaultView.value));
   els.imageMode.addEventListener("change", () => localStorage.setItem(IMAGE_MODE_KEY, "queue"));
   els.enableNotifications.addEventListener("click", enableNotifications);
+  els.testDoneSound.addEventListener("click", () => playAgentTransition("working", "ready"));
+  els.testInputSound.addEventListener("click", () => playAgentTransition("ready", "needs_input"));
   els.codexFooter.addEventListener("click", toggleGoalAutoResume);
   els.settingsToggle.addEventListener("click", toggleSettings);
   els.settingsRefresh.addEventListener("click", refresh);

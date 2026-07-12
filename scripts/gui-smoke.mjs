@@ -52,6 +52,7 @@ try {
 
   await js('document.querySelector("#settings-toggle").click(); return true;');
   await wait('document.querySelectorAll("#tool-status .tool-card").length === 4');
+  assert(await js('return Boolean(document.querySelector("#test-done-sound") && document.querySelector("#test-input-sound"));'), "sound previews are missing from settings");
   await wait('document.querySelector("#account-form") && document.querySelectorAll("#profile-status .account-card").length >= 1');
   await wait('[...document.querySelectorAll("#profile-status [data-profile-login]")].some((button) => button.textContent.trim() === "Login")');
   await wait('/Signed in as|Needs login/.test(document.querySelector("#profile-status").textContent)');
