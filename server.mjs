@@ -490,7 +490,10 @@ async function captureSession(id) {
   const pipeSynced = await syncTmuxPipeLog(device, session).catch(() => false);
   const storedMessages = await readSessionMessages(session.id);
   const screen = session.tool === "codex" ? await captureTmuxScreen(device, session.tmux_name) : result;
-  const payload = capturePayload(result.output, session, storedMessages, screen.code === 0 ? screen.output : result.output);
+  const controlText = screen.code === 0 ? screen.output : result.output;
+  // Controls must reflect the visible pane, but `/status` is a short-lived Codex
+  // panel. Preserve its newest value from scrollback after it has left the screen.
+  const payload = capturePayload(result.output, session, storedMessages, controlText, result.output);
   const transcript = await readCodexTranscript(session, device, result.output);
   if (transcript !== null) {
     payload.messages = await writeAuthoritativeMessages(session, transcript, storedMessages);
@@ -2248,7 +2251,6 @@ function codexUsage(limits, updatedAt = 0) {
 function codexUsageFromScreen(text, now = Date.now()) {
   const screen = stripAnsi(String(text || ""));
   if (!/\bOpenAI Codex\b/i.test(screen) || !/\bModel:/i.test(screen)) return null;
-  const status = screen.split(/GPT-[^\n]*\blimit:/i)[0];
   const resetAt = (value) => {
     const match = String(value || "").match(/(\d{1,2}):(\d{2})(?:\s+on\s+(\d{1,2})\s+([A-Za-z]{3}))/i);
     if (!match) return 0;
@@ -2262,16 +2264,23 @@ function codexUsageFromScreen(text, now = Date.now()) {
     } else if (date.getTime() < now) date.setDate(date.getDate() + 1);
     return Math.floor(date.getTime() / 1000);
   };
-  const limit = (label, window_minutes) => {
-    const match = status.match(new RegExp(`${label} limit:\\s*(\\d{1,3})%\\s+left(?:\\s*\\(resets\\s+([^)]*)\\))?(?:\\s*\\n\\s*[│|]?\\s*\\(resets\\s+([^)]*)\\))?`, "i"));
-    if (!match) return null;
-    return { used_percent: 100 - Number(match[1]), window_minutes, resets_at: resetAt(match[2] || match[3]) };
-  };
-  const primary = limit("5h", 300);
-  const secondary = limit("Weekly", 10080);
-  if (!primary && !secondary) return null;
-  const plan_type = screen.match(/\bAccount:\s*.*?\(([^)]+)\)/i)?.[1]?.toLowerCase() || "";
-  return codexUsage({ plan_type, primary, secondary }, now / 1000);
+  const panelStarts = [...screen.matchAll(/(?:^|\n)\s*(?:[│|]\s*)?>_\s+OpenAI Codex\b/gim)].map((match) => match.index);
+  const starts = panelStarts.length ? panelStarts : [...screen.matchAll(/\bOpenAI Codex\b/gim)].map((match) => match.index);
+  for (let index = starts.length - 1; index >= 0; index--) {
+    const next = starts[index + 1] ?? screen.length;
+    const status = screen.slice(starts[index], next).split(/GPT-[^\n]*\blimit:/i)[0];
+    const limit = (label, window_minutes) => {
+      const match = status.match(new RegExp(`${label} limit:\\s*(\\d{1,3})%\\s+left(?:\\s*\\(resets\\s+([^)]*)\\))?(?:\\s*\\n\\s*[│|]?\\s*\\(resets\\s+([^)]*)\\))?`, "i"));
+      if (!match) return null;
+      return { used_percent: 100 - Number(match[1]), window_minutes, resets_at: resetAt(match[2] || match[3]) };
+    };
+    const primary = limit("5h", 300);
+    const secondary = limit("Weekly", 10080);
+    if (!primary && !secondary) continue;
+    const plan_type = status.match(/\bAccount:\s*.*?\(([^)]+)\)/i)?.[1]?.toLowerCase() || "";
+    return codexUsage({ plan_type, primary, secondary }, now / 1000);
+  }
+  return null;
 }
 
 async function accountCodexUsage(session, current) {
@@ -2804,8 +2813,12 @@ function selfCheckCore() {
   if (codexTranscriptMessage({ type: "response_item", payload: { type: "function_call" } }, 2)) throw new Error("Codex tool call leaked into chat");
   const usage = codexUsage({ plan_type: "pro", primary: { used_percent: 15, window_minutes: 300, resets_at: 123 }, secondary: { used_percent: 36, window_minutes: 10080, resets_at: 456 } });
   if (usage.primary.used_percent !== 15 || usage.secondary.window_minutes !== 10080 || usage.plan_type !== "pro") throw new Error("Codex usage limits were not normalized");
-  const statusUsage = codexUsageFromScreen("│ OpenAI Codex\n│ Model: gpt-5.6-sol\n│ Account: tony@example.com (Pro)\n│ 5h limit: 92% left (resets 05:52)\n│ Weekly limit: 39% left\n│   (resets 23:02 on 17 Jul)\n│ GPT-5.3-Codex-Spark limit:\n│ 5h limit: 100% left", new Date(2026, 6, 12, 4, 0).getTime());
+  const statusUsage = codexUsageFromScreen("│ >_ OpenAI Codex\n│ Model: gpt-5.6-sol\n│ Account: tony@example.com (Pro)\n│ 5h limit: 92% left (resets 05:52)\n│ Weekly limit: 39% left\n│   (resets 23:02 on 17 Jul)\n│ GPT-5.3-Codex-Spark limit:\n│ 5h limit: 100% left", new Date(2026, 6, 12, 4, 0).getTime());
   if (statusUsage?.primary.used_percent !== 8 || statusUsage.secondary?.used_percent !== 61 || statusUsage.plan_type !== "pro") throw new Error("Codex status screen usage was not parsed");
+  const scrollbackUsage = codexUsageFromScreen("│ >_ OpenAI Codex\n│ Model: gpt-5.6-sol\n│ 5h limit: 100% left\n│ Weekly limit: 59% left\n│ GPT-5.3-Codex-Spark limit:\n│ 5h limit: 100% left\n\nnew terminal output\n\n│ >_ OpenAI Codex\n│ Model: gpt-5.6-sol\n│ Account: tony@example.com (Pro)\n│ 5h limit: 72% left\n│ Weekly limit: 38% left\n│ GPT-5.3-Codex-Spark limit:\n│ 5h limit: 100% left", new Date(2026, 6, 12, 4, 0).getTime());
+  if (scrollbackUsage?.primary.used_percent !== 28 || scrollbackUsage.secondary?.used_percent !== 62) throw new Error("latest Codex status in scrollback was not preferred");
+  const scrollbackPayload = capturePayload("ordinary current terminal screen", { tool: "codex" }, [], "ordinary current terminal screen", "│ >_ OpenAI Codex\n│ Model: gpt-5.6-sol\n│ 5h limit: 72% left\n│ Weekly limit: 38% left");
+  if (scrollbackPayload.codex_usage?.primary.used_percent !== 28) throw new Error("Codex usage was limited to the visible terminal screen");
   const mergedUsage = mergeCodexUsage([
     codexUsage({ plan_type: "pro", primary: { used_percent: 5, resets_at: 100 }, secondary: { used_percent: 10, resets_at: 200 } }),
     codexUsage({ plan_type: "pro", primary: { used_percent: 32, resets_at: 300 }, secondary: { used_percent: 24, resets_at: 400 } }),
@@ -2850,7 +2863,7 @@ function selfCheckCore() {
   if (confirmation[0]?.choices?.[0]?.key !== "Enter") throw new Error("generic Codex confirmation keys were not actionable");
 }
 
-function capturePayload(text, session, storedMessages = [], controlText = text) {
+function capturePayload(text, session, storedMessages = [], controlText = text, usageText = controlText) {
   const lines = parseTerminalLines(text);
   const mode = session?.tool && session.tool !== "terminal" ? "chat" : "terminal";
   const parsedMessages = mode === "chat" ? parseChatMessages(lines) : [];
@@ -2863,7 +2876,7 @@ function capturePayload(text, session, storedMessages = [], controlText = text) 
     controls,
     agent_state: mode === "chat" ? agentStateFromScreen(session, controlText, controls) : "terminal",
     codex_state: session?.tool === "codex" ? codexStateFromScreen(controlText) : null,
-    codex_usage: session?.tool === "codex" ? codexUsageFromScreen(controlText) || session.codex_usage || null : null,
+    codex_usage: session?.tool === "codex" ? codexUsageFromScreen(usageText) || session.codex_usage || null : null,
     mode,
     tool: session?.tool || "terminal",
     title: session?.title || "",
