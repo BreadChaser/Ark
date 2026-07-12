@@ -365,7 +365,7 @@ async function route(req, res) {
       ? await sendMenuChoice(device, session.tmux_name, menuIndex, menuCurrent)
       : key
       ? await sendKey(device, session.tmux_name, key)
-      : await sendText(device, session.tmux_name, text, body.submit !== false, submitKey);
+      : await sendText(device, session.tmux_name, text, body.submit !== false, submitKey, session.tool);
     if (result.code !== 0 && isMissingTmux(result.output)) {
       return json(res, 410, { detail: "This tmux session is stopped. Use Resume or Restart." });
     }
@@ -1290,15 +1290,23 @@ async function captureTmuxScreen(device, tmuxName) {
   return runOnDevice(device, `tmux capture-pane -pt ${q(tmuxName)} -e`, 15000);
 }
 
-async function sendText(device, tmuxName, text, submit, key = "Enter") {
+function textSendCommand(tmuxName, text, submit, key = "Enter", tool = "") {
   const target = q(tmuxName);
-  const submitKey = submit ? ` \\; send-keys -t ${q(tmuxName)} ${key}` : "";
-  return runOnDevice(device, `tmux copy-mode -q -t ${target} 2>/dev/null || true; tmux send-keys -t ${target} -l ${q(text)}${submitKey}`, 15000);
+  const submitKey = submit ? `; tmux send-keys -t ${target} ${key}` : "";
+  // Codex 0.144+ detects rapid plain text as a paste burst and deliberately
+  // turns an immediate Enter into a newline. Give its 120 ms burst window time
+  // to flush before delivering the submit key.
+  const settle = submit && tool === "codex" && text ? "; sleep 0.15" : "";
+  return `tmux copy-mode -q -t ${target} 2>/dev/null || true; tmux send-keys -t ${target} -l ${q(text)}${settle}${submitKey}`;
+}
+
+async function sendText(device, tmuxName, text, submit, key = "Enter", tool = "") {
+  return runOnDevice(device, textSendCommand(tmuxName, text, submit, key, tool), 15000);
 }
 
 function submitKeyForSession(session, screen) {
   const controls = parseAgentControls(session.tool, screen);
-  return session.tool === "codex" && (session.agent_state === "working" || agentStateFromScreen(session, screen, controls) === "working") ? "Tab" : "Enter";
+  return session.tool === "codex" && agentStateFromScreen(session, screen, controls) === "working" ? "Tab" : "Enter";
 }
 
 async function sendKey(device, tmuxName, key) {
@@ -2768,6 +2776,8 @@ function selfCheckCore() {
   if (agentStateFromScreen({ tool: "codex" }, "• Working (2s • esc to interrupt)") !== "working") throw new Error("working Codex state was not detected");
   if (submitKeyForSession({ tool: "codex" }, "• Working (2s • esc to interrupt)") !== "Tab") throw new Error("working Codex message was not queued");
   if (submitKeyForSession({ tool: "codex" }, "› Write tests") !== "Enter") throw new Error("ready Codex message was not submitted");
+  if (submitKeyForSession({ tool: "codex", agent_state: "working" }, "› Write tests") !== "Enter") throw new Error("stale Codex state queued a ready message");
+  if (!textSendCommand("Ark-test", "paste", true, "Enter", "codex").includes("sleep 0.15; tmux send-keys")) throw new Error("Codex paste submit did not settle before Enter");
   if (agentStateFromScreen({ tool: "codex" }, "Would you like to run this command?\n1. Yes\n2. No\nPress enter to confirm") !== "needs_input") throw new Error("Codex input state was not detected");
   const approval = parseCodexControls("Would you like to run the following command? 1. Yes, proceed 2. No, cancel Press enter to confirm or esc to cancel", parseTerminalLines("Would you like to run the following command?\n1. Yes, proceed\n2. No, cancel\nPress enter to confirm or esc to cancel"));
   if (approval[0]?.kind !== "approval" || approval[0].choices.length !== 3) throw new Error("Codex command approval prompt was not actionable");

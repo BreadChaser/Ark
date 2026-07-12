@@ -151,7 +151,8 @@ Ark should create its own sessions and adopt existing tmux sessions as it sees t
   therefore live alongside the selected repository.
 - Remote OpenCode and Claude remain central-runner sessions until direct
   profile provisioning is intentionally implemented.
-- A chat send exits tmux copy mode before it sends Enter or queues with Tab.
+- A chat send exits tmux copy mode before it sends Enter or queues with Tab,
+  and gives Codex's pasted-text detection 150 ms to settle before that key.
 - A single Codex CLI install/profile can run many concurrent sessions.
 - Ark creates its own sessions and adopts existing tmux sessions as they appear.
 - Attachments use paths first.

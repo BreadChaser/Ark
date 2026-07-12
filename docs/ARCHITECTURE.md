@@ -47,10 +47,16 @@ The terminal is tmux, not a browser-owned scrollback buffer. Mouse-wheel
 scrolling enters tmux copy mode. Before ARK sends chat text or a control key it
 exits copy mode so keys reach the CLI pane.
 
-Codex changes its input behavior while an agent is working. ARK sends:
+Codex changes its input behavior while an agent is working. ARK reads the live
+terminal state rather than relying on a possibly stale card state, then sends:
 
 - `Enter` to a ready Codex session.
 - `Tab` to a working Codex session, which queues the follow-up.
+
+ARK waits 150 ms between pasting chat text and delivering that key. Codex
+deliberately treats an immediate Enter after a rapid text burst as a newline so
+multiline pastes remain safe; the short settle avoids showing a sent ARK message
+while leaving the same text in Codex's composer.
 
 The chat UI may show a queued message before Codex starts its next turn; that
 is intentional. A queued status is not a delivery failure.
