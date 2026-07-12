@@ -39,7 +39,6 @@ const CODEX_ROLLOUTS = new Map();
 const CODEX_TRANSCRIPTS = new Map();
 const CONTROL_MISSES = new Map();
 let DEVICE_ALIAS_SIGNATURE = "";
-let AUTO_RESUME_BUSY = false;
 const CONTROL_KEYS = new Set(["Enter", "Escape"]);
 
 const DEFAULT_TOOL_COMMANDS = {
@@ -81,8 +80,6 @@ if (process.env.ARK_SELF_CHECK === "trusted-remote") {
   server.listen(PORT, HOST, () => {
     console.log(`Ark listening on http://${HOST}:${PORT}`);
   });
-  setInterval(() => autoResumeGoals().catch(() => {}), 15000).unref();
-  setTimeout(() => autoResumeGoals().catch(() => {}), 2000).unref();
 }
 
 async function route(req, res) {
@@ -124,14 +121,6 @@ async function route(req, res) {
   const sessionMetaMatch = pathname.match(/^\/api\/sessions\/([^/]+)$/);
   if (req.method === "PATCH" && sessionMetaMatch) {
     const updated = await renameSession(sessionMetaMatch[1], (await readJson(req)).title);
-    return json(res, 200, { session: publicSession(updated) });
-  }
-  const autoResumeMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/auto-resume$/);
-  if (req.method === "POST" && autoResumeMatch) {
-    const session = await sessionOr404(autoResumeMatch[1]);
-    if (session.tool !== "codex") return json(res, 400, { detail: "auto-resume is only available for Codex sessions" });
-    const updated = await setGoalAutoResume(session.id, (await readJson(req)).enabled === true);
-    autoResumeGoals().catch(() => {});
     return json(res, 200, { session: publicSession(updated) });
   }
   if (req.method === "GET" && pathname === "/api/session-states") {
@@ -1626,36 +1615,6 @@ async function listAgentStates() {
   }));
 }
 
-async function autoResumeGoals(now = Date.now()) {
-  if (AUTO_RESUME_BUSY) return;
-  AUTO_RESUME_BUSY = true;
-  try {
-    const sessions = (await readStore()).sessions.filter((session) => session.tool === "codex" && session.auto_resume_goal);
-    for (const session of sessions) {
-      const device = await tmuxDeviceForSession(session);
-      const screen = await captureTmuxScreen(device, session.tmux_name);
-      if (screen.code !== 0) continue;
-      const resetAt = goalUsageResetAt(screen.output, now);
-      const reset = Math.floor((resetAt || 0) / 1000);
-      if (!reset || resetAt > now) continue;
-      const current = (await readStore()).sessions.find((item) => item.id === session.id);
-      if (!current?.auto_resume_goal || reset <= Number(current.auto_resume_last_reset || 0)) continue;
-      const sent = await sendText(device, session.tmux_name, "/goal resume", true);
-      if (sent.code !== 0) continue;
-      await markGoalAutoResumed(session.id, reset);
-      await clearPendingControl(session.id);
-    }
-  } finally {
-    AUTO_RESUME_BUSY = false;
-  }
-}
-
-function goalUsageResetAt(text, now = Date.now()) {
-  const screen = stripAnsi(String(text || ""));
-  if (!/Goal hit usage limits\s*\(\/goal resume\)/i.test(screen)) return null;
-  return codexUsageResetAt(screen, now);
-}
-
 function codexUsageResetAt(text, now = Date.now()) {
   const screen = stripAnsi(String(text || ""));
   if (!/You've hit your usage limit/i.test(screen)) return null;
@@ -1832,34 +1791,6 @@ async function touchSession(id) {
     const data = await readStore();
     const found = data.sessions.find((item) => item.id === id);
     if (!found) return null;
-    found.updated_at = Math.floor(Date.now() / 1000);
-    await writeStore(data);
-    return found;
-  });
-  if (session) await writeSessionFiles(session);
-}
-
-async function setGoalAutoResume(id, enabled) {
-  const session = await withMutation("store", async () => {
-    const data = await readStore();
-    const found = data.sessions.find((item) => item.id === id);
-    if (!found) throw Object.assign(new Error(`Unknown session: ${id}`), { status: 404 });
-    if (enabled) found.auto_resume_goal = true;
-    else delete found.auto_resume_goal;
-    found.updated_at = Math.floor(Date.now() / 1000);
-    await writeStore(data);
-    return found;
-  });
-  await writeSessionFiles(session);
-  return session;
-}
-
-async function markGoalAutoResumed(id, reset) {
-  const session = await withMutation("store", async () => {
-    const data = await readStore();
-    const found = data.sessions.find((item) => item.id === id);
-    if (!found) return null;
-    found.auto_resume_last_reset = reset;
     found.updated_at = Math.floor(Date.now() / 1000);
     await writeStore(data);
     return found;
@@ -2268,14 +2199,14 @@ function codexUsageFromScreen(text, now = Date.now()) {
   const starts = panelStarts.length ? panelStarts : [...screen.matchAll(/\bOpenAI Codex\b/gim)].map((match) => match.index);
   for (let index = starts.length - 1; index >= 0; index--) {
     const next = starts[index + 1] ?? screen.length;
-    const status = screen.slice(starts[index], next).split(/GPT-[^\n]*\blimit:/i)[0];
+    const status = screen.slice(starts[index], next);
     const limit = (label, window_minutes) => {
       const match = status.match(new RegExp(`${label} limit:\\s*(\\d{1,3})%\\s+left(?:\\s*\\(resets\\s+([^)]*)\\))?(?:\\s*\\n\\s*[│|]?\\s*\\(resets\\s+([^)]*)\\))?`, "i"));
       if (!match) return null;
       return { used_percent: 100 - Number(match[1]), window_minutes, resets_at: resetAt(match[2] || match[3]) };
     };
-    const primary = limit("5h", 300);
-    const secondary = limit("Weekly", 10080);
+    const primary = limit("Weekly", 10080);
+    const secondary = limit("GPT[- ]5\\.3[- ]Codex[- ]Spark(?:\\s+weekly)?", 10080);
     if (!primary && !secondary) continue;
     const plan_type = status.match(/\bAccount:\s*.*?\(([^)]+)\)/i)?.[1]?.toLowerCase() || "";
     return codexUsage({ plan_type, primary, secondary }, now / 1000);
@@ -2813,12 +2744,12 @@ function selfCheckCore() {
   if (codexTranscriptMessage({ type: "response_item", payload: { type: "function_call" } }, 2)) throw new Error("Codex tool call leaked into chat");
   const usage = codexUsage({ plan_type: "pro", primary: { used_percent: 15, window_minutes: 300, resets_at: 123 }, secondary: { used_percent: 36, window_minutes: 10080, resets_at: 456 } });
   if (usage.primary.used_percent !== 15 || usage.secondary.window_minutes !== 10080 || usage.plan_type !== "pro") throw new Error("Codex usage limits were not normalized");
-  const statusUsage = codexUsageFromScreen("│ >_ OpenAI Codex\n│ Model: gpt-5.6-sol\n│ Account: tony@example.com (Pro)\n│ 5h limit: 92% left (resets 05:52)\n│ Weekly limit: 39% left\n│   (resets 23:02 on 17 Jul)\n│ GPT-5.3-Codex-Spark limit:\n│ 5h limit: 100% left", new Date(2026, 6, 12, 4, 0).getTime());
-  if (statusUsage?.primary.used_percent !== 8 || statusUsage.secondary?.used_percent !== 61 || statusUsage.plan_type !== "pro") throw new Error("Codex status screen usage was not parsed");
-  const scrollbackUsage = codexUsageFromScreen("│ >_ OpenAI Codex\n│ Model: gpt-5.6-sol\n│ 5h limit: 100% left\n│ Weekly limit: 59% left\n│ GPT-5.3-Codex-Spark limit:\n│ 5h limit: 100% left\n\nnew terminal output\n\n│ >_ OpenAI Codex\n│ Model: gpt-5.6-sol\n│ Account: tony@example.com (Pro)\n│ 5h limit: 72% left\n│ Weekly limit: 38% left\n│ GPT-5.3-Codex-Spark limit:\n│ 5h limit: 100% left", new Date(2026, 6, 12, 4, 0).getTime());
-  if (scrollbackUsage?.primary.used_percent !== 28 || scrollbackUsage.secondary?.used_percent !== 62) throw new Error("latest Codex status in scrollback was not preferred");
-  const scrollbackPayload = capturePayload("ordinary current terminal screen", { tool: "codex" }, [], "ordinary current terminal screen", "│ >_ OpenAI Codex\n│ Model: gpt-5.6-sol\n│ 5h limit: 72% left\n│ Weekly limit: 38% left");
-  if (scrollbackPayload.codex_usage?.primary.used_percent !== 28) throw new Error("Codex usage was limited to the visible terminal screen");
+  const statusUsage = codexUsageFromScreen("│ >_ OpenAI Codex\n│ Model: gpt-5.6-sol\n│ Account: tony@example.com (Pro)\n│ Weekly limit: 39% left\n│   (resets 23:02 on 17 Jul)\n│ GPT-5.3-Codex-Spark weekly limit: 81% left", new Date(2026, 6, 12, 4, 0).getTime());
+  if (statusUsage?.primary.used_percent !== 61 || statusUsage.secondary?.used_percent !== 19 || statusUsage.plan_type !== "pro") throw new Error("Codex weekly status usage was not parsed");
+  const scrollbackUsage = codexUsageFromScreen("│ >_ OpenAI Codex\n│ Model: gpt-5.6-sol\n│ Weekly limit: 59% left\n│ GPT-5.3-Codex-Spark weekly limit: 100% left\n\nnew terminal output\n\n│ >_ OpenAI Codex\n│ Model: gpt-5.6-sol\n│ Account: tony@example.com (Pro)\n│ Weekly limit: 38% left\n│ GPT-5.3-Codex-Spark weekly limit: 72% left", new Date(2026, 6, 12, 4, 0).getTime());
+  if (scrollbackUsage?.primary.used_percent !== 62 || scrollbackUsage.secondary?.used_percent !== 28) throw new Error("latest Codex status in scrollback was not preferred");
+  const scrollbackPayload = capturePayload("ordinary current terminal screen", { tool: "codex" }, [], "ordinary current terminal screen", "│ >_ OpenAI Codex\n│ Model: gpt-5.6-sol\n│ Weekly limit: 38% left\n│ GPT-5.3-Codex-Spark weekly limit: 72% left");
+  if (scrollbackPayload.codex_usage?.primary.used_percent !== 62 || scrollbackPayload.codex_usage.secondary?.used_percent !== 28) throw new Error("Codex weekly usage was limited to the visible terminal screen");
   const mergedUsage = mergeCodexUsage([
     codexUsage({ plan_type: "pro", primary: { used_percent: 5, resets_at: 100 }, secondary: { used_percent: 10, resets_at: 200 } }),
     codexUsage({ plan_type: "pro", primary: { used_percent: 32, resets_at: 300 }, secondary: { used_percent: 24, resets_at: 400 } }),
@@ -2835,9 +2766,8 @@ function selfCheckCore() {
   updateCodexSettings(taskCache, { type: "event_msg", payload: { type: "task_complete" } });
   if (taskCache.taskState !== "ready") throw new Error("Codex task completion was not detected");
   const resetNow = new Date(2026, 6, 11, 4, 10).getTime();
-  const resetAt = goalUsageResetAt("You've hit your usage limit. Try again at 4:05 AM.\nGoal hit usage limits (/goal resume)", resetNow);
-  if (resetAt !== new Date(2026, 6, 11, 4, 5).getTime()) throw new Error("Codex goal reset time was not detected");
-  if (goalUsageResetAt("Goal completed normally", resetNow)) throw new Error("normal goal was classified as usage-limited");
+  const resetAt = codexUsageResetAt("You've hit your usage limit. Try again at 4:05 AM.", resetNow);
+  if (resetAt !== new Date(2026, 6, 11, 4, 5).getTime()) throw new Error("Codex usage reset time was not detected");
   if (codexUsageLimitUntil("You've hit your usage limit. Try again at 4:05 AM.", null, resetNow) !== Math.floor(resetAt / 1000)) throw new Error("Codex usage reset was not classified outside goal mode");
   const exactResume = commandForRestart({ tool: "codex", runner_command: "codex --no-alt-screen", codex_session_id: "019f491a-b738-7462-8a3a-418e4532df67" }, true, {});
   if (exactResume !== "codex --no-alt-screen resume '019f491a-b738-7462-8a3a-418e4532df67'") throw new Error("Codex resume lost the exact session id");

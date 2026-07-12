@@ -224,7 +224,6 @@ async function init() {
     localStorage.setItem(SOUND_VOLUME_KEY, els.soundVolume.value);
   });
   renderSoundChoices();
-  els.codexFooter.addEventListener("click", toggleGoalAutoResume);
   els.settingsToggle.addEventListener("click", toggleSettings);
   els.settingsRefresh.addEventListener("click", refresh);
   els.saveToolCommands.addEventListener("click", () => saveToolCommands(false));
@@ -559,14 +558,14 @@ function renderCodexFooter() {
   }
   const email = profile?.auth?.email || session.runner_label || "Codex account";
   const label = profile?.label && profile.label !== email ? profile.label : "Codex";
-  const usage = accountCodexUsage(session);
+  const usage = weeklyCodexUsage(accountCodexUsage(session));
   const warning = usageWarning(usage);
+  const hasUsage = Boolean(usage?.primary || usage?.secondary);
   els.codexFooter.hidden = false;
   els.codexFooter.innerHTML = `
     <div class="codex-account">${toolIcon("codex")}<div><strong>${escapeHtml(email)}</strong><small>${escapeHtml(label)}${usage?.plan_type ? ` · ${escapeHtml(usage.plan_type)}` : ""}</small></div></div>
-    ${usage ? `<div class="codex-limits">${usageLimit("5h", usage.primary)}${usageLimit("Weekly", usage.secondary)}</div>` : '<small>Usage appears after Codex responds.</small>'}
+    ${hasUsage ? `<div class="codex-limits">${usageLimit("Weekly", usage.primary)}${usageLimit("GPT-5.3 Codex Spark weekly", usage.secondary)}</div>` : '<small>Weekly usage appears after Codex responds.</small>'}
     ${warning ? `<div class="codex-usage-warning" role="status">${escapeHtml(warning)}</div>` : ""}
-    <button class="codex-auto-resume" type="button" data-auto-resume aria-pressed="${Boolean(session.auto_resume_goal)}" title="Send /goal resume after a Codex usage reset">Auto-resume goal: ${session.auto_resume_goal ? "On" : "Off"}</button>
   `;
 }
 
@@ -578,6 +577,12 @@ function accountCodexUsage(session) {
   if (timestamped.length) return timestamped.at(-1);
   const limit = (name) => usage.map((item) => item[name]).filter(Boolean).sort((a, b) => Number(a.resets_at) - Number(b.resets_at) || Number(a.used_percent) - Number(b.used_percent)).at(-1) || null;
   return { plan_type: usage.findLast((item) => item.plan_type)?.plan_type || "", primary: limit("primary"), secondary: limit("secondary") };
+}
+
+function weeklyCodexUsage(usage) {
+  if (!usage) return null;
+  const weekly = [usage.primary, usage.secondary].filter((limit) => limit && (!Number(limit.window_minutes) || Number(limit.window_minutes) >= 10080));
+  return { ...usage, primary: weekly[0] || null, secondary: weekly[1] || null };
 }
 
 function codexAccountKey(session) {
@@ -594,31 +599,10 @@ function usageLimit(label, limit) {
 }
 
 function usageWarning(usage) {
-  const near = [["5h", usage?.primary], ["Weekly", usage?.secondary]].filter(([, limit]) => Number(limit?.used_percent) >= 90);
+  const near = [["Weekly", usage?.primary], ["GPT-5.3 Codex Spark weekly", usage?.secondary]].filter(([, limit]) => Number(limit?.used_percent) >= 90);
   if (!near.length) return "";
   const exhausted = near.some(([, limit]) => Number(limit.used_percent) >= 100);
   return `${near.map(([label]) => label).join(" + ")} usage ${exhausted ? "is exhausted" : "is nearly exhausted"}.`;
-}
-
-async function toggleGoalAutoResume(event) {
-  const button = event.target.closest("[data-auto-resume]");
-  if (!button) return;
-  const session = activeSession();
-  if (!session || session.tool !== "codex") return;
-  button.disabled = true;
-  try {
-    const enabled = !session.auto_resume_goal;
-    const data = await api(`/api/sessions/${session.id}/auto-resume`, {
-      method: "POST",
-      body: JSON.stringify({ enabled }),
-    });
-    Object.assign(session, data.session);
-    renderCodexFooter();
-    setStatus(enabled ? "Auto-resume enabled" : "Auto-resume disabled");
-  } catch (error) {
-    button.disabled = false;
-    showError(error.message);
-  }
 }
 
 function renderInputInbox() {
