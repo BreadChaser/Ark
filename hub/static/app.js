@@ -345,7 +345,11 @@ function applySessionStates(states) {
   state.sessionStates = Object.fromEntries(states.map((item) => [item.id, item.state]));
   for (const item of states) {
     const session = state.sessions.find((entry) => entry.id === item.id);
-    if (session) session.pending_control = item.pending_control || null;
+    if (!session) continue;
+    session.pending_control = item.pending_control || null;
+    session.ready_at = Math.max(Number(item.ready_at || 0), Number(session.ready_at || 0));
+    session.viewed_at = Math.max(Number(item.viewed_at || 0), Number(session.viewed_at || 0));
+    if (item.id === state.activeSessionId && sessionIsDone(session, item.state)) markSessionViewed(session);
   }
   renderSidebar();
 }
@@ -713,12 +717,18 @@ function sessionStateName(session, stopped) {
   if (stopped) return "stopped";
   if (session.tool === "terminal") return "terminal";
   const value = state.sessionStates[session.id];
+  if (sessionIsDone(session, value)) return "done";
   return ["working", "needs_input", "ready", "unknown"].includes(value) ? value : "unknown";
+}
+
+function sessionIsDone(session, value) {
+  return value === "ready" && Number(session?.ready_at || 0) > Number(session?.viewed_at || 0);
 }
 
 function sessionStateLabel(session, value) {
   return {
     working: "working",
+    done: "done",
     needs_input: "needs input",
     ready: "ready",
     stopped: "stopped",
@@ -1233,6 +1243,7 @@ function openSession(sessionId) {
     state.expandedDevices.add(session.device_id);
     els.repo.value = session.cwd || els.repo.value;
     rememberRepo();
+    markSessionViewed(session);
   }
   state.activeSessionId = sessionId;
   state.forceBottomSessionId = sessionId;
@@ -1244,6 +1255,13 @@ function openSession(sessionId) {
   collapseSidebarOnMobile();
   renderSidebar();
   renderMain();
+}
+
+function markSessionViewed(session) {
+  session.viewed_at = Math.floor(Date.now() / 1000);
+  api(`/api/sessions/${encodeURIComponent(session.id)}/read`, { method: "POST" })
+    .then((data) => Object.assign(session, data.session))
+    .catch(() => {});
 }
 
 async function openDeviceComposer(deviceId, anchor) {

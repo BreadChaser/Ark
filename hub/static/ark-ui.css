@@ -17,6 +17,7 @@
   --blue: #58a8ef;
   --danger: #f37b83;
   --warning: #e8b66b;
+  --done: #65d991;
   --shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
   --grid-line: rgba(121, 183, 193, 0.08);
   --scanline-a: transparent;
@@ -56,6 +57,7 @@
   --blue: #246d9e;
   --danger: #a63f4c;
   --warning: #855713;
+  --done: #287447;
   --shadow: 0 24px 70px rgba(25, 49, 52, 0.18);
   --grid-line: rgba(31, 73, 76, 0.075);
   --vignette: rgba(31, 54, 55, 0.12);
@@ -80,6 +82,7 @@
   --blue: #78bac2;
   --danger: #ff684f;
   --warning: #f2b341;
+  --done: #8fd45d;
   --shadow: 0 0 0 1px rgba(255, 176, 47, 0.08), 0 18px 48px rgba(0, 0, 0, 0.72);
   --grid-line: rgba(255, 176, 47, 0.085);
   --scanline-a: rgba(255, 232, 170, 0.09);
@@ -810,6 +813,11 @@ pre {
 
 .session.agent-ready .session-state {
   color: var(--accent);
+}
+
+.session.agent-done .session-state {
+  color: var(--done);
+  font-weight: 800;
 }
 
 .session.agent-stopped .session-state {

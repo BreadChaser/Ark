@@ -341,6 +341,7 @@ async function assertOtherMachinesCollapse() {
 
 async function assertSelectedSessionChrome() {
   await wait('document.querySelectorAll("#devices .session.active[aria-current=page]").length === 1');
+  assert(await js('return sessionIsDone({ ready_at: 20, viewed_at: 10 }, "ready") && !sessionIsDone({ ready_at: 20, viewed_at: 20 }, "ready");'), "done state does not behave like an unread completion");
   const chrome = await js(`
     const active = document.querySelector("#devices .session.active[aria-current=page]");
     return {

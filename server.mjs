@@ -117,6 +117,10 @@ async function route(req, res) {
     const body = await readJson(req);
     return json(res, 200, { sessions: await reorderSessions(body.device_id, body.ids) });
   }
+  const sessionReadMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/read$/);
+  if (req.method === "POST" && sessionReadMatch) {
+    return json(res, 200, { session: publicSession(await markSessionRead(sessionReadMatch[1])) });
+  }
   const sessionMetaMatch = pathname.match(/^\/api\/sessions\/([^/]+)$/);
   if (req.method === "PATCH" && sessionMetaMatch) {
     const updated = await renameSession(sessionMetaMatch[1], (await readJson(req)).title);
@@ -1544,14 +1548,14 @@ async function listAgentStates() {
   return Promise.all(sessions.map(async (session) => {
     try {
       const live = CAPTURE_STREAMS.get(session.id)?.payload;
-      if (live) return { id: session.id, state: live.pending_control ? "needs_input" : live.agent_state, pending_control: live.pending_control || null };
+      if (live) return { id: session.id, state: live.pending_control ? "needs_input" : live.agent_state, pending_control: live.pending_control || null, ready_at: session.ready_at || 0, viewed_at: session.viewed_at || 0 };
       const device = await tmuxDeviceForSession(session);
       const screen = await captureTmuxScreen(device, session.tmux_name);
       if (screen.code !== 0) return { id: session.id, state: isMissingTmux(screen.output) ? "stopped" : "unknown" };
       const controls = parseAgentControls(session.tool, screen.output);
       const state = agentStateFromScreen(session, screen.output, controls);
       const current = await syncPendingControl(session.id, controls, state);
-      return { id: session.id, state: current.pending_control ? "needs_input" : state, pending_control: current.pending_control || null };
+      return { id: session.id, state: current.pending_control ? "needs_input" : state, pending_control: current.pending_control || null, ready_at: current.ready_at || 0, viewed_at: current.viewed_at || 0 };
     } catch {
       return { id: session.id, state: "unknown" };
     }
@@ -1632,15 +1636,19 @@ async function syncPendingControl(id, controls, state, codexState = null, codexU
       source: String(codexState.source || ""),
     } : session.codex_state || null;
     const usage = codexUsage?.primary || codexUsage?.secondary ? codexUsage : session.codex_usage || null;
+    const stateChanged = state !== session.agent_state;
     const unchanged = next?.id === session.pending_control?.id
       && Boolean(next) === Boolean(session.pending_control)
       && JSON.stringify(runtime) === JSON.stringify(session.codex_state || null)
-      && JSON.stringify(usage) === JSON.stringify(session.codex_usage || null);
+      && JSON.stringify(usage) === JSON.stringify(session.codex_usage || null)
+      && !stateChanged;
     if (unchanged) return session;
     if (next) session.pending_control = next;
     else delete session.pending_control;
     if (runtime) session.codex_state = runtime;
     if (usage) session.codex_usage = usage;
+    if (completedAgentState(session.agent_state, state)) session.ready_at = Math.floor(Date.now() / 1000);
+    session.agent_state = state;
     await writeStore(data);
     await writeSessionFiles(session);
     return session;
@@ -1677,6 +1685,23 @@ async function renameSession(id, value) {
     if (!found) throw httpError(404, `Unknown session: ${id}`);
     found.title = title;
     found.title_overridden = true;
+    await writeStore(data);
+    return found;
+  });
+  await writeSessionFiles(session);
+  return session;
+}
+
+function completedAgentState(previous, next) {
+  return previous === "working" && next === "ready";
+}
+
+async function markSessionRead(id) {
+  const session = await withMutation("store", async () => {
+    const data = await readStore();
+    const found = data.sessions.find((item) => item.id === id);
+    if (!found) throw httpError(404, `Unknown session: ${id}`);
+    found.viewed_at = Math.floor(Date.now() / 1000);
     await writeStore(data);
     return found;
   });
@@ -2617,6 +2642,7 @@ function selfCheckCore() {
   if (automaticSessionTitle({ tool: "terminal", tmux_name: "Ark-TEST" }, { command: "bash" }) !== "Ark-TEST") throw new Error("idle shell replaced its tmux session name");
   const orderedSessions = [{ title: "terminal - Zulu" }, { title: "codex - Alpha" }].sort(compareSessions);
   if (orderedSessions[0].title !== "codex - Alpha") throw new Error("sessions were not alphabetical by their displayed names");
+  if (!completedAgentState("working", "ready") || completedAgentState("needs_input", "ready")) throw new Error("unread completion transition was misclassified");
   const resetNow = new Date(2026, 6, 11, 4, 10).getTime();
   const resetAt = goalUsageResetAt("You've hit your usage limit. Try again at 4:05 AM.\nGoal hit usage limits (/goal resume)", resetNow);
   if (resetAt !== new Date(2026, 6, 11, 4, 5).getTime()) throw new Error("Codex goal reset time was not detected");
