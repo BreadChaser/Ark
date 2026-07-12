@@ -7,6 +7,7 @@ const SIDEBAR_COLLAPSED_KEY = "ark-sidebar-collapsed";
 const DEFAULT_TOOL_KEY = "ark-default-tool";
 const IMAGE_MODE_KEY = "ark-image-mode";
 const NOTIFIED_CONTROLS_KEY = "ark-notified-controls";
+const SOUND_VOLUME_KEY = "ark-sound-volume";
 const DEFAULT_REPO = "~/Development";
 const URL_SESSION_ID = new URLSearchParams(window.location.search).get("session");
 const storedSidebarCollapsed = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
@@ -66,6 +67,7 @@ const state = {
   terminalResize: null,
   terminalObserver: null,
   audio: null,
+  soundVolume: Math.max(0, Math.min(1, Number(localStorage.getItem(SOUND_VOLUME_KEY) ?? 60) / 100)),
 };
 
 const els = {
@@ -139,6 +141,9 @@ const els = {
   enableNotifications: document.querySelector("#enable-notifications"),
   testDoneSound: document.querySelector("#test-done-sound"),
   testInputSound: document.querySelector("#test-input-sound"),
+  soundVolume: document.querySelector("#sound-volume"),
+  soundVolumeValue: document.querySelector("#sound-volume-value"),
+  soundStatus: document.querySelector("#sound-status"),
   notificationStatus: document.querySelector("#notification-status"),
   toolStatus: document.querySelector("#tool-status"),
   profileStatus: document.querySelector("#profile-status"),
@@ -171,6 +176,8 @@ async function init() {
   els.defaultTool.value = localStorage.getItem(DEFAULT_TOOL_KEY) || "codex";
   els.defaultView.value = state.view;
   els.imageMode.value = "queue";
+  els.soundVolume.value = String(Math.round(state.soundVolume * 100));
+  els.soundVolumeValue.value = `${els.soundVolume.value}%`;
   els.tool.value = els.defaultTool.value;
   await loadSettings();
   await loadProfiles();
@@ -189,8 +196,13 @@ async function init() {
   els.defaultView.addEventListener("change", () => setView(els.defaultView.value));
   els.imageMode.addEventListener("change", () => localStorage.setItem(IMAGE_MODE_KEY, "queue"));
   els.enableNotifications.addEventListener("click", enableNotifications);
-  els.testDoneSound.addEventListener("click", () => playAgentTransition("working", "ready"));
-  els.testInputSound.addEventListener("click", () => playAgentTransition("ready", "needs_input"));
+  els.testDoneSound.addEventListener("click", () => previewAgentSound("done"));
+  els.testInputSound.addEventListener("click", () => previewAgentSound("input"));
+  els.soundVolume.addEventListener("input", () => {
+    state.soundVolume = Number(els.soundVolume.value) / 100;
+    els.soundVolumeValue.value = `${els.soundVolume.value}%`;
+    localStorage.setItem(SOUND_VOLUME_KEY, els.soundVolume.value);
+  });
   els.codexFooter.addEventListener("click", toggleGoalAutoResume);
   els.settingsToggle.addEventListener("click", toggleSettings);
   els.settingsRefresh.addEventListener("click", refresh);
@@ -2127,32 +2139,46 @@ function agentSoundKind(previous, next) {
 
 function armSounds() {
   const AudioContext = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContext) return;
+  if (!AudioContext) return null;
   state.audio ||= new AudioContext();
   if (state.audio.state === "suspended") state.audio.resume().catch(() => {});
+  return state.audio;
 }
 
 function playAgentTransition(previous, next) {
   const kind = agentSoundKind(previous, next);
-  if (!kind || !state.audio) return;
-  const play = () => {
-    const now = state.audio.currentTime;
-    const notes = kind === "done" ? [[659, 0, 0.12], [880, 0.11, 0.18]] : [[220, 0, 0.1], [165, 0.12, 0.16]];
-    for (const [frequency, delay, duration] of notes) {
-      const oscillator = state.audio.createOscillator();
-      const gain = state.audio.createGain();
-      oscillator.type = kind === "done" ? "sine" : "triangle";
-      oscillator.frequency.value = frequency;
-      gain.gain.setValueAtTime(0.0001, now + delay);
-      gain.gain.exponentialRampToValueAtTime(kind === "done" ? 0.09 : 0.12, now + delay + 0.015);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + delay + duration);
-      oscillator.connect(gain).connect(state.audio.destination);
-      oscillator.start(now + delay);
-      oscillator.stop(now + delay + duration);
-    }
-  };
-  if (state.audio.state === "suspended") state.audio.resume().then(play).catch(() => {});
-  else play();
+  if (kind && state.audio) playAgentSound(kind);
+}
+
+async function previewAgentSound(kind) {
+  armSounds();
+  const played = await playAgentSound(kind);
+  els.soundStatus.textContent = state.soundVolume === 0
+    ? "Sound is muted."
+    : played ? `Played ${kind === "done" ? "done" : "needs input"} at ${Math.round(state.soundVolume * 100)}%.`
+      : "This browser blocked audio. Tap the page, then try again.";
+}
+
+async function playAgentSound(kind) {
+  if (!state.audio || state.soundVolume === 0) return false;
+  if (state.audio.state === "suspended") await state.audio.resume().catch(() => {});
+  if (state.audio.state !== "running") return false;
+  const now = state.audio.currentTime;
+  const notes = kind === "done" ? [[659, 0, 0.14], [880, 0.12, 0.22]] : [[220, 0, 0.13], [165, 0.14, 0.2]];
+  const peak = state.soundVolume * (kind === "done" ? 0.28 : 0.36);
+  for (const [frequency, delay, duration] of notes) {
+    const oscillator = state.audio.createOscillator();
+    const gain = state.audio.createGain();
+    oscillator.type = kind === "done" ? "sine" : "triangle";
+    oscillator.frequency.value = frequency;
+    gain.gain.setValueAtTime(0.0001, now + delay);
+    gain.gain.exponentialRampToValueAtTime(peak, now + delay + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + delay + duration);
+    oscillator.connect(gain).connect(state.audio.destination);
+    oscillator.start(now + delay);
+    oscillator.stop(now + delay + duration);
+  }
+  return true;
 }
 
 async function registerNotificationWorker() {
