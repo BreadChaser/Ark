@@ -16,7 +16,8 @@ Ark is not a tmux screenshot viewer. tmux is transport/persistence. The UI shoul
 - Remote repo access stays SSH/tmux-only for v1. Do not sync or mount repos.
 - Long term, remote devices should not need Codex installed either.
 - Ark should own Codex/Claude/OpenCode sessions and route them through configured tool/profile runners.
-- Codex should ideally not need to know it is operating through SSH.
+- New remote Codex sessions run directly on the selected machine and selected
+  repository path. They should not need to reason about an extra SSH hop.
 - New sessions default to the last active session on reload.
 - Sidebar shows machines only, each with a dropdown of active sessions.
 - Offline machines go into a collapsible offline section.
@@ -146,6 +147,11 @@ Ark should create its own sessions and adopt existing tmux sessions as it sees t
 ## Latest Confirmed Implementation Choices
 
 - Add the approved terminal dependencies.
+- Codex runs directly on the selected device; terminal and Codex tmux state
+  therefore live alongside the selected repository.
+- Remote OpenCode and Claude remain central-runner sessions until direct
+  profile provisioning is intentionally implemented.
+- A chat send exits tmux copy mode before it sends Enter or queues with Tab.
 - A single Codex CLI install/profile can run many concurrent sessions.
 - Ark creates its own sessions and adopts existing tmux sessions as they appear.
 - Attachments use paths first.

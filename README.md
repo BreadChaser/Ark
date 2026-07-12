@@ -43,6 +43,16 @@ It also reads:
 No private keys are stored in Ark. SSH authentication stays in your normal SSH
 agent/config.
 
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md) explains devices, tmux, agent runners,
+  state, and the chat/terminal boundary.
+- [Operations](docs/OPERATIONS.md) covers installation, systemd, access,
+  backups, recovery, and troubleshooting.
+- [Migration](docs/MIGRATION.md) records the current Proxmox deployment and
+  cutover boundaries.
+- [Direction](docs/DIRECTION.md) records product constraints and deferred work.
+
 ## V1
 
 This branch is the V1 rewrite base. It can:
@@ -67,3 +77,9 @@ This branch is the V1 rewrite base. It can:
 Codex messages prefer its structured rollout transcript. Interactive terminal
 controls use a fixture-tested parser, with the raw terminal always available
 when a tool changes its UI.
+
+For a remote Codex session, Ark starts Codex and tmux on the selected device in
+the selected directory. Terminal scrolling uses tmux copy mode; a chat send
+always exits copy mode first. Ready Codex receives Enter, while a working
+Codex receives Tab so the message is queued instead of being left in its
+multiline composer.

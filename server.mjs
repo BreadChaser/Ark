@@ -1291,8 +1291,9 @@ async function captureTmuxScreen(device, tmuxName) {
 }
 
 async function sendText(device, tmuxName, text, submit, key = "Enter") {
+  const target = q(tmuxName);
   const submitKey = submit ? ` \\; send-keys -t ${q(tmuxName)} ${key}` : "";
-  return runOnDevice(device, `tmux send-keys -t ${q(tmuxName)} -l ${q(text)}${submitKey}`, 15000);
+  return runOnDevice(device, `tmux copy-mode -q -t ${target} 2>/dev/null || true; tmux send-keys -t ${target} -l ${q(text)}${submitKey}`, 15000);
 }
 
 function submitKeyForSession(session, screen) {
@@ -1301,14 +1302,15 @@ function submitKeyForSession(session, screen) {
 }
 
 async function sendKey(device, tmuxName, key) {
-  return runOnDevice(device, `tmux send-keys -t ${q(tmuxName)} ${key}`, 15000);
+  const target = q(tmuxName);
+  return runOnDevice(device, `tmux copy-mode -q -t ${target} 2>/dev/null || true; tmux send-keys -t ${target} ${key}`, 15000);
 }
 
 async function sendMenuChoice(device, tmuxName, index, current = 1) {
   const target = q(tmuxName);
   const distance = index - (current || 1);
   const move = distance ? `tmux send-keys -t ${target} -N ${Math.abs(distance)} ${distance > 0 ? "Down" : "Up"}; sleep 0.15; ` : "";
-  return runOnDevice(device, `${move}tmux send-keys -t ${target} Enter`, 15000);
+  return runOnDevice(device, `tmux copy-mode -q -t ${target} 2>/dev/null || true; ${move}tmux send-keys -t ${target} Enter`, 15000);
 }
 
 function openEventStream(req, res, clients, close) {
