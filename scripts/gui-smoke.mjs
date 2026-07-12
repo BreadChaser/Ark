@@ -349,7 +349,15 @@ async function assertOtherMachinesCollapse() {
 async function assertSelectedSessionChrome() {
   await wait('document.querySelectorAll("#devices .session.active[aria-current=page]").length === 1');
   assert(await js('return sessionIsDone({ ready_at: 20, viewed_at: 10 }, "ready") && !sessionIsDone({ ready_at: 20, viewed_at: 20 }, "ready");'), "done state does not behave like an unread completion");
-  assert(await js('return agentSoundKind("working", "ready") === "done" && agentSoundKind("ready", "needs_input") === "input" && agentSoundKind("ready", "ready") === "";'), "agent sounds do not follow state transitions");
+  assert(await js('return agentSoundKind("working", "ready") === "" && agentSoundKind("working", "ready", true) === "done" && agentSoundKind("ready", "needs_input") === "input";'), "agent sounds do not require a confirmed completion");
+  assert(await js(`
+    const host = document.createElement("div");
+    host.innerHTML = '<button class="session agent-working"><small class="session-state">working</small></button><button class="session agent-ready"><small class="session-state">ready</small></button>';
+    document.body.append(host);
+    const colors = [...host.querySelectorAll(".session-state")].map((item) => getComputedStyle(item).color);
+    host.remove();
+    return colors[0] !== colors[1];
+  `), "working and ready use the same color");
   assert(await js('return sessionStateLabel({}, "usage") === "usage";'), "usage-limited session state is unavailable");
   const chrome = await js(`
     const active = document.querySelector("#devices .session.active[aria-current=page]");

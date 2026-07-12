@@ -814,11 +814,11 @@ pre {
 }
 
 .session.agent-working .session-state {
-  color: var(--accent);
+  color: var(--warning);
 }
 
 .session.agent-working .session-state::before {
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 18%, transparent);
 }
 
 .session.agent-needs_input {
@@ -831,7 +831,7 @@ pre {
 }
 
 .session.agent-ready .session-state {
-  color: var(--accent);
+  color: var(--blue);
 }
 
 .session.agent-done .session-state {

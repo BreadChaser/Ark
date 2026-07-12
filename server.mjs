@@ -493,6 +493,7 @@ async function captureSession(id) {
     const settings = cachedCodexSettings(session);
     if (settings) payload.codex_state = { ...(payload.codex_state || {}), ...settings, source: "codex-rollout" };
     payload.codex_usage = cachedCodexUsage(session) || session.codex_usage || null;
+    if (payload.agent_state !== "needs_input") payload.agent_state = cachedCodexTaskState(session) || payload.agent_state;
   } else if (payload.mode === "chat") {
     payload.messages = await writeMessagesSnapshot(session, payload.messages);
     payload.transcript_source = "terminal-fallback";
@@ -1559,7 +1560,11 @@ async function listAgentStates() {
       const screen = await captureTmuxScreen(device, session.tmux_name);
       if (screen.code !== 0) return { id: session.id, state: isMissingTmux(screen.output) ? "stopped" : "unknown" };
       const controls = parseAgentControls(session.tool, screen.output);
-      const state = agentStateFromScreen(session, screen.output, controls);
+      let state = agentStateFromScreen(session, screen.output, controls);
+      if (session.tool === "codex" && device.local) {
+        await readCodexTranscript(session, device, screen.output);
+        if (state !== "needs_input") state = cachedCodexTaskState(session) || state;
+      }
       const current = await syncPendingControl(session.id, controls, state);
       const usageUntil = Number(current.usage_limited_until || 0);
       const effectiveState = usageUntil > Math.floor(Date.now() / 1000) ? "usage" : current.pending_control ? "needs_input" : state;
@@ -2091,7 +2096,7 @@ async function readCodexTranscript(session, device, rawText) {
   }
   let cache = CODEX_TRANSCRIPTS.get(filePath);
   if (!cache || info.size < cache.offset) {
-    cache = { offset: 0, remainder: "", messages: [], sequence: 0, settings: null, usage: null };
+    cache = { offset: 0, remainder: "", messages: [], sequence: 0, settings: null, usage: null, taskState: null };
     CODEX_TRANSCRIPTS.set(filePath, cache);
   }
   if (info.size === cache.offset) return cache.messages.map(normalizeMessage);
@@ -2120,6 +2125,8 @@ async function readCodexTranscript(session, device, rawText) {
 }
 
 function updateCodexSettings(cache, row) {
+  if (row?.type === "event_msg" && row.payload?.type === "task_started") cache.taskState = "working";
+  if (row?.type === "event_msg" && row.payload?.type === "task_complete") cache.taskState = "ready";
   const limits = row?.type === "event_msg" && row.payload?.type === "token_count" ? row.payload.rate_limits : null;
   if (limits?.limit_id === "codex" && (limits.primary || limits.secondary)) cache.usage = codexUsage(limits, Date.parse(row.timestamp || "") / 1000);
   const settings = row?.type === "turn_context"
@@ -2174,6 +2181,11 @@ function cachedCodexSettings(session) {
 function cachedCodexUsage(session) {
   const filePath = CODEX_ROLLOUTS.get(session.id);
   return filePath ? CODEX_TRANSCRIPTS.get(filePath)?.usage || null : null;
+}
+
+function cachedCodexTaskState(session) {
+  const filePath = CODEX_ROLLOUTS.get(session.id);
+  return filePath ? CODEX_TRANSCRIPTS.get(filePath)?.taskState || null : null;
 }
 
 function codexTranscriptMessage(row, sequence) {
@@ -2674,6 +2686,11 @@ function selfCheckCore() {
   const orderedSessions = [{ title: "terminal - Zulu" }, { title: "codex - Alpha" }].sort(compareSessions);
   if (orderedSessions[0].title !== "codex - Alpha") throw new Error("sessions were not alphabetical by their displayed names");
   if (!completedAgentState("working", "ready") || completedAgentState("needs_input", "ready")) throw new Error("unread completion transition was misclassified");
+  const taskCache = { taskState: null, settings: null, usage: null };
+  updateCodexSettings(taskCache, { type: "event_msg", payload: { type: "task_started" } });
+  if (taskCache.taskState !== "working") throw new Error("Codex task start was not detected");
+  updateCodexSettings(taskCache, { type: "event_msg", payload: { type: "task_complete" } });
+  if (taskCache.taskState !== "ready") throw new Error("Codex task completion was not detected");
   const resetNow = new Date(2026, 6, 11, 4, 10).getTime();
   const resetAt = goalUsageResetAt("You've hit your usage limit. Try again at 4:05 AM.\nGoal hit usage limits (/goal resume)", resetNow);
   if (resetAt !== new Date(2026, 6, 11, 4, 5).getTime()) throw new Error("Codex goal reset time was not detected");

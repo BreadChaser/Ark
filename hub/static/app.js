@@ -385,11 +385,12 @@ function applySessionStates(states) {
   for (const item of states) {
     const session = state.sessions.find((entry) => entry.id === item.id);
     if (!session) continue;
+    const completed = Number(item.ready_at || 0) > Number(session.ready_at || 0);
     session.pending_control = item.pending_control || null;
     session.ready_at = Math.max(Number(item.ready_at || 0), Number(session.ready_at || 0));
     session.viewed_at = Math.max(Number(item.viewed_at || 0), Number(session.viewed_at || 0));
     session.usage_limited_until = Number(item.usage_limited_until || 0);
-    playAgentTransition(previous[item.id], item.state);
+    playAgentTransition(previous[item.id], item.state, completed);
     if (item.id === state.activeSessionId && sessionIsDone(session, item.state)) markSessionViewed(session);
   }
   renderSidebar();
@@ -2154,8 +2155,8 @@ function setStatus(status) {
   els.status.dataset.status = status.toLowerCase();
 }
 
-function agentSoundKind(previous, next) {
-  if (previous === "working" && next === "ready") return "done";
+function agentSoundKind(previous, next, completed = false) {
+  if (completed) return "done";
   if (previous && previous !== "needs_input" && next === "needs_input") return "input";
   return "";
 }
@@ -2192,8 +2193,8 @@ function handleSoundChoice(event) {
   previewAgentSound(kind, choice);
 }
 
-function playAgentTransition(previous, next) {
-  const kind = agentSoundKind(previous, next);
+function playAgentTransition(previous, next, completed = false) {
+  const kind = agentSoundKind(previous, next, completed);
   if (kind) playAgentSound(kind);
 }
 
