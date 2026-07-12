@@ -9,19 +9,19 @@ const IMAGE_MODE_KEY = "ark-image-mode";
 const NOTIFIED_CONTROLS_KEY = "ark-notified-controls";
 const SOUND_VOLUME_KEY = "ark-sound-volume";
 const SOUND_CHOICE_KEYS = { done: "ark-done-sound", input: "ark-input-sound" };
-const SOUND_VERSION = "5";
+const SOUND_VERSION = "6";
 const SOUND_CHOICES = {
   done: [
     { id: "ark", label: "Ark chime", file: "done.wav" },
-    { id: "arrival", label: "Arrival", file: "sounds/done-arrival.mp3" },
-    { id: "spark", label: "Spark", file: "sounds/done-spark.mp3" },
-    { id: "resolve", label: "Resolve", file: "sounds/done-resolve.mp3" },
+    { id: "arrival", label: "Ascend", file: "sounds/done-arrival.mp3" },
+    { id: "spark", label: "Glass rise", file: "sounds/done-spark.mp3" },
+    { id: "resolve", label: "Soft resolve", file: "sounds/done-resolve.mp3" },
   ],
   input: [
     { id: "ark", label: "Ark alert", file: "needs-input.wav" },
-    { id: "warning", label: "Warning", file: "sounds/input-warning.mp3" },
-    { id: "urgent", label: "Urgent", file: "sounds/input-urgent.mp3" },
-    { id: "busy", label: "Busy signal", file: "sounds/input-busy.mp3" },
+    { id: "warning", label: "Triple alert", file: "sounds/input-warning.mp3" },
+    { id: "urgent", label: "Beacon", file: "sounds/input-urgent.mp3" },
+    { id: "busy", label: "Glitch", file: "sounds/input-busy.mp3" },
   ],
 };
 const DEFAULT_REPO = "~/Development";
