@@ -43,9 +43,7 @@ try {
   await wait('document.querySelector("#session-panel").classList.contains("has-session") || document.querySelectorAll("#devices .session").length === 0', 30000);
   await wait('document.querySelector(".brand-logo").complete && document.querySelector(".brand-logo").naturalWidth > 0');
   assert((await api("/manifest.webmanifest")).name === "Ark", "PWA manifest is unavailable");
-  const doneSound = await fetch(`${BASE_URL}/static/done.wav?v=6`);
-  assert(doneSound.headers.get("content-type") === "audio/wav" && (await doneSound.arrayBuffer()).byteLength > 1000, "completion sound is not browser-playable");
-  const sampleSound = await fetch(`${BASE_URL}/static/sounds/done-arrival.mp3?v=6`);
+  const sampleSound = await fetch(`${BASE_URL}/static/sounds/yaru-complete.mp3?v=7`);
   assert(sampleSound.headers.get("content-type") === "audio/mpeg" && (await sampleSound.arrayBuffer()).byteLength > 1000, "sample sound is not browser-playable");
   assert((await fetch(`${BASE_URL}/sw.js`)).ok && await js('return "serviceWorker" in navigator;'), "notification service worker is unavailable");
   assert(await js('return document.body.dataset.sessionStateTransport === "stream";'), "session states still use browser polling");
@@ -57,8 +55,8 @@ try {
   await js('document.querySelector("#settings-toggle").click(); return true;');
   await wait('document.querySelectorAll("#tool-status .tool-card").length === 4');
   assert(await js('return document.querySelectorAll("[data-sound-preview]").length === 8 && document.querySelectorAll("[data-sound-use]").length === 8 && Boolean(document.querySelector("#sound-volume"));'), "sound choices are missing from settings");
-  await js('document.querySelector("[data-sound-use=\\"done:arrival\\"]").click(); return true;');
-  assert(await js('return localStorage.getItem("ark-done-sound") === "arrival" && document.querySelector("[data-sound-use=\\"done:arrival\\"]").disabled;'), "sound choice did not persist");
+  await js('document.querySelector("[data-sound-use=\\"done:message\\"]").click(); return true;');
+  assert(await js('return localStorage.getItem("ark-done-sound") === "message" && document.querySelector("[data-sound-use=\\"done:message\\"]").disabled;'), "sound choice did not persist");
   await wait('document.querySelector("#account-form") && document.querySelectorAll("#profile-status .account-card").length >= 1');
   await wait('[...document.querySelectorAll("#profile-status [data-profile-login]")].some((button) => button.textContent.trim() === "Login")');
   await wait('/Signed in as|Needs login/.test(document.querySelector("#profile-status").textContent)');
@@ -162,8 +160,10 @@ try {
   assert(pasted.queue.includes("pasted.png"), "pasted file did not queue");
   await shot("attachment-paste");
   const pastedText = await pasteTextInBrowser();
-  assert(pastedText.queue.includes("clipboard.txt"), "pasted clipboard text did not queue as a file");
-  assert(!pastedText.input.includes("clipboard text smoke"), "pasted clipboard text should not write directly to composer");
+  assert(pastedText.input.includes("clipboard text smoke"), "normal pasted text did not stay in the composer");
+  assert(!pastedText.queue.includes("clipboard.txt"), "normal pasted text unexpectedly became a file");
+  const pastedLongText = await pasteLongTextInBrowser();
+  assert(pastedLongText.queue.includes("clipboard.txt"), "very long pasted text did not become a file");
   await shot("attachment-paste-text");
   await js('document.querySelector("#send").click(); return true;');
   await waitForTerminalLogText(disposableSession.id, "pasted");
@@ -488,7 +488,7 @@ async function assertDiagnostics() {
   assert(diagnostics.features.remote_live_terminal, "diagnostics missing remote_live_terminal feature");
   assert(diagnostics.features.queued_attachments, "diagnostics missing queued_attachments feature");
   assert(diagnostics.features.drag_drop_attachments, "diagnostics missing drag_drop_attachments feature");
-  assert(diagnostics.features.clipboard_text_attachments, "diagnostics missing clipboard_text_attachments feature");
+  assert(diagnostics.features.large_clipboard_text_attachments, "diagnostics missing large_clipboard_text_attachments feature");
   assert(diagnostics.features.codex_startup_images, "diagnostics missing codex_startup_images feature");
   assert(diagnostics.features.role_header_chat_capture, "diagnostics missing role_header_chat_capture feature");
   assert(diagnostics.features.codex_trust_prompt_filter, "diagnostics missing codex_trust_prompt_filter feature");
@@ -1397,10 +1397,23 @@ async function pasteImageInBrowser() {
 }
 
 async function pasteTextInBrowser() {
+  return js(`
+    const input = document.querySelector("#input");
+    const text = "clipboard text smoke";
+    const event = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "clipboardData", { value: { files: [], getData: (type) => type === "text/plain" ? text : "" } });
+    input.dispatchEvent(event);
+    if (!event.defaultPrevented) input.setRangeText(text, input.selectionStart, input.selectionEnd, "end");
+    return { input: input.value, output: document.querySelector("#parsed").innerText, queue: document.querySelector("#attachment-queue").innerText };
+  `);
+}
+
+async function pasteLongTextInBrowser() {
   await js(`
     const input = document.querySelector("#input");
+    const text = "x".repeat(50001);
     const event = new Event("paste", { bubbles: true, cancelable: true });
-    Object.defineProperty(event, "clipboardData", { value: { files: [], getData: (type) => type === "text/plain" ? "clipboard text smoke" : "" } });
+    Object.defineProperty(event, "clipboardData", { value: { files: [], getData: (type) => type === "text/plain" ? text : "" } });
     input.dispatchEvent(event);
     return true;
   `);

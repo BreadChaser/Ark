@@ -1,10 +1,10 @@
-# Kenney Interface Sounds
+# Ubuntu Yaru sound theme
 
-The MP3 samples in this directory are edited combinations of assets from
-[Kenney Interface Sounds](https://kenney.nl/assets/interface-sounds), created
-by Kenney Vleugels. They were pitch-shifted, sequenced, normalized, and
-format-converted for Ark.
+The `yaru-*.mp3` files are format-converted copies from the
+[Ubuntu Yaru sound theme](https://github.com/ubuntu/yaru/tree/master/sounds),
+created by Mads Rosendahl. No effects or musical changes were applied.
 
-License: [Creative Commons Zero (CC0)](https://creativecommons.org/publicdomain/zero/1.0/)
+Copyright 2018 Mads Rosendahl.
 
-Ark's original `done.wav` and `needs-input.wav` are not part of this pack.
+These files remain licensed under
+[Creative Commons Attribution-ShareAlike 4.0](https://creativecommons.org/licenses/by-sa/4.0/).

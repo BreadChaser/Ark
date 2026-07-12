@@ -353,11 +353,13 @@ async function route(req, res) {
     const text = String(body.text || "");
     const key = String(body.key || "");
     const menuIndex = Number(body.menu_index || 0);
+    const menuCurrent = Number(body.menu_current || 0);
     if (key && !CONTROL_KEYS.has(key)) return json(res, 400, { detail: "unsupported control key" });
     if (menuIndex && (!Number.isInteger(menuIndex) || menuIndex < 1 || menuIndex > 50 || body.control !== true)) return json(res, 400, { detail: "invalid menu index" });
+    if (menuCurrent && (!Number.isInteger(menuCurrent) || menuCurrent < 1 || menuCurrent > 50 || !menuIndex)) return json(res, 400, { detail: "invalid current menu index" });
     const suppressMessage = body.control === true || await isCodexControlInput(device, session, text);
     const result = menuIndex
-      ? await sendMenuChoice(device, session.tmux_name, menuIndex)
+      ? await sendMenuChoice(device, session.tmux_name, menuIndex, menuCurrent)
       : key
       ? await sendKey(device, session.tmux_name, key)
       : await sendText(device, session.tmux_name, text, body.submit !== false);
@@ -1065,7 +1067,7 @@ async function diagnostics() {
       remote_live_terminal: true,
       queued_attachments: true,
       drag_drop_attachments: true,
-      clipboard_text_attachments: true,
+      large_clipboard_text_attachments: true,
       image_upload: true,
       codex_startup_images: true,
       role_header_chat_capture: true,
@@ -1292,10 +1294,11 @@ async function sendKey(device, tmuxName, key) {
   return runOnDevice(device, `tmux send-keys -t ${q(tmuxName)} ${key}`, 15000);
 }
 
-async function sendMenuChoice(device, tmuxName, index) {
+async function sendMenuChoice(device, tmuxName, index, current = 1) {
   const target = q(tmuxName);
-  const down = index > 1 ? `; tmux send-keys -t ${target} -N ${index - 1} Down` : "";
-  return runOnDevice(device, `tmux send-keys -t ${target} -N 50 Up${down}; sleep 0.15; tmux send-keys -t ${target} Enter`, 15000);
+  const distance = index - (current || 1);
+  const move = distance ? `tmux send-keys -t ${target} -N ${Math.abs(distance)} ${distance > 0 ? "Down" : "Up"}; sleep 0.15; ` : "";
+  return runOnDevice(device, `${move}tmux send-keys -t ${target} Enter`, 15000);
 }
 
 function openEventStream(req, res, clients, close) {
@@ -2648,7 +2651,6 @@ function selfCheckTrustedRemote() {
 
 function selfCheckCore() {
   if (contentType("ark-logo.svg") !== "image/svg+xml") throw new Error("SVG content type is not renderable");
-  if (contentType("done.wav") !== "audio/wav") throw new Error("sound effect content type is not playable");
   if (contentType("done.mp3") !== "audio/mpeg") throw new Error("MP3 sound effect content type is not playable");
   const mergedDevices = mergeDiscoveredDevices(
     [{ id: "ssh-work", label: "work", host: "work.tailnet.ts.net", user: "tony", source: "ssh-config", status: "unknown" }],

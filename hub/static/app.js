@@ -9,19 +9,20 @@ const IMAGE_MODE_KEY = "ark-image-mode";
 const NOTIFIED_CONTROLS_KEY = "ark-notified-controls";
 const SOUND_VOLUME_KEY = "ark-sound-volume";
 const SOUND_CHOICE_KEYS = { done: "ark-done-sound", input: "ark-input-sound" };
-const SOUND_VERSION = "6";
+const SOUND_VERSION = "7";
+const PASTE_ATTACHMENT_THRESHOLD = 50_000;
 const SOUND_CHOICES = {
   done: [
-    { id: "ark", label: "Ark chime", file: "done.wav" },
-    { id: "arrival", label: "Ascend", file: "sounds/done-arrival.mp3" },
-    { id: "spark", label: "Glass rise", file: "sounds/done-spark.mp3" },
-    { id: "resolve", label: "Soft resolve", file: "sounds/done-resolve.mp3" },
+    { id: "complete", label: "Complete", file: "sounds/yaru-complete.mp3" },
+    { id: "message", label: "Message", file: "sounds/yaru-message.mp3" },
+    { id: "instant", label: "Instant message", file: "sounds/yaru-instant.mp3" },
+    { id: "device", label: "Device added", file: "sounds/yaru-device.mp3" },
   ],
   input: [
-    { id: "ark", label: "Ark alert", file: "needs-input.wav" },
-    { id: "warning", label: "Triple alert", file: "sounds/input-warning.mp3" },
-    { id: "urgent", label: "Beacon", file: "sounds/input-urgent.mp3" },
-    { id: "busy", label: "Glitch", file: "sounds/input-busy.mp3" },
+    { id: "warning", label: "Warning", file: "sounds/yaru-warning.mp3" },
+    { id: "error", label: "Error", file: "sounds/yaru-error.mp3" },
+    { id: "battery", label: "Battery low", file: "sounds/yaru-battery.mp3" },
+    { id: "question", label: "Question", file: "sounds/yaru-question.mp3" },
   ],
 };
 const DEFAULT_REPO = "~/Development";
@@ -86,7 +87,7 @@ const state = {
   soundVolume: Math.max(0, Math.min(1, Number(localStorage.getItem(SOUND_VOLUME_KEY) ?? 60) / 100)),
   soundChoices: Object.fromEntries(Object.entries(SOUND_CHOICES).map(([kind, choices]) => {
     const stored = localStorage.getItem(SOUND_CHOICE_KEYS[kind]);
-    return [kind, choices.some(({ id }) => id === stored) ? stored : "ark"];
+    return [kind, choices.some(({ id }) => id === stored) ? stored : choices[0].id];
   })),
 };
 
@@ -1738,10 +1739,11 @@ async function sendQuickCommand(event) {
     renderControlLoading("Sending choice…");
   }
   const menuIndex = ["approval", "model", "reasoning", "permissions"].includes(controlKind) && /^\d+$/.test(command) ? Number(command) : 0;
-  await sendControlCommand(menuIndex ? "" : command, key, owner, menuIndex);
+  const menuCurrent = Number(button.closest("#control-body")?.querySelector("[data-menu-selected]")?.dataset.command || 0);
+  await sendControlCommand(menuIndex ? "" : command, key, owner, menuIndex, menuCurrent);
 }
 
-async function sendControlCommand(command, key = "", sessionId = activeSession()?.id, menuIndex = 0) {
+async function sendControlCommand(command, key = "", sessionId = activeSession()?.id, menuIndex = 0, menuCurrent = 0) {
   const session = activeSession();
   if (!session) return showError("Select a session first.");
   if (!sessionId || session.id !== sessionId) return showError("Chat changed before send. Nothing was sent.");
@@ -1749,7 +1751,7 @@ async function sendControlCommand(command, key = "", sessionId = activeSession()
   try {
     await api(`/api/sessions/${session.id}/send`, {
       method: "POST",
-      body: JSON.stringify({ text: command, key, menu_index: menuIndex || undefined, submit: true, attachments: [], control: true }),
+      body: JSON.stringify({ text: command, key, menu_index: menuIndex || undefined, menu_current: menuCurrent || undefined, submit: true, attachments: [], control: true }),
     });
     await capture();
     for (const delay of [350, 900, 1800]) setTimeout(() => capture().catch(() => {}), delay);
@@ -1795,7 +1797,7 @@ function renderControlSheet(controls) {
   `;
   if (Array.isArray(control.choices) && control.choices.length) {
     els.controlBody.innerHTML = control.choices.map((choice, index) => `
-      <button type="button" class="control-choice ${choice.current ? "current" : ""}" ${choice.key ? `data-key="${escapeHtml(choice.key)}"` : `data-command="${escapeHtml(choice.value)}"`}>
+      <button type="button" class="control-choice ${choice.current ? "current" : ""}" ${choice.key ? `data-key="${escapeHtml(choice.key)}"` : `data-command="${escapeHtml(choice.value)}"`}${choice.selected ? " data-menu-selected" : ""}>
         <span class="control-choice-title"><b>${index + 1}</b>${escapeHtml(choice.label)}${choice.current ? " <em>Current</em>" : choice.default ? " <em>Default</em>" : ""}</span>
         <small>${escapeHtml(choice.description || "")}</small>
       </button>
@@ -1854,6 +1856,7 @@ async function attachImages() {
 async function pasteImages(event) {
   const files = [...(event.clipboardData?.files || [])];
   const text = event.clipboardData?.getData("text/plain") || "";
+  if (!files.length && text.length <= PASTE_ATTACHMENT_THRESHOLD) return;
   if (!files.length && text) files.push(new File([text], "clipboard.txt", { type: "text/plain" }));
   if (!files.length) return;
   event.preventDefault();
