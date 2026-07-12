@@ -2247,8 +2247,8 @@ function codexUsage(limits, updatedAt = 0) {
 
 function codexUsageFromScreen(text, now = Date.now()) {
   const screen = stripAnsi(String(text || ""));
-  if (!/\bOpenAI Codex\b/i.test(screen) || !/^\s*Model:/mi.test(screen)) return null;
-  const status = screen.split(/\n\s*GPT-[^\n]*\blimit:/i)[0];
+  if (!/\bOpenAI Codex\b/i.test(screen) || !/\bModel:/i.test(screen)) return null;
+  const status = screen.split(/GPT-[^\n]*\blimit:/i)[0];
   const resetAt = (value) => {
     const match = String(value || "").match(/(\d{1,2}):(\d{2})(?:\s+on\s+(\d{1,2})\s+([A-Za-z]{3}))/i);
     if (!match) return 0;
@@ -2263,14 +2263,14 @@ function codexUsageFromScreen(text, now = Date.now()) {
     return Math.floor(date.getTime() / 1000);
   };
   const limit = (label, window_minutes) => {
-    const match = status.match(new RegExp(`${label} limit:\\s*(\\d{1,3})%\\s+left(?:\\s*\\(resets\\s+([^)]*)\\))?(?:\\s*\\n\\s*\\(resets\\s+([^)]*)\\))?`, "i"));
+    const match = status.match(new RegExp(`${label} limit:\\s*(\\d{1,3})%\\s+left(?:\\s*\\(resets\\s+([^)]*)\\))?(?:\\s*\\n\\s*[│|]?\\s*\\(resets\\s+([^)]*)\\))?`, "i"));
     if (!match) return null;
     return { used_percent: 100 - Number(match[1]), window_minutes, resets_at: resetAt(match[2] || match[3]) };
   };
   const primary = limit("5h", 300);
   const secondary = limit("Weekly", 10080);
   if (!primary && !secondary) return null;
-  const plan_type = screen.match(/^\s*Account:\s*.*?\(([^)]+)\)/mi)?.[1]?.toLowerCase() || "";
+  const plan_type = screen.match(/\bAccount:\s*.*?\(([^)]+)\)/i)?.[1]?.toLowerCase() || "";
   return codexUsage({ plan_type, primary, secondary }, now / 1000);
 }
 
@@ -2804,7 +2804,7 @@ function selfCheckCore() {
   if (codexTranscriptMessage({ type: "response_item", payload: { type: "function_call" } }, 2)) throw new Error("Codex tool call leaked into chat");
   const usage = codexUsage({ plan_type: "pro", primary: { used_percent: 15, window_minutes: 300, resets_at: 123 }, secondary: { used_percent: 36, window_minutes: 10080, resets_at: 456 } });
   if (usage.primary.used_percent !== 15 || usage.secondary.window_minutes !== 10080 || usage.plan_type !== "pro") throw new Error("Codex usage limits were not normalized");
-  const statusUsage = codexUsageFromScreen("OpenAI Codex\nModel: gpt-5.6-sol\nAccount: tony@example.com (Pro)\n5h limit: 92% left (resets 05:52)\nWeekly limit: 39% left\n  (resets 23:02 on 17 Jul)\nGPT-5.3-Codex-Spark limit:\n5h limit: 100% left", new Date(2026, 6, 12, 4, 0).getTime());
+  const statusUsage = codexUsageFromScreen("│ OpenAI Codex\n│ Model: gpt-5.6-sol\n│ Account: tony@example.com (Pro)\n│ 5h limit: 92% left (resets 05:52)\n│ Weekly limit: 39% left\n│   (resets 23:02 on 17 Jul)\n│ GPT-5.3-Codex-Spark limit:\n│ 5h limit: 100% left", new Date(2026, 6, 12, 4, 0).getTime());
   if (statusUsage?.primary.used_percent !== 8 || statusUsage.secondary?.used_percent !== 61 || statusUsage.plan_type !== "pro") throw new Error("Codex status screen usage was not parsed");
   const mergedUsage = mergeCodexUsage([
     codexUsage({ plan_type: "pro", primary: { used_percent: 5, resets_at: 100 }, secondary: { used_percent: 10, resets_at: 200 } }),
