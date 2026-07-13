@@ -534,14 +534,13 @@ function renderSidebar() {
   const primary = [];
   const other = [];
   for (const device of state.devices) {
-    if (device.local && !(state.tmux[device.id] || []).length) continue;
+    const hasSessions = sidebarDeviceHasSession(device.id, state.sessions, state.tmux[device.id] || []);
+    if (device.local && !hasSessions) continue;
     if (device.status === "offline") {
       offline.push(device);
       continue;
     }
-    const hasSessions = state.sessions.some((session) => session.device_id === device.id)
-      || (state.tmux[device.id] || []).length > 0;
-    (hasSessions || device.id === state.activeDeviceId ? primary : other).push(device);
+    (hasSessions || (!device.local && device.id === state.activeDeviceId) ? primary : other).push(device);
   }
   for (const device of primary) renderDeviceGroup(device);
   renderDeviceSection("Other machines", other, "other", state.otherDevicesExpanded, () => {
@@ -551,6 +550,14 @@ function renderSidebar() {
     state.offlineExpanded = !state.offlineExpanded;
   });
   renderCodexFooter();
+}
+
+function sidebarDeviceHasSession(deviceId, sessions, tmuxSessions) {
+  const ownedTmux = new Set(sessions
+    .filter((session) => (session.tmux_device_id || session.device_id) === deviceId)
+    .map((session) => session.tmux_name));
+  return sessions.some((session) => session.device_id === deviceId)
+    || tmuxSessions.some((tmux) => !ownedTmux.has(tmux.name));
 }
 
 function renderCodexFooter() {

@@ -41,6 +41,7 @@ try {
 
   await wait('document.querySelectorAll("#devices .device-group").length >= 1');
   await wait('document.querySelector("#session-panel").classList.contains("has-session") || document.querySelectorAll("#devices .session").length === 0', 30000);
+  await assertCentralRunnerDoesNotCreateLocalDevice();
   await wait('document.querySelector(".brand-logo").complete && document.querySelector(".brand-logo").naturalWidth > 0');
   assert((await api("/manifest.webmanifest")).name === "Ark", "PWA manifest is unavailable");
   const sampleSound = await fetch(`${BASE_URL}/static/sounds/yaru-complete.mp3?v=7`);
@@ -318,6 +319,11 @@ async function assertToolDisableState() {
     };
   `);
   for (const tool of state.missing) assert(state.disabled.includes(tool), `${tool} is missing but not disabled`);
+}
+
+async function assertCentralRunnerDoesNotCreateLocalDevice() {
+  const hidden = await js('return !sidebarDeviceHasSession("local", [{ device_id: "remote", tmux_device_id: "local", tmux_name: "Ark-central" }], [{ name: "Ark-central" }]);');
+  assert(hidden, "central-runner tmux created an empty local device in the sidebar");
 }
 
 async function assertOfflineCollapse() {
