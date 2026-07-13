@@ -1171,9 +1171,9 @@ async function maybeTestRemoteCodexCentralRunner() {
   disposableTmuxNames.add(disposableSession.tmux_name);
   try {
     assert(disposableSession.device_id === remote.id, "real Codex remote session lost target device");
-    assert(!disposableSession.central_runner, "remote Codex session did not use the selected device");
-    assert(disposableSession.tmux_device_id === remote.id, `expected remote tmux device, got ${disposableSession.tmux_device_id || "missing"}`);
-    assert(disposableSession.runner_device_id === remote.id, `expected remote runner device, got ${disposableSession.runner_device_id || "missing"}`);
+    assert(disposableSession.central_runner, "remote Codex session did not use the central runner");
+    assert(disposableSession.tmux_device_id === "local", `expected local tmux device, got ${disposableSession.tmux_device_id || "missing"}`);
+    assert(disposableSession.runner_device_id === "local", `expected local runner device, got ${disposableSession.runner_device_id || "missing"}`);
     await waitForCodexReady(disposableSession.id);
     await api(`/api/sessions/${disposableSession.id}/send`, {
       method: "POST",
