@@ -29,6 +29,7 @@ const DEVICES = path.join(DATA, "devices.yml");
 const SESSIONS_DIR = path.join(DATA, "sessions");
 const UPLOADS = path.join(DATA, "uploads");
 const UPLOAD_LIMIT = 64 * 1024 * 1024;
+const CODEX_IMAGE_DATA_LIMIT = Math.ceil(UPLOAD_LIMIT * 4 / 3) + 128;
 const PORT = Number(process.env.PORT || 4873);
 const HOST = process.env.HOST || "0.0.0.0";
 const TERMINAL_STREAMS = new Map();
@@ -2116,7 +2117,7 @@ async function readCodexTranscript(session, device, rawText) {
   }
   let cache = CODEX_TRANSCRIPTS.get(session.id);
   if (!cache || info.size < cache.offset) {
-    cache = { offset: 0, remainder: "", messages: [], sequence: 0, settings: null, usage: null, taskState: null };
+    cache = { offset: 0, remainder: "", messages: [], sequence: 0, imageHashes: new Set(), settings: null, usage: null, taskState: null };
     CODEX_TRANSCRIPTS.set(session.id, cache);
   }
   if (info.size === cache.offset) return cache.messages.map(normalizeMessage);
@@ -2138,10 +2139,75 @@ async function readCodexTranscript(session, device, rawText) {
       continue;
     }
     updateCodexSettings(cache, row);
+    const imageMessage = await codexTranscriptImageMessage(session, row, cache);
+    if (imageMessage) cache.messages.push(imageMessage);
     const message = codexTranscriptMessage(row, cache.sequence++);
     if (message) cache.messages.push(message);
   }
   return cache.messages.map(normalizeMessage);
+}
+
+async function codexTranscriptImageMessage(session, row, cache) {
+  const images = codexTranscriptImages(row);
+  if (!images.length) return null;
+  const attachments = [];
+  for (const image of images) {
+    const digest = crypto.createHash("sha256").update(image.data).digest("hex");
+    if (cache.imageHashes.has(digest)) continue;
+    cache.imageHashes.add(digest);
+    const filename = `codex-${digest.slice(0, 24)}${imageExt("", image.type)}`;
+    const target = path.join(sessionDir(session.id), "attachments", filename);
+    await mkdir(path.dirname(target), { recursive: true });
+    try {
+      await stat(target);
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+      await writeFile(target, image.data);
+    }
+    attachments.push({ name: "Generated image", path: filename, type: image.type });
+  }
+  if (!attachments.length) return null;
+  const fingerprint = JSON.stringify([row.timestamp || "", attachments.map((attachment) => attachment.path)]);
+  return {
+    id: `codex-image-${crypto.createHash("sha1").update(fingerprint).digest("hex").slice(0, 20)}`,
+    created_at: String(row.timestamp || new Date().toISOString()),
+    role: "assistant",
+    text: "",
+    attachments,
+    source: "codex-rollout",
+    phase: "image",
+  };
+}
+
+function codexTranscriptImages(row) {
+  const payload = row?.payload || {};
+  const sources = [];
+  if (row?.type === "event_msg" && payload.type === "image_generation_end" && payload.status === "completed") {
+    sources.push({ value: payload.result, type: "image/png" });
+  }
+  if (row?.type === "response_item" && ["custom_tool_call_output", "function_call_output"].includes(payload.type)) {
+    for (const item of Array.isArray(payload.output) ? payload.output : []) {
+      if (item?.type === "input_image") sources.push({ value: item.image_url, type: "" });
+    }
+  }
+  return sources.map(decodeCodexImage).filter(Boolean);
+}
+
+function decodeCodexImage(source) {
+  const value = String(source?.value || "");
+  let encoded = value;
+  let type = source?.type || "image/png";
+  const dataUrl = value.match(/^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=]+)$/i);
+  if (dataUrl) {
+    type = dataUrl[1].toLowerCase();
+    encoded = dataUrl[2];
+  } else if (!/^[A-Za-z0-9+/=]+$/.test(encoded)) {
+    return null;
+  }
+  if (encoded.length > CODEX_IMAGE_DATA_LIMIT) return null;
+  const data = Buffer.from(encoded, "base64");
+  if (!data.length || data.length > UPLOAD_LIMIT) return null;
+  return { data, type };
 }
 
 async function mirrorRemoteTranscript(session, device, remotePath) {
@@ -2814,6 +2880,10 @@ function selfCheckCore() {
     payload: { type: "agent_message", phase: "final_answer", message: "Clean answer" },
   }, 1);
   if (transcript?.text !== "Clean answer" || transcript.role !== "assistant") throw new Error("structured Codex transcript parsing failed");
+  const generatedImage = codexTranscriptImages({ type: "event_msg", payload: { type: "image_generation_end", status: "completed", result: Buffer.from("image").toString("base64") } });
+  if (generatedImage.length !== 1 || generatedImage[0].type !== "image/png") throw new Error("Codex generated image was not parsed");
+  const toolImage = codexTranscriptImages({ type: "response_item", payload: { type: "function_call_output", output: [{ type: "input_image", image_url: `data:image/webp;base64,${Buffer.from("image").toString("base64")}` }] } });
+  if (toolImage.length !== 1 || toolImage[0].type !== "image/webp") throw new Error("Codex tool image was not parsed");
   if (codexTranscriptMessage({ type: "response_item", payload: { type: "function_call" } }, 2)) throw new Error("Codex tool call leaked into chat");
   const usage = codexUsage({ limit_id: "codex", plan_type: "pro", primary: { used_percent: 15, window_minutes: 10080, resets_at: 123 } });
   if (usage.primary.used_percent !== 15 || usage.secondary || usage.plan_type !== "pro") throw new Error("Codex usage limits were not normalized");
