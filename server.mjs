@@ -1272,7 +1272,7 @@ async function ensureCentralWorkspace(runnerDevice, targetDevice, cwd, existingP
   const source = `${sshTarget(targetDevice)}:${cwd}`;
   const result = await runOnDevice(runnerDevice, [
     `mkdir -p ${q(workspace)}`,
-    `mountpoint -q ${q(workspace)} || sshfs -o reconnect,ServerAliveInterval=15,ServerAliveCountMax=3,StrictHostKeyChecking=accept-new,BatchMode=yes ${q(source)} ${q(workspace)}`,
+    `mountpoint -q ${q(workspace)} || sshfs -o follow_symlinks,reconnect,ServerAliveInterval=15,ServerAliveCountMax=3,StrictHostKeyChecking=accept-new,BatchMode=yes ${q(source)} ${q(workspace)}`,
   ].join("; "), 30000);
   if (result.code !== 0) throw Object.assign(new Error(`Unable to mount ${targetDevice.label} workspace: ${result.output || "sshfs failed"}`), { status: 502 });
   return workspace;
