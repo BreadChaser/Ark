@@ -800,7 +800,7 @@ async function testCodexControlPrompts() {
   await command("WebDriver:Navigate", { url: BASE_URL });
   await wait('!document.querySelector("#codex-footer").hidden && document.querySelector("#codex-footer strong").textContent.length > 0');
   await js('activeSession().codex_usage = { plan_type: "pro", primary: { used_percent: 91, window_minutes: 10080, resets_at: 1784310183 }, secondary: { used_percent: 36, window_minutes: 10080, resets_at: 1784914983 } }; renderCodexFooter(); return true;');
-  assert(await js('return document.querySelector("#codex-footer").textContent.includes("Weekly") && document.querySelector("#codex-footer").textContent.includes("GPT-5.3 Codex Spark weekly") && document.querySelector("#codex-footer").textContent.includes("91% used") && document.querySelector("#codex-footer").textContent.includes("36% used") && document.querySelectorAll("#codex-footer progress").length === 2 && document.querySelector(".codex-usage-warning")?.textContent.includes("nearly exhausted") && !document.querySelector("[data-auto-resume]");'), "Codex weekly usage footer is incorrect");
+  assert(await js('return document.querySelector("#codex-footer").textContent.includes("Weekly") && document.querySelector("#codex-footer").textContent.includes("GPT-5.3 Codex Spark") && document.querySelector("#codex-footer").textContent.includes("91% used") && document.querySelector("#codex-footer").textContent.includes("36% used") && document.querySelectorAll("#codex-footer progress").length === 2 && document.querySelector(".codex-usage-warning")?.textContent.includes("nearly exhausted") && !document.querySelector("[data-auto-resume]");'), "Codex weekly usage footer is incorrect");
   await shot("codex-usage-warning");
   await tmuxSendLine(tmuxName, "printf 'Model: gpt-5.6-sol\\nDirectory: /tmp\\nPermissions: workspace-write\\nContext window: 80%% left\\n'; read -r");
   await wait('!document.querySelector("#control-sheet").hidden && document.querySelector("#control-kind").textContent === "status"');
@@ -907,7 +907,7 @@ async function testChatLayout() {
     body: JSON.stringify({ text: `echo image-chat-smoke\n# Attached file: ${imageUpload.path}`, submit: true, attachments: [imageUpload] }),
   });
   await waitForPersistedMessage(disposableSession.id, "image-chat-smoke");
-  await js('return loadChatMessages(activeSession());');
+  await js('return loadChatMessages(activeSession(), true);');
   await wait('document.querySelector(".message-image")?.complete && document.querySelector(".message-image").naturalWidth > 0');
   assert(await js(`return document.querySelector(".message-images a")?.href.endsWith(${JSON.stringify(imageUpload.url)});`), "chat image does not link to its full-size file");
   const thumbnail = await js('return { width: document.querySelector(".message-image").clientWidth, height: document.querySelector(".message-image").clientHeight, target: document.querySelector(".message-image").closest("a")?.target };');
@@ -920,7 +920,7 @@ async function testChatLayout() {
   await wait('!document.querySelector("#image-viewer").open');
   const markdownImageWrapped = await js(`renderChatCapture({ messages: [{ role: "assistant", text: ${JSON.stringify(`![image markdown smoke](${imageUpload.url})`)} }] }, { id: "markdown-image-smoke", tool: "opencode" }, false); return Boolean(document.querySelector(".chat-message.assistant .message-text .message-image")?.closest("a")?.hasAttribute("data-image-viewer"));`);
   assert(markdownImageWrapped, "Markdown image was not wired to the in-app viewer");
-  await js('return loadChatMessages(activeSession());');
+  await js('return loadChatMessages(activeSession(), true);');
   await shot("chat-image");
   await tmuxSendLine(disposableSession.tmux_name, "printf 'assistant: hello from assistant smoke\\n'");
   const assistantHistory = await waitForPersistedMessage(disposableSession.id, "hello from assistant smoke", "assistant");
@@ -954,6 +954,11 @@ async function testChatLayout() {
   await command("WebDriver:Navigate", { url: BASE_URL });
   await wait(`localStorage.getItem("ark-active-session") === ${JSON.stringify(disposableSession.id)}`);
   await wait('document.querySelector("#parsed").innerText.includes("hello from chat smoke") && document.querySelector("#parsed").innerText.includes("hello from assistant smoke") && document.querySelector("#parsed").innerText.includes("Short reply") && document.querySelector(".chat-message.user") && document.querySelector(".chat-message.assistant")', 30000);
+  const longChat = await js(`
+    renderChatCapture({ messages: Array.from({ length: 260 }, (_, index) => ({ role: index % 2 ? "assistant" : "user", text: "long chat message " + index })) }, { id: "long-chat-smoke", tool: "opencode" }, false);
+    return { cards: document.querySelectorAll(".chat-message").length, more: document.querySelector("[data-show-earlier]")?.textContent || "" };
+  `);
+  assert(longChat.cards === 120 && longChat.more.includes("140 hidden"), `long chat was fully rendered: ${JSON.stringify(longChat)}`);
   const evidenceColumns = await js(`
     renderChatCapture({ messages: [{ role: "assistant", text: "- Validation is green:\\n    - synthetic tests\\n    - network tests\\n    - map probe\\n    - ASan run\\n    - Windows viewer\\n    - structure hygiene" }] }, { id: "evidence-grid-smoke", tool: "codex" }, false);
     return getComputedStyle(document.querySelector(".message-text li > ul")).gridTemplateColumns.split(" ").length;
@@ -971,7 +976,8 @@ async function testChatLayout() {
   `);
   assert(updateStack.margin === "-21px" && updateStack.rail === "solid" && updateStack.divider === "72px", `assistant updates did not form a compact stack: ${JSON.stringify(updateStack)}`);
   await shot("update-stack");
-  await js('return loadChatMessages(activeSession());');
+  await js('return loadChatMessages(activeSession(), true);');
+  await sleep(250);
   const navStart = await js(`
     stopPolling();
     renderChatCapture({ messages: [
@@ -996,7 +1002,7 @@ async function testChatLayout() {
   await shot("message-navigation");
   await tmuxSendLine(disposableSession.tmux_name, "printf 'assistant: scroll-bottom-smoke '; yes long | head -n 1000 | tr '\\n' ' '; printf '\\n'");
   await waitForPersistedMessage(disposableSession.id, "scroll-bottom-smoke", "assistant");
-  await js('return loadChatMessages(activeSession());');
+  await js('return loadChatMessages(activeSession(), true);');
   await wait('document.querySelector("#parsed").innerText.includes("scroll-bottom-smoke")');
   const reopenedAtBottom = await js(`
     document.querySelector("#parsed").scrollTop = 100;
@@ -1008,7 +1014,7 @@ async function testChatLayout() {
     }), 250));
   `);
   assert(reopenedAtBottom.max > 500 && reopenedAtBottom.top >= reopenedAtBottom.max - 2, `opening a chat did not land at the bottom: ${JSON.stringify(reopenedAtBottom)}`);
-  await js('startPolling(); return loadChatMessages(activeSession());');
+  await js('startPolling(); return loadChatMessages(activeSession(), true);');
   await wait('document.querySelector("#parsed").innerText.includes("hello from chat smoke")');
   await tmuxSendLine(disposableSession.tmux_name, "printf 'bash: raw-debug-smoke: command not found\\n'");
   await api(`/api/sessions/${disposableSession.id}/capture`);

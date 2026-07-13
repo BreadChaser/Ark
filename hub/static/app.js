@@ -11,6 +11,7 @@ const SOUND_VOLUME_KEY = "ark-sound-volume";
 const SOUND_CHOICE_KEYS = { done: "ark-done-sound", input: "ark-input-sound" };
 const SOUND_VERSION = "7";
 const PASTE_ATTACHMENT_THRESHOLD = 50_000;
+const CHAT_RENDER_LIMIT = 120;
 const SOUND_CHOICES = {
   done: [
     { id: "complete", label: "Complete", file: "sounds/yaru-complete.mp3" },
@@ -53,6 +54,8 @@ const state = {
   captures: {},
   captureRequests: new Set(),
   chatMessages: {},
+  loadedChatSessions: new Set(),
+  chatRenderLimits: {},
   sentChat: {},
   sessionStates: {},
   sessionStatesLoading: false,
@@ -257,6 +260,7 @@ async function init() {
   els.quickActions.addEventListener("click", sendQuickCommand);
   els.controlSheet.addEventListener("click", sendQuickCommand);
   els.controlClose.addEventListener("click", closeControlSheet);
+  els.parsed.addEventListener("click", showEarlierChatMessages);
   els.parsed.addEventListener("click", openImageViewer);
   els.parsed.addEventListener("scroll", updateMessageNav, { passive: true });
   els.messagePrevious.addEventListener("click", () => navigateUserMessage(-1));
@@ -1500,9 +1504,20 @@ function renderChatCapture(data, session, keepBottom) {
   els.parsed.innerHTML = "";
   const stream = document.createElement("div");
   stream.className = "chat-stream";
-  const messages = mergeLocalChatMessages(state.chatMessages[session?.id] || data.messages || [], state.sentChat[session?.id] || [])
+  const allMessages = mergeLocalChatMessages(state.chatMessages[session?.id] || data.messages || [], state.sentChat[session?.id] || [])
     .filter((message) => !isChatJunk(message));
-  let previousRole = "";
+  const limit = Math.max(CHAT_RENDER_LIMIT, Number(state.chatRenderLimits[session?.id]) || CHAT_RENDER_LIMIT);
+  const start = Math.max(0, allMessages.length - limit);
+  const messages = allMessages.slice(start);
+  if (start) {
+    const earlier = document.createElement("button");
+    earlier.type = "button";
+    earlier.className = "chat-history-more";
+    earlier.dataset.showEarlier = "";
+    earlier.textContent = `Show ${Math.min(CHAT_RENDER_LIMIT, start)} earlier messages (${start} hidden)`;
+    stream.append(earlier);
+  }
+  let previousRole = allMessages[start - 1]?.role || "";
   for (const message of messages) {
     const card = document.createElement("article");
     card.className = `chat-message ${message.role || "assistant"}${message.pending ? " pending" : ""}`;
@@ -1567,10 +1582,11 @@ function renderChatCapture(data, session, keepBottom) {
   els.parsed.append(stream.childElementCount ? stream : emptySurface("No chat output yet."));
   if (keepBottom) scrollToBottom(els.parsed);
   if (state.forceBottomSessionId === session?.id) {
+    const sessionId = session.id;
     setTimeout(() => {
-      if (activeSession()?.id === session.id) scrollToBottom(els.parsed);
+      if (activeSession()?.id === sessionId && state.forceBottomSessionId === sessionId) scrollToBottom(els.parsed);
+      if (state.forceBottomSessionId === sessionId) state.forceBottomSessionId = null;
     }, 150);
-    state.forceBottomSessionId = null;
   }
   updateMessageNav();
 }
@@ -1596,6 +1612,7 @@ function updateMessageNav() {
 function navigateUserMessage(direction) {
   const messages = [...els.parsed.querySelectorAll(".chat-message.user")];
   if (!messages.length) return;
+  state.forceBottomSessionId = null;
   const positions = messages.map(messageOffset);
   const threshold = els.parsed.scrollTop + 32;
   let index;
@@ -1606,7 +1623,7 @@ function navigateUserMessage(direction) {
     index = positions.findIndex((top) => top > threshold);
   }
   if (index < 0) return updateMessageNav();
-  els.parsed.scrollTo({ top: Math.max(0, positions[index] - 12), behavior: "smooth" });
+  els.parsed.scrollTop = Math.max(0, positions[index] - 12);
 }
 
 function messageOffset(message) {
@@ -1845,8 +1862,9 @@ function closeControlSheet() {
   hideControlSheet(true);
 }
 
-async function loadChatMessages(session) {
-  if (!session || session.tool === "terminal") return;
+async function loadChatMessages(session, force = false) {
+  if (!session || session.tool === "terminal" || (!force && state.loadedChatSessions.has(session.id))) return;
+  state.loadedChatSessions.add(session.id);
   try {
     const data = await api(`/api/sessions/${session.id}/messages`);
     state.chatMessages[session.id] = data.messages || [];
@@ -1854,7 +1872,17 @@ async function loadChatMessages(session) {
       state.forceBottomSessionId = session.id;
       renderCapture();
     }
-  } catch {}
+  } catch {
+    state.loadedChatSessions.delete(session.id);
+  }
+}
+
+function showEarlierChatMessages(event) {
+  if (!event.target.closest("[data-show-earlier]")) return;
+  const session = activeSession();
+  if (!session) return;
+  state.chatRenderLimits[session.id] = Math.max(CHAT_RENDER_LIMIT, Number(state.chatRenderLimits[session.id]) || CHAT_RENDER_LIMIT) + CHAT_RENDER_LIMIT;
+  renderCapture();
 }
 
 async function attachImages() {

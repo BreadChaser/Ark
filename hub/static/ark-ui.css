@@ -1323,6 +1323,15 @@ pre {
   gap: 21px;
 }
 
+.chat-history-more {
+  align-self: center;
+  padding: 5px 9px;
+  color: var(--muted);
+  border-color: color-mix(in srgb, var(--line-strong) 72%, transparent);
+  background: var(--panel-soft);
+  font-size: 10px;
+}
+
 .chat-message {
   max-width: min(1020px, 92%);
   display: grid;
