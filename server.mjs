@@ -2117,7 +2117,7 @@ async function readCodexTranscript(session, device, rawText) {
   }
   let cache = CODEX_TRANSCRIPTS.get(session.id);
   if (!cache || info.size < cache.offset) {
-    cache = { offset: 0, remainder: "", messages: [], sequence: 0, imageHashes: new Set(), settings: null, usage: null, taskState: null };
+    cache = { offset: 0, remainder: "", messages: [], sequence: 0, imageHashes: new Map(), settings: null, usage: null, taskState: null };
     CODEX_TRANSCRIPTS.set(session.id, cache);
   }
   if (info.size === cache.offset) return cache.messages.map(normalizeMessage);
@@ -2151,10 +2151,10 @@ async function codexTranscriptImageMessage(session, row, cache) {
   const images = codexTranscriptImages(row);
   if (!images.length) return null;
   const attachments = [];
+  const createdAt = Date.parse(String(row.timestamp || "")) || Date.now();
   for (const image of images) {
     const digest = crypto.createHash("sha256").update(image.data).digest("hex");
-    if (cache.imageHashes.has(digest)) continue;
-    cache.imageHashes.add(digest);
+    if (seenCodexImage(cache, digest, createdAt)) continue;
     const filename = `codex-${digest.slice(0, 24)}${imageExt("", image.type)}`;
     const target = path.join(sessionDir(session.id), "attachments", filename);
     await mkdir(path.dirname(target), { recursive: true });
@@ -2177,6 +2177,12 @@ async function codexTranscriptImageMessage(session, row, cache) {
     source: "codex-rollout",
     phase: "image",
   };
+}
+
+function seenCodexImage(cache, digest, createdAt) {
+  const previous = cache.imageHashes.get(digest);
+  cache.imageHashes.set(digest, createdAt);
+  return Number.isFinite(previous) && createdAt - previous < 120000;
 }
 
 function codexTranscriptImages(row) {
@@ -2884,6 +2890,8 @@ function selfCheckCore() {
   if (generatedImage.length !== 1 || generatedImage[0].type !== "image/png") throw new Error("Codex generated image was not parsed");
   const toolImage = codexTranscriptImages({ type: "response_item", payload: { type: "function_call_output", output: [{ type: "input_image", image_url: `data:image/webp;base64,${Buffer.from("image").toString("base64")}` }] } });
   if (toolImage.length !== 1 || toolImage[0].type !== "image/webp") throw new Error("Codex tool image was not parsed");
+  const imageCache = { imageHashes: new Map() };
+  if (seenCodexImage(imageCache, "same", 1000) || !seenCodexImage(imageCache, "same", 2000) || seenCodexImage(imageCache, "same", 123000)) throw new Error("Codex image reposts were deduplicated outside one tool event");
   if (codexTranscriptMessage({ type: "response_item", payload: { type: "function_call" } }, 2)) throw new Error("Codex tool call leaked into chat");
   const usage = codexUsage({ limit_id: "codex", plan_type: "pro", primary: { used_percent: 15, window_minutes: 10080, resets_at: 123 } });
   if (usage.primary.used_percent !== 15 || usage.secondary || usage.plan_type !== "pro") throw new Error("Codex usage limits were not normalized");
