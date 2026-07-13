@@ -905,12 +905,15 @@ async function testChatLayout() {
   const imageForm = new FormData();
   imageForm.append("file", new Blob([await readFile(path.join(OUT, "main.png"))], { type: "image/png" }), "chat-image.png");
   const imageUpload = await api(`/api/sessions/${disposableSession.id}/attachments`, { method: "POST", body: imageForm });
+  const nextImageForm = new FormData();
+  nextImageForm.append("file", new Blob([await readFile(path.join(OUT, "main.png"))], { type: "image/png" }), "chat-image-next.png");
+  const nextImageUpload = await api(`/api/sessions/${disposableSession.id}/attachments`, { method: "POST", body: nextImageForm });
   assert(imageUpload.url, "image upload did not return a browser URL");
   const imageResponse = await fetch(`${BASE_URL}${imageUpload.url}`);
   assert(imageResponse.ok && imageResponse.headers.get("content-type") === "image/png", "stored chat image is not browser-renderable");
   await api(`/api/sessions/${disposableSession.id}/send`, {
     method: "POST",
-    body: JSON.stringify({ text: `echo image-chat-smoke\n# Attached file: ${imageUpload.path}`, submit: true, attachments: [imageUpload] }),
+    body: JSON.stringify({ text: `echo image-chat-smoke\n# Attached file: ${imageUpload.path}\n# Attached file: ${nextImageUpload.path}`, submit: true, attachments: [imageUpload, nextImageUpload] }),
   });
   await waitForPersistedMessage(disposableSession.id, "image-chat-smoke");
   await js('return loadChatMessages(activeSession(), true);');
@@ -921,6 +924,8 @@ async function testChatLayout() {
   assert(!thumbnail.target, "chat image still targets a new tab");
   await js('document.querySelector(".message-image").click(); return true;');
   await wait('document.querySelector("#image-viewer").open && document.querySelector("#image-viewer-image").complete && document.querySelector("#image-viewer-image").naturalWidth > 0');
+  await js('document.querySelector("#image-viewer-next").click(); return true;');
+  await wait(`document.querySelector("#image-viewer-image").src.endsWith(${JSON.stringify(nextImageUpload.url)}) && document.querySelector("#image-viewer-position").textContent === "2 / 2"`);
   await shot("chat-image-open");
   await js('document.querySelector("#image-viewer-close").click(); return true;');
   await wait('!document.querySelector("#image-viewer").open');

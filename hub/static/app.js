@@ -74,6 +74,8 @@ const state = {
   forceBottomSessionId: null,
   drafts: {},
   attachmentQueues: {},
+  imageViewerImages: [],
+  imageViewerIndex: -1,
   adding: false,
   sidebarCollapsed: storedSidebarCollapsed === null
     ? window.matchMedia("(max-width: 760px)").matches
@@ -190,6 +192,9 @@ const els = {
   imageViewer: document.querySelector("#image-viewer"),
   imageViewerImage: document.querySelector("#image-viewer-image"),
   imageViewerClose: document.querySelector("#image-viewer-close"),
+  imageViewerPrevious: document.querySelector("#image-viewer-previous"),
+  imageViewerNext: document.querySelector("#image-viewer-next"),
+  imageViewerPosition: document.querySelector("#image-viewer-position"),
   error: document.querySelector("#error"),
 };
 
@@ -267,10 +272,16 @@ async function init() {
   els.messageNext.addEventListener("click", () => navigateUserMessage(1));
   els.attachmentQueue.addEventListener("click", openImageViewer);
   els.imageViewerClose.addEventListener("click", () => els.imageViewer.close());
+  els.imageViewerPrevious.addEventListener("click", () => showImageViewerImage(state.imageViewerIndex - 1));
+  els.imageViewerNext.addEventListener("click", () => showImageViewerImage(state.imageViewerIndex + 1));
   els.imageViewer.addEventListener("click", (event) => {
     if (event.target === els.imageViewer) els.imageViewer.close();
   });
-  els.imageViewer.addEventListener("close", () => els.imageViewerImage.removeAttribute("src"));
+  els.imageViewer.addEventListener("close", () => {
+    els.imageViewerImage.removeAttribute("src");
+    state.imageViewerImages = [];
+    state.imageViewerIndex = -1;
+  });
   els.attachImage.addEventListener("click", () => els.imageInput.click());
   els.imageInput.addEventListener("change", attachImages);
   els.interrupt.addEventListener("click", interruptSession);
@@ -2363,9 +2374,22 @@ function openImageViewer(event) {
   const image = event.target.closest("img.message-image") || event.target.closest("[data-image-viewer]")?.querySelector("img");
   if (!image) return;
   event.preventDefault();
+  state.imageViewerImages = [...els.parsed.querySelectorAll("img.message-image")];
+  if (!state.imageViewerImages.length) state.imageViewerImages = [image];
+  showImageViewerImage(Math.max(0, state.imageViewerImages.indexOf(image)));
+  if (!els.imageViewer.open) els.imageViewer.showModal();
+}
+
+function showImageViewerImage(index) {
+  const images = state.imageViewerImages;
+  if (!images.length) return;
+  state.imageViewerIndex = Math.max(0, Math.min(index, images.length - 1));
+  const image = images[state.imageViewerIndex];
   els.imageViewerImage.src = image.src;
   els.imageViewerImage.alt = image.alt || "Full-size image";
-  if (!els.imageViewer.open) els.imageViewer.showModal();
+  els.imageViewerPrevious.disabled = state.imageViewerIndex === 0;
+  els.imageViewerNext.disabled = state.imageViewerIndex === images.length - 1;
+  els.imageViewerPosition.textContent = images.length > 1 ? `${state.imageViewerIndex + 1} / ${images.length}` : "";
 }
 
 function isImageAttachment(attachment) {
