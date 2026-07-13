@@ -2,8 +2,11 @@
 
 ## Install and run
 
-Requirements: Node 20+, npm, Git, tmux, SSH, and the agent CLIs used by the
-profiles. Codex also needs bubblewrap for its preferred sandbox setup.
+Requirements: Node 20+, npm, Git, tmux, SSH, SSHFS/FUSE, and the agent CLIs
+used by the profiles. Codex also needs bubblewrap for its preferred sandbox
+setup. SSHFS is used only on the hub to present a selected remote repository
+to a hub-run coding agent; it does not copy repo state or install Codex on the
+remote device.
 
 ```bash
 npm ci
@@ -61,10 +64,12 @@ because they share the ARK data root.
 1. Check `/health` and `systemctl --user status ark`.
 2. Verify the selected device is online in Tailscale and SSH works from the
    hub as the configured user.
-3. Open Raw/Terminal when a parsed chat view appears wrong.
-4. If scrolling was used, return from tmux copy mode before testing CLI input;
+3. For a remote coding-agent session, verify its live workspace mount with
+   `mountpoint ~/.local/share/ark/workspaces/<device>/<repo>`.
+4. Open Raw/Terminal when a parsed chat view appears wrong.
+5. If scrolling was used, return from tmux copy mode before testing CLI input;
    ARK does this automatically for chat sends.
-5. Use Resume only for a stopped tmux session. A live session should be
+6. Use Resume only for a stopped tmux session. A live session should be
    reattached, not restarted.
 
 Run `npm run check` for source validation and `npm run gui-smoke` for an

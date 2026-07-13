@@ -13,11 +13,12 @@ Ark is not a tmux screenshot viewer. tmux is transport/persistence. The UI shoul
 - Access is Tailscale/local-network only for now. No login screen yet.
 - Ark runs centrally; remote devices should not need Ark installed.
 - Remote devices are controlled through SSH and tmux.
-- Remote repo access stays SSH/tmux-only for v1. Do not sync or mount repos.
-- Long term, remote devices should not need Codex installed either.
+- Remote coding-agent repos are live SSHFS mounts on Ark; do not copy or sync
+  them. Target-specific commands still use SSH/tmux.
+- Remote devices do not need Codex installed.
 - Ark should own Codex/Claude/OpenCode sessions and route them through configured tool/profile runners.
-- New remote Codex sessions run directly on the selected machine and selected
-  repository path. They should not need to reason about an extra SSH hop.
+- New remote coding-agent sessions run on Ark against the selected live repo
+  mount, with SSH available for target-specific work.
 - New sessions default to the last active session on reload.
 - Sidebar shows machines only, each with a dropdown of active sessions.
 - Offline machines go into a collapsible offline section.
@@ -142,15 +143,14 @@ Ark should create its own sessions and adopt existing tmux sessions as it sees t
 - Ark-owned sessions are first-class and should get full logs/history from the start.
 - Adopted sessions should import available tmux scrollback, then continue under Ark management.
 - Attachments should be copied into Ark-managed storage and sent as file paths first.
-- Do not sync or mount repos for v1. Work through SSH/tmux where the repo already lives.
+- Do not sync repos. Remote coding-agent work uses a live SSHFS mount; target
+  runtime work uses SSH/tmux where the repo already lives.
 
 ## Latest Confirmed Implementation Choices
 
 - Add the approved terminal dependencies.
-- Codex runs directly on the selected device; terminal and Codex tmux state
-  therefore live alongside the selected repository.
-- Remote OpenCode and Claude remain central-runner sessions until direct
-  profile provisioning is intentionally implemented.
+- Remote coding agents run on Ark against a live SSHFS mount of the selected
+  repository; terminal sessions remain on the selected device.
 - A chat send exits tmux copy mode before it sends Enter or queues with Tab,
   and gives Codex's pasted-text detection 150 ms to settle before that key.
 - A single Codex CLI install/profile can run many concurrent sessions.

@@ -193,9 +193,10 @@ async function route(req, res) {
     const images = sessionImages(body.images);
     const centralRunner = tool !== "terminal" && !device.local;
     const tmuxDevice = centralRunner ? localDevice : device;
+    const workspacePath = centralRunner ? await ensureCentralWorkspace(tmuxDevice, device, body.cwd) : "";
     const runner = tool === "terminal" ? terminalRunner() : await selectToolRunner(tmuxDevice, tool, body.profile_id, settings);
     const launchCommand = withProfileEnv(commandForSession(tool, runner.command, images), await resolveLaunchEnv(runner.env, runner.env_from_secrets));
-    const result = await startTmux(tmuxDevice, tmuxName, sessionTmuxCwd({ central_runner: centralRunner, cwd: body.cwd }), launchCommand);
+    const result = await startTmux(tmuxDevice, tmuxName, workspacePath || sessionTmuxCwd({ central_runner: centralRunner, cwd: body.cwd }), launchCommand);
     if (result.code !== 0) return json(res, 502, { detail: result.output });
     const initialTitle = `${tool} - ${path.basename(body.cwd) || body.cwd}`;
     const session = await upsertSession({
@@ -217,6 +218,7 @@ async function route(req, res) {
       tmux_device_id: tmuxDevice.id,
       tmux_device_label: tmuxDevice.label,
       central_runner: centralRunner,
+      workspace_path: workspacePath,
       target_ssh: sshTarget(device),
       pipe_log: true,
       title: initialTitle,
@@ -400,20 +402,32 @@ async function route(req, res) {
   const restartMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/restart$/);
   if (req.method === "POST" && restartMatch) {
     const body = await readJson(req);
-    const session = await sessionOr404(restartMatch[1]);
-    const device = await tmuxDeviceForSession(session);
+    let session = await sessionOr404(restartMatch[1]);
+    const previousDevice = await tmuxDeviceForSession(session);
+    const target = session.central_runner ? await deviceOr404(session.device_id) : null;
+    const device = target ? await localDeviceOr404() : previousDevice;
+    const workspacePath = target ? await ensureCentralWorkspace(device, target, session.cwd, session.workspace_path) : "";
+    if (target && (session.workspace_path !== workspacePath || session.tmux_device_id !== device.id || session.runner_device_id !== device.id)) {
+      session = await upsertSession({
+        ...session,
+        workspace_path: workspacePath,
+        tmux_device_id: device.id,
+        tmux_device_label: device.label,
+        runner_device_id: device.id,
+        runner_device_label: device.label,
+      });
+    }
     closeTerminalStream(session.id);
     CODEX_ROLLOUTS.delete(session.id);
     const toolCommands = (await readSettings()).tool_commands;
     const command = commandForRestart(session, Boolean(body.resume), toolCommands);
     const resolved = await resolveToolCommand(device, session.tool, command);
-    await runOnDevice(device, `tmux kill-session -t ${q(session.tmux_name)} 2>/dev/null || true`, 10000);
+    await runOnDevice(previousDevice, `tmux kill-session -t ${q(session.tmux_name)} 2>/dev/null || true`, 10000);
     const result = await startTmux(device, session.tmux_name, sessionTmuxCwd(session), withProfileEnv(resolved.command, await resolveLaunchEnv(session.runner_env, session.runner_env_from_secrets)));
     if (result.code !== 0) return json(res, 502, { detail: result.output });
     await clearPendingControl(session.id);
     await enableTmuxPipeLog(device, session);
-    if (session.central_runner) {
-      const target = await deviceOr404(session.device_id);
+    if (target) {
       const context = centralRunnerContext(target, session.cwd, session.tool);
       if (context) await sendText(device, session.tmux_name, context, true);
     }
@@ -1235,7 +1249,7 @@ function commandForSession(tool, command, images) {
 }
 
 function sessionTmuxCwd(session) {
-  return session.central_runner ? DATA : session.cwd;
+  return session.workspace_path || (session.central_runner ? DATA : session.cwd);
 }
 
 function centralRunnerContext(device, cwd, tool) {
@@ -1244,8 +1258,24 @@ function centralRunnerContext(device, cwd, tool) {
     `Ark context target=${device.label}`,
     `Ark context cwd=${cwd}`,
     `Ark context ssh=${sshTarget(device)}`,
-    "Ark context use ssh for shell and file work",
+    "Ark context current directory is a live mount of that target repo; read and edit it normally.",
+    "Ark context use ssh only for target-specific builds, services, and tools.",
   ].join("\n");
+}
+
+function centralWorkspacePath(device, cwd) {
+  return path.join(DATA, "workspaces", slug(device.id), slug(cwd));
+}
+
+async function ensureCentralWorkspace(runnerDevice, targetDevice, cwd, existingPath = "") {
+  const workspace = existingPath || centralWorkspacePath(targetDevice, cwd);
+  const source = `${sshTarget(targetDevice)}:${cwd}`;
+  const result = await runOnDevice(runnerDevice, [
+    `mkdir -p ${q(workspace)}`,
+    `mountpoint -q ${q(workspace)} || sshfs -o reconnect,ServerAliveInterval=15,ServerAliveCountMax=3,StrictHostKeyChecking=accept-new,BatchMode=yes ${q(source)} ${q(workspace)}`,
+  ].join("; "), 30000);
+  if (result.code !== 0) throw Object.assign(new Error(`Unable to mount ${targetDevice.label} workspace: ${result.output || "sshfs failed"}`), { status: 502 });
+  return workspace;
 }
 
 function sshTarget(device) {
@@ -2819,6 +2849,7 @@ function selfCheckCore() {
   if (exactResume !== "codex --no-alt-screen resume '019f491a-b738-7462-8a3a-418e4532df67'") throw new Error("Codex resume lost the exact session id");
   const remotePicker = commandForRestart({ tool: "codex", central_runner: true }, true, { codex: "codex --no-alt-screen" });
   if (!remotePicker.endsWith("resume --all")) throw new Error("remote Codex fallback can select the wrong workspace");
+  if (centralWorkspacePath({ id: "ts-target" }, "/remote/repo") !== path.join(DATA, "workspaces", "ts-target", "remote-repo")) throw new Error("central workspace path was not stable per target repo");
   if (sessionTmuxCwd({ central_runner: true, cwd: "/remote/repo" }) !== DATA) throw new Error("central runner leaked into the Ark source workspace");
   const mergedDrift = mergeCodexTranscript(
     [{ id: "u1", created_at: "2026-01-01T00:00:02Z", role: "user", text: `changed prefix ${"same tail ".repeat(12)}`, source: "codex-rollout" }, { id: "a1", created_at: "2026-01-01T00:00:03Z", role: "assistant", text: "live update", phase: "commentary" }],

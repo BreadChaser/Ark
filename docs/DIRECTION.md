@@ -15,10 +15,10 @@ Ark is a private-network controller for real CLI agents.
 - SSH is required for remote devices.
 - tmux is preferred. Without tmux, a later degraded mode can support one live
   shell, but no persistence.
-- Terminal sessions run on the selected device. Codex also runs directly on
-  the selected device in the selected directory, so repository work happens
-  where the repository lives. Remote OpenCode and Claude sessions currently
-  use the hub as central runners.
+- Terminal sessions run on the selected device. Remote coding agents run on
+  the hub in a live SSHFS mount of the selected directory, so Codex is only
+  installed and authenticated on Ark while repository reads and edits reach
+  the selected device. Target-specific commands still use SSH.
 - Codex is first. OpenCode, Claude, and terminal sessions share the same tmux
   backend.
 - No per-device Ark daemon.

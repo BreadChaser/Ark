@@ -78,8 +78,9 @@ Codex messages prefer its structured rollout transcript. Interactive terminal
 controls use a fixture-tested parser, with the raw terminal always available
 when a tool changes its UI.
 
-For a remote Codex session, Ark starts Codex and tmux on the selected device in
-the selected directory. Terminal scrolling uses tmux copy mode; a chat send
+For a remote Codex session, Ark mounts the selected repository over SSHFS and
+starts Codex and tmux on the hub. This keeps Codex/auth only on ARK while
+`/review`, reads, and edits use the selected repository. Terminal scrolling uses tmux copy mode; a chat send
 always exits copy mode first. After pasting text into Codex, Ark waits 150 ms
 before sending the submit key so Codex cannot mistake it for a multiline paste.
 Ready Codex receives Enter, while a currently working Codex session receives
