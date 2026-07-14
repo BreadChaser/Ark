@@ -289,6 +289,10 @@ async function route(req, res) {
   }
 
   const dirsMatch = pathname.match(/^\/api\/devices\/([^/]+)\/dirs$/);
+  if (req.method === "POST" && dirsMatch) {
+    const device = await deviceOr404(dirsMatch[1]);
+    return json(res, 200, await createDir(device, await readJson(req)));
+  }
   if (req.method === "GET" && dirsMatch) {
     const device = await deviceOr404(dirsMatch[1]);
     const result = await listDirs(device, url.searchParams.get("path") || "~");
@@ -1327,6 +1331,27 @@ async function listDirs(device, dir) {
     }
   }
   return { code: 0, output: "", cwd, parent: parentRemotePath(cwd), dirs };
+}
+
+async function createDir(device, body) {
+  const name = folderName(body?.name);
+  const dir = body?.path || "~";
+  const result = await runOnDevice(device, [
+    `cd ${qPath(dir)} 2>/dev/null || { echo 'cannot open directory'; exit 2; }`,
+    `mkdir -- ${q(name)}`,
+    `printf '__ARK_CWD__%s\\n' "$PWD"`,
+  ].join("; "), 15000);
+  if (result.code !== 0) throw Object.assign(new Error(result.output.trim() || "Unable to create folder."), { status: /File exists/i.test(result.output) ? 409 : 502 });
+  const cwd = result.output.split(/\r?\n/).find((line) => line.startsWith("__ARK_CWD__"))?.slice("__ARK_CWD__".length) || dir;
+  return { cwd, path: joinRemotePath(cwd, name) };
+}
+
+function folderName(value) {
+  const name = String(value || "").trim();
+  if (!name || name.startsWith(".") || /[\/\0\r\n]/.test(name)) {
+    throw Object.assign(new Error("Folder name must be one visible name, without slashes."), { status: 400 });
+  }
+  return name;
 }
 
 async function captureTmux(device, tmuxName, history = 2000) {
@@ -2853,6 +2878,11 @@ function selfCheckTrustedRemote() {
 function selfCheckCore() {
   if (contentType("ark-logo.svg") !== "image/svg+xml") throw new Error("SVG content type is not renderable");
   if (contentType("done.mp3") !== "audio/mpeg") throw new Error("MP3 sound effect content type is not playable");
+  if (folderName("Ark project") !== "Ark project") throw new Error("folder name was not preserved");
+  for (const invalid of ["", ".hidden", "..", "one/two"]) {
+    try { folderName(invalid); } catch { continue; }
+    throw new Error("unsafe folder name was accepted");
+  }
   const mergedDevices = mergeDiscoveredDevices(
     [{ id: "ssh-work", label: "work", host: "work.tailnet.ts.net", user: "tony", source: "ssh-config", status: "unknown" }],
     [{ id: "ts-work", label: "work", host_name: "work", host: "100.64.0.8", dns_name: "work.tailnet.ts.net", tailscale_ips: ["100.64.0.8"], source: "tailscale", status: "online" }],

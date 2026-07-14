@@ -145,6 +145,7 @@ const els = {
   browse: document.querySelector("#browse"),
   homeDir: document.querySelector("#home-dir"),
   parentDir: document.querySelector("#parent-dir"),
+  newFolder: document.querySelector("#new-folder"),
   refresh: document.querySelector("#refresh"),
   refreshSidebar: document.querySelector("#sidebar-refresh"),
   refreshTmux: document.querySelector("#refresh-tmux"),
@@ -258,6 +259,7 @@ async function init() {
   els.browse.addEventListener("click", () => browse(els.repo.value.trim() || "~"));
   els.homeDir.addEventListener("click", () => browse("~"));
   els.parentDir.addEventListener("click", () => browse(state.dirParent || "~"));
+  els.newFolder.addEventListener("click", createFolder);
   els.start.addEventListener("click", startSession);
   els.startupImageButton.addEventListener("click", () => els.startupImageInput.click());
   els.startupImageInput.addEventListener("change", queueStartupImages);
@@ -535,6 +537,21 @@ async function browse(path, options = {}) {
     state.dirs = [];
     renderDirs();
     if (!options.quiet) showError(error.message);
+  }
+}
+
+async function createFolder() {
+  const name = prompt("New folder name");
+  if (name === null) return;
+  if (!name.trim()) return showError("Enter a folder name.");
+  try {
+    const data = await api(`/api/devices/${encodeURIComponent(state.activeDeviceId)}/dirs`, {
+      method: "POST",
+      body: JSON.stringify({ path: state.dirCwd || els.repo.value.trim() || "~", name }),
+    });
+    await browse(data.cwd || state.dirCwd, { quiet: true });
+  } catch (error) {
+    showError(error.message);
   }
 }
 
