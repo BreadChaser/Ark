@@ -928,7 +928,7 @@ async function testChatLayout() {
   await wait(`document.querySelector("#image-viewer-image").src.endsWith(${JSON.stringify(nextImageUpload.url)}) && document.querySelector("#image-viewer-position").textContent === "2 / 2"`);
   await shot("chat-image-open");
   await js('document.querySelector("#image-viewer-close").click(); return true;');
-  await wait('!document.querySelector("#image-viewer").open');
+  await wait('!document.querySelector("#image-viewer").open && getComputedStyle(document.querySelector("#image-viewer")).display === "none"');
   const markdownImageWrapped = await js(`renderChatCapture({ messages: [{ role: "assistant", text: ${JSON.stringify(`![image markdown smoke](${imageUpload.url})`)} }] }, { id: "markdown-image-smoke", tool: "opencode" }, false); return Boolean(document.querySelector(".chat-message.assistant .message-text .message-image")?.closest("a")?.hasAttribute("data-image-viewer"));`);
   assert(markdownImageWrapped, "Markdown image was not wired to the in-app viewer");
   await js('return loadChatMessages(activeSession(), true);');

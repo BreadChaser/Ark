@@ -1588,13 +1588,16 @@ pre {
   margin: auto;
   padding: 48px 14px 14px;
   overflow: hidden;
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-panel);
   color: var(--text);
   background: var(--panel-solid);
   box-shadow: var(--shadow-strong);
+}
+
+.image-viewer[open] {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
 }
 
 .image-viewer::backdrop {
