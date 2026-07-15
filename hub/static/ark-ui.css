@@ -169,7 +169,7 @@ body {
     linear-gradient(0deg, var(--grid-line) 1px, transparent 1px);
   background-size: 32px 32px;
   filter: drop-shadow(0 0 2px color-mix(in srgb, var(--grid-line) 72%, transparent));
-  animation: grid-drift 180s linear infinite;
+  animation: grid-drift 60s linear infinite;
 }
 
 .background-grid::after {
@@ -177,7 +177,7 @@ body {
   background: linear-gradient(135deg, transparent 49.7%, color-mix(in srgb, var(--grid-line) 72%, transparent) 50%, transparent 50.3%);
   background-size: 280px 280px;
   filter: drop-shadow(0 0 3px color-mix(in srgb, var(--grid-line) 72%, transparent));
-  animation: diagonal-drift 180s linear infinite;
+  animation: diagonal-drift 60s linear infinite;
 }
 
 .svg-sprite {
