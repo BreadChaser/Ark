@@ -98,6 +98,37 @@
   --mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
+:root[data-theme="spreadsheet"] {
+  color-scheme: light;
+  --bg: #f8f9fa;
+  --bg-glow: rgba(26, 115, 232, 0.05);
+  --panel: rgba(255, 255, 255, 0.88);
+  --panel-solid: #ffffff;
+  --panel-soft: #f1f3f4;
+  --panel-raised: #e8f0fe;
+  --text: #202124;
+  --muted: #5f6368;
+  --faint: #80868b;
+  --line: rgba(60, 64, 67, 0.16);
+  --line-strong: rgba(26, 115, 232, 0.32);
+  --accent: #1a73e8;
+  --accent-strong: #185abc;
+  --accent-soft: rgba(26, 115, 232, 0.14);
+  --blue: #1a73e8;
+  --danger: #c5221f;
+  --warning: #b06000;
+  --done: #137333;
+  --shadow: 0 2px 8px rgba(60, 64, 67, 0.14);
+  --grid-line: rgba(60, 64, 67, 0.075);
+  --vignette: rgba(60, 64, 67, 0.05);
+  --terminal-bg: #202124;
+  --terminal-fg: #e8eaed;
+  --terminal-cursor: #8ab4f8;
+  --terminal-selection: rgba(138, 180, 248, 0.28);
+  --font: Arial, Helvetica, sans-serif;
+  --mono: "Roboto Mono", "SFMono-Regular", Consolas, monospace;
+}
+
 @supports (-moz-appearance: none) {
   :root {
     --panel: rgba(13, 24, 34, 0.48);
@@ -168,7 +199,6 @@ body {
     linear-gradient(90deg, var(--grid-line) 1.5px, transparent 1.5px),
     linear-gradient(0deg, var(--grid-line) 1.5px, transparent 1.5px);
   background-size: 32px 32px;
-  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--grid-line) 72%, transparent));
   animation: grid-drift 60s linear infinite;
 }
 
@@ -176,8 +206,21 @@ body {
   inset: -280px;
   background: linear-gradient(135deg, transparent 49.7%, color-mix(in srgb, var(--grid-line) 72%, transparent) 50%, transparent 50.3%);
   background-size: 280px 280px;
-  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--grid-line) 72%, transparent));
   animation: diagonal-drift 60s linear infinite;
+}
+
+:root[data-theme="spreadsheet"] body {
+  background: var(--bg);
+}
+
+:root[data-theme="spreadsheet"] .background-grid::before {
+  inset: 0;
+  background-size: 24px 24px;
+  animation: none;
+}
+
+:root[data-theme="spreadsheet"] .background-grid::after {
+  display: none;
 }
 
 .svg-sprite {
