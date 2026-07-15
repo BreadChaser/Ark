@@ -100,21 +100,21 @@
 
 :root[data-theme="spreadsheet"] {
   color-scheme: light;
-  --bg: #f8f9fa;
-  --bg-glow: rgba(26, 115, 232, 0.05);
+  --bg: #f3f2f1;
+  --bg-glow: rgba(16, 124, 65, 0.05);
   --panel: rgba(255, 255, 255, 0.88);
   --panel-solid: #ffffff;
   --panel-soft: #f1f3f4;
-  --panel-raised: #e8f0fe;
+  --panel-raised: #e2f0d9;
   --text: #202124;
   --muted: #5f6368;
   --faint: #80868b;
   --line: rgba(60, 64, 67, 0.16);
-  --line-strong: rgba(26, 115, 232, 0.32);
-  --accent: #1a73e8;
-  --accent-strong: #185abc;
-  --accent-soft: rgba(26, 115, 232, 0.14);
-  --blue: #1a73e8;
+  --line-strong: rgba(16, 124, 65, 0.32);
+  --accent: #107c41;
+  --accent-strong: #0b5c30;
+  --accent-soft: rgba(16, 124, 65, 0.14);
+  --blue: #107c41;
   --danger: #c5221f;
   --warning: #b06000;
   --done: #137333;
@@ -123,10 +123,13 @@
   --vignette: rgba(60, 64, 67, 0.05);
   --terminal-bg: #202124;
   --terminal-fg: #e8eaed;
-  --terminal-cursor: #8ab4f8;
-  --terminal-selection: rgba(138, 180, 248, 0.28);
-  --font: Arial, Helvetica, sans-serif;
-  --mono: "Roboto Mono", "SFMono-Regular", Consolas, monospace;
+  --terminal-cursor: #6fcf97;
+  --terminal-selection: rgba(16, 124, 65, 0.3);
+  --radius-xl: 0;
+  --radius-lg: 2px;
+  --radius-md: 2px;
+  --font: Aptos, Calibri, Arial, sans-serif;
+  --mono: "Cascadia Mono", Consolas, monospace;
 }
 
 @supports (-moz-appearance: none) {
@@ -221,6 +224,142 @@ body {
 
 :root[data-theme="spreadsheet"] .background-grid::after {
   display: none;
+}
+
+:root[data-theme="spreadsheet"] .sidebar {
+  inset: 0 auto 0 0;
+  width: 264px;
+  border: 0;
+  border-right: 1px solid #d0d0d0;
+  border-radius: 0;
+  box-shadow: none;
+  background: #ffffff;
+  backdrop-filter: none;
+}
+
+:root[data-theme="spreadsheet"] .brand-row {
+  min-height: 46px;
+  padding: 8px 12px;
+  color: #ffffff;
+  background: #107c41;
+}
+
+:root[data-theme="spreadsheet"] .brand {
+  font-size: 0;
+}
+
+:root[data-theme="spreadsheet"] .brand-logo {
+  display: none;
+}
+
+:root[data-theme="spreadsheet"] .brand::after {
+  content: "Q3 Budget.xlsx";
+  font-size: 14px;
+  font-weight: 700;
+}
+
+:root[data-theme="spreadsheet"] .brand-row button {
+  min-height: 28px;
+  padding: 4px 7px;
+  border-color: transparent;
+  border-radius: 2px;
+  color: #ffffff;
+  background: transparent;
+}
+
+:root[data-theme="spreadsheet"] .main {
+  margin-left: 264px;
+  padding: 0;
+}
+
+:root[data-theme="spreadsheet"] body.sidebar-collapsed .main {
+  margin-left: 0;
+  padding-left: 12px;
+}
+
+:root[data-theme="spreadsheet"] .topbar {
+  height: 58px;
+  padding: 7px 18px;
+  color: #ffffff;
+  background: #107c41;
+}
+
+:root[data-theme="spreadsheet"] .topbar h1,
+:root[data-theme="spreadsheet"] .topbar p {
+  font-size: 0;
+  color: #ffffff;
+}
+
+:root[data-theme="spreadsheet"] .topbar h1::before {
+  content: "Q3 Budget.xlsx";
+  font-size: 16px;
+  font-weight: 700;
+}
+
+:root[data-theme="spreadsheet"] .topbar p::before {
+  content: "File   Home   Insert   Page Layout   Formulas   Data   Review   View";
+  font-size: 11px;
+  white-space: pre;
+}
+
+:root[data-theme="spreadsheet"] .topbar :is(.status-pill, .settings-toggle) {
+  border-color: rgba(255, 255, 255, 0.38);
+  color: #ffffff;
+  background: transparent;
+}
+
+:root[data-theme="spreadsheet"] .workspace {
+  height: calc(100dvh - 58px);
+  padding: 36px 12px 12px;
+}
+
+:root[data-theme="spreadsheet"] .workspace::before {
+  position: absolute;
+  z-index: 2;
+  inset: 0 0 auto;
+  height: 36px;
+  padding: 9px 16px;
+  border-bottom: 1px solid #d0d0d0;
+  color: #5f6368;
+  background: #ffffff;
+  content: "fx    =SUM(Q3_Budget[Forecast])";
+  font: 12px/18px var(--mono);
+}
+
+:root[data-theme="spreadsheet"] .session-panel {
+  border-radius: 0;
+  box-shadow: none;
+  background: #ffffff;
+  backdrop-filter: none;
+  animation: none;
+}
+
+:root[data-theme="spreadsheet"] .session-toolbar {
+  min-height: 36px;
+  padding: 3px 8px;
+  background: #f3f2f1;
+}
+
+:root[data-theme="spreadsheet"] .chat-output {
+  background:
+    linear-gradient(#edf0ed 1px, transparent 1px),
+    linear-gradient(90deg, #edf0ed 1px, transparent 1px),
+    #ffffff;
+  background-size: 24px 24px;
+}
+
+:root[data-theme="spreadsheet"] .message-text,
+:root[data-theme="spreadsheet"] .chat-message.assistant .message-text {
+  padding: 8px 10px;
+  border: 1px solid #d0d0d0;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.94);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+:root[data-theme="spreadsheet"] .chat-message.user .message-text {
+  background: #e2f0d9;
 }
 
 .svg-sprite {
@@ -2655,5 +2794,17 @@ body.sidebar-collapsed #sidebar-toggle::after {
     scroll-behavior: auto !important;
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 760px) {
+  :root[data-theme="spreadsheet"] .sidebar {
+    width: var(--sidebar-width);
+  }
+
+  :root[data-theme="spreadsheet"] .main,
+  :root[data-theme="spreadsheet"] body.sidebar-collapsed .main {
+    margin-left: 0;
+    padding: 0;
   }
 }
