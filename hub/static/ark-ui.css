@@ -1515,7 +1515,7 @@ pre {
 }
 
 .chat-message {
-  max-width: min(1020px, 92%);
+  max-width: min(1160px, 92%);
   display: grid;
   gap: 5px;
 }
@@ -1527,7 +1527,7 @@ pre {
 
 .chat-message.assistant:has(.message-text li > ul) {
   width: 100%;
-  max-width: min(1240px, 100%);
+  max-width: min(1280px, 100%);
 }
 
 .chat-message.user {
@@ -2459,15 +2459,19 @@ body.sidebar-collapsed #sidebar-toggle::after {
 
 @media (min-width: 1500px) {
   .chat-stream {
-    width: min(1320px, 100%);
+    width: min(1460px, 100%);
+  }
+
+  .chat-message {
+    max-width: min(1360px, 92%);
   }
 
   .chat-message.assistant:has(.message-text li > ul) {
-    max-width: min(1280px, 100%);
+    max-width: min(1420px, 100%);
   }
 
   .composer {
-    width: min(1320px, calc(100% - 26px));
+    width: min(1460px, calc(100% - 26px));
   }
 }
 
