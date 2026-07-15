@@ -502,7 +502,7 @@ async function captureSession(id) {
   // panel. Preserve its newest value from scrollback after it has left the screen.
   const payload = capturePayload(result.output, session, storedMessages, controlText, result.output);
   const useStoredCodexMessages = canUseStoredCodexMessages(session, payload, storedMessages);
-  const transcript = useStoredCodexMessages ? null : await readCodexTranscript(session, device, result.output);
+  const transcript = useStoredCodexMessages ? null : await readCodexTranscript(session, device, result.output, storedMessages);
   if (transcript !== null) {
     payload.messages = await writeAuthoritativeMessages(session, transcript, storedMessages);
     payload.transcript_source = "codex-rollout";
@@ -2130,7 +2130,11 @@ function isStoredChatJunk(message) {
     || /\/permissions\s+choose|Ask for approval|Permissions updated|Select (Model and Effort|Reasoning Level)/i.test(text);
 }
 
-async function readCodexTranscript(session, device, rawText) {
+async function readCodexTranscript(session, device, rawText, storedMessages = null) {
+  return withMutation(`codex-transcript-read:${session.id}`, () => readCodexTranscriptNow(session, device, rawText, storedMessages));
+}
+
+async function readCodexTranscriptNow(session, device, rawText, storedMessages) {
   if (session.tool !== "codex") return null;
   const filePath = await codexRolloutPath(session, device, rawText);
   if (!filePath) return null;
@@ -2151,34 +2155,89 @@ async function readCodexTranscript(session, device, rawText) {
   }
   let cache = CODEX_TRANSCRIPTS.get(session.id);
   if (!cache || info.size < cache.offset) {
-    cache = { offset: 0, remainder: "", messages: [], sequence: 0, imageHashes: new Map(), settings: null, usage: null, taskState: null };
+    const offset = Number(session.codex_transcript_offset || 0);
+    const resume = offset > 0 && offset <= info.size;
+    const messages = resume ? (storedMessages || await readSessionMessages(session.id)).map(normalizeMessage) : [];
+    cache = {
+      offset: resume ? offset : 0,
+      remainder: "",
+      messages,
+      sequence: resume ? Number(session.codex_transcript_sequence || 0) : 0,
+      imageHashes: new Map(),
+      settings: resume ? session.codex_state || null : null,
+      usage: resume ? session.codex_usage || null : null,
+      taskState: resume && ["working", "ready"].includes(session.agent_state) ? session.agent_state : null,
+    };
     CODEX_TRANSCRIPTS.set(session.id, cache);
   }
   if (info.size === cache.offset) return cache.messages.map(normalizeMessage);
-  const chunks = [];
   let bytes = 0;
-  for await (const chunk of createReadStream(readablePath, { start: cache.offset })) {
-    chunks.push(chunk);
-    bytes += chunk.length;
-  }
-  cache.offset += bytes;
-  const lines = (cache.remainder + Buffer.concat(chunks).toString("utf8")).split(/\r?\n/);
-  cache.remainder = lines.pop() || "";
-  for (const line of lines) {
-    if (!line) continue;
-    let row;
-    try {
-      row = JSON.parse(line);
-    } catch {
-      continue;
+  let remainder = cache.remainder;
+  let parsed = 0;
+  const decoder = new TextDecoder();
+  const appendLines = async (lines) => {
+    for (const line of lines) {
+      if (!line) continue;
+      let row;
+      try {
+        row = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      updateCodexSettings(cache, row);
+      const imageMessage = await codexTranscriptImageMessage(session, row, cache);
+      if (imageMessage) cache.messages.push(imageMessage);
+      const message = codexTranscriptMessage(row, cache.sequence++);
+      if (message) cache.messages.push(message);
+      if (++parsed % 128 === 0) await yieldToEventLoop();
     }
-    updateCodexSettings(cache, row);
-    const imageMessage = await codexTranscriptImageMessage(session, row, cache);
-    if (imageMessage) cache.messages.push(imageMessage);
-    const message = codexTranscriptMessage(row, cache.sequence++);
-    if (message) cache.messages.push(message);
+  };
+  for await (const chunk of createReadStream(readablePath, { start: cache.offset })) {
+    bytes += chunk.length;
+    const next = splitCodexTranscriptLines(remainder, decoder.decode(chunk, { stream: true }));
+    remainder = next.remainder;
+    await appendLines(next.lines);
   }
+  const final = splitCodexTranscriptLines(remainder, decoder.decode());
+  remainder = final.remainder;
+  await appendLines(final.lines);
+  cache.offset += bytes;
+  cache.remainder = remainder;
+  await saveCodexTranscriptProgress(session, cache);
   return cache.messages.map(normalizeMessage);
+}
+
+function splitCodexTranscriptLines(remainder, text) {
+  const lines = `${remainder}${text}`.split(/\r?\n/);
+  return { lines: lines.slice(0, -1), remainder: lines.at(-1) || "" };
+}
+
+function yieldToEventLoop() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+function codexTranscriptProgress(cache) {
+  return {
+    offset: Math.max(0, Number(cache.offset || 0) - Buffer.byteLength(cache.remainder || "")),
+    sequence: Math.max(0, Number(cache.sequence || 0)),
+  };
+}
+
+async function saveCodexTranscriptProgress(session, cache) {
+  const progress = codexTranscriptProgress(cache);
+  if (Number(session.codex_transcript_offset || 0) === progress.offset && Number(session.codex_transcript_sequence || 0) === progress.sequence) return;
+  session.codex_transcript_offset = progress.offset;
+  session.codex_transcript_sequence = progress.sequence;
+  const stored = await withMutation("store", async () => {
+    const data = await readStore();
+    const found = data.sessions.find((item) => item.id === session.id);
+    if (!found) return null;
+    found.codex_transcript_offset = progress.offset;
+    found.codex_transcript_sequence = progress.sequence;
+    await writeStore(data);
+    return found;
+  });
+  if (stored) await writeSessionFiles(stored);
 }
 
 async function codexTranscriptImageMessage(session, row, cache) {
@@ -2484,11 +2543,15 @@ async function rememberCodexRollout(session, filePath) {
   const codexSessionId = (path.basename(filePath).match(/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\.jsonl$/i) || [])[1];
   if (!codexSessionId || session.codex_session_id === codexSessionId) return filePath;
   session.codex_session_id = codexSessionId;
+  session.codex_transcript_offset = 0;
+  session.codex_transcript_sequence = 0;
   const stored = await withMutation("store", async () => {
     const data = await readStore();
     const found = data.sessions.find((item) => item.id === session.id);
     if (!found) return null;
     found.codex_session_id = codexSessionId;
+    found.codex_transcript_offset = 0;
+    found.codex_transcript_sequence = 0;
     await writeStore(data);
     return found;
   });
@@ -2980,6 +3043,10 @@ function selfCheckCore() {
   CODEX_TRANSCRIPTS.delete(storedProbe);
   if (!canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "ready" }, { agent_state: "unknown" }, [{ text: "done" }])) throw new Error("completed Codex session did not reuse stored messages");
   if (canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "working" }, { agent_state: "ready" }, [{ text: "done" }])) throw new Error("working Codex session skipped transcript updates");
+  const transcriptProgress = codexTranscriptProgress({ offset: 20, remainder: "tail", sequence: 7 });
+  if (transcriptProgress.offset !== 16 || transcriptProgress.sequence !== 7) throw new Error("Codex transcript progress included an incomplete JSON line");
+  const transcriptLines = splitCodexTranscriptLines("half", " line\nnext");
+  if (transcriptLines.lines[0] !== "half line" || transcriptLines.remainder !== "next") throw new Error("Codex transcript chunks lost a line boundary");
   if (submitKeyForSession({ tool: "codex" }, "• Working (2s • esc to interrupt)") !== "Tab") throw new Error("working Codex message was not queued");
   if (submitKeyForSession({ tool: "codex" }, "› Write tests") !== "Enter") throw new Error("ready Codex message was not submitted");
   if (submitKeyForSession({ tool: "codex", agent_state: "working" }, "› Write tests") !== "Enter") throw new Error("stale Codex state queued a ready message");
