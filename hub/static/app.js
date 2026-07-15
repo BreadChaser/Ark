@@ -134,6 +134,8 @@ const els = {
   repo: document.querySelector("#repo"),
   tool: document.querySelector("#tool"),
   profile: document.querySelector("#profile"),
+  yoloMode: document.querySelector("#yolo-mode"),
+  yoloToggle: document.querySelector("#yolo-mode-toggle"),
   start: document.querySelector("#start"),
   startupImageButton: document.querySelector("#startup-image-button"),
   startupImageInput: document.querySelector("#startup-image-input"),
@@ -154,6 +156,7 @@ const els = {
   interrupt: document.querySelector("#interrupt"),
   restart: document.querySelector("#restart"),
   resume: document.querySelector("#resume"),
+  enableYolo: document.querySelector("#enable-yolo"),
   forget: document.querySelector("#forget"),
   kill: document.querySelector("#kill"),
   sessionActionsToggle: document.querySelector("#session-actions-toggle"),
@@ -289,6 +292,7 @@ async function init() {
   els.interrupt.addEventListener("click", interruptSession);
   els.restart.addEventListener("click", () => restartSession(false));
   els.resume.addEventListener("click", () => restartSession(true));
+  els.enableYolo.addEventListener("click", enableYolo);
   els.forget.addEventListener("click", () => deleteSession(false));
   els.kill.addEventListener("click", () => deleteSession(true));
   els.sessionActionsToggle.addEventListener("click", () => {
@@ -836,6 +840,8 @@ function renderMain() {
   renderSessionRuntime(session);
   els.resume.hidden = !session || session.tool !== "codex";
   els.resume.textContent = session?.codex_session_id ? "Resume" : session?.central_runner ? "Choose resume" : "Resume last";
+  els.enableYolo.hidden = !session || session.tool !== "codex";
+  els.enableYolo.textContent = session?.yolo ? "YOLO on" : "YOLO";
   setSessionControls(Boolean(session), stopped);
   setAdding(state.adding);
   renderStartupImages();
@@ -883,7 +889,7 @@ function renderSessionSummary(session, device) {
 
 function sessionDetail(session) {
   const detail = `${session.device_label} / ${session.cwd} / ${session.tmux_name}`;
-  return [detail, sessionRunnerDetail(session)].filter(Boolean).join(" / ");
+  return [detail, session.yolo ? "YOLO: no approvals" : "", sessionRunnerDetail(session)].filter(Boolean).join(" / ");
 }
 
 function sessionHeaderDetail(session) {
@@ -1236,7 +1242,7 @@ async function startSession() {
     const images = await uploadStartupImages();
     const data = await api("/api/sessions", {
       method: "POST",
-      body: JSON.stringify({ device_id: state.activeDeviceId, cwd, tool: els.tool.value, profile_id: els.profile.value, images }),
+      body: JSON.stringify({ device_id: state.activeDeviceId, cwd, tool: els.tool.value, profile_id: els.profile.value, images, yolo: els.tool.value === "codex" && els.yoloToggle.checked }),
     });
     state.sessions = (await api("/api/sessions")).sessions;
     state.startupImages = [];
@@ -2026,15 +2032,31 @@ async function interruptSession() {
   await capture();
 }
 
-async function restartSession(resume) {
+async function restartSession(resume, options = {}) {
   const session = activeSession();
   if (!session) return;
   setStatus(resume ? "Resuming" : "Restarting");
   await api(`/api/sessions/${session.id}/restart`, {
     method: "POST",
-    body: JSON.stringify({ resume }),
+    body: JSON.stringify({ resume, ...options }),
   });
+  if ("yolo" in options) {
+    state.sessions = (await api("/api/sessions")).sessions;
+    renderSidebar();
+    renderMain();
+  }
   await Promise.all([refreshTmux(), capture()]);
+}
+
+async function enableYolo() {
+  const session = activeSession();
+  if (!session || session.tool !== "codex") return;
+  const yolo = !session.yolo;
+  const message = yolo
+    ? "Restart and resume this Codex chat in YOLO mode? It will run without approval prompts or sandboxing."
+    : "Restart and resume this Codex chat with normal approvals and sandboxing?";
+  if (!confirm(message)) return;
+  await restartSession(true, { yolo });
 }
 
 async function deleteSession(kill) {
@@ -2164,7 +2186,7 @@ function updateViewLabels(mode) {
 function setSessionControls(enabled, stopped = false) {
   els.workspace.classList.toggle("has-session", enabled);
   els.sessionPanel.classList.toggle("has-session", enabled);
-  for (const control of [els.input, els.send, els.attachImage, els.interrupt, els.restart, els.resume, els.forget, els.kill, els.sessionActionsToggle]) {
+  for (const control of [els.input, els.send, els.attachImage, els.interrupt, els.restart, els.resume, els.enableYolo, els.forget, els.kill, els.sessionActionsToggle]) {
     control.disabled = !enabled;
   }
   for (const control of [els.input, els.send, els.attachImage, els.interrupt]) control.disabled = !enabled || stopped;
@@ -2198,6 +2220,7 @@ function updateStartButton() {
     claude: "Open Claude",
   };
   els.start.textContent = labels[els.tool.value] || "Open";
+  els.yoloMode.hidden = els.tool.value !== "codex";
 }
 
 function toolLabel(tool) {

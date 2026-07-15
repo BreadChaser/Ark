@@ -1938,6 +1938,28 @@ pre {
   flex: 1;
 }
 
+.yolo-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font: 700 11px/1 var(--mono);
+  white-space: nowrap;
+}
+
+.yolo-mode:has(input:checked) {
+  border-color: color-mix(in srgb, var(--danger) 58%, var(--line));
+  color: var(--danger);
+}
+
+.yolo-mode input {
+  accent-color: var(--danger);
+}
+
 .startup-image-row {
   color: var(--muted);
   font-size: 11px;

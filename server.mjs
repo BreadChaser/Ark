@@ -186,6 +186,7 @@ async function route(req, res) {
     const device = await deviceOr404(body.device_id);
     const localDevice = await localDeviceOr404();
     const tool = body.tool || "codex";
+    const yolo = tool === "codex" && body.yolo === true;
     const settings = await readSettings();
     if (!(tool in settings.tool_commands)) return json(res, 400, { detail: "unknown tool" });
     if (!body.cwd || typeof body.cwd !== "string") return json(res, 400, { detail: "cwd is required" });
@@ -196,7 +197,7 @@ async function route(req, res) {
     const tmuxDevice = centralRunner ? localDevice : device;
     const workspacePath = centralRunner ? await ensureCentralWorkspace(tmuxDevice, device, body.cwd) : "";
     const runner = tool === "terminal" ? terminalRunner() : await selectToolRunner(tmuxDevice, tool, body.profile_id, settings);
-    const launchCommand = withProfileEnv(commandForSession(tool, runner.command, images), await resolveLaunchEnv(runner.env, runner.env_from_secrets));
+    const launchCommand = withProfileEnv(commandForSession(tool, runner.command, images, yolo), await resolveLaunchEnv(runner.env, runner.env_from_secrets));
     const result = await startTmux(tmuxDevice, tmuxName, workspacePath || sessionTmuxCwd({ central_runner: centralRunner, cwd: body.cwd }), launchCommand);
     if (result.code !== 0) return json(res, 502, { detail: result.output });
     const initialTitle = `${tool} - ${path.basename(body.cwd) || body.cwd}`;
@@ -206,6 +207,7 @@ async function route(req, res) {
       tmux_name: tmuxName,
       cwd: body.cwd,
       tool,
+      yolo,
       runner_id: runner.id,
       runner_label: runner.label,
       runner_source: runner.source,
@@ -408,6 +410,7 @@ async function route(req, res) {
   if (req.method === "POST" && restartMatch) {
     const body = await readJson(req);
     let session = await sessionOr404(restartMatch[1]);
+    if (session.tool === "codex" && typeof body.yolo === "boolean" && body.yolo !== Boolean(session.yolo)) session = await upsertSession({ ...session, yolo: body.yolo });
     const previousDevice = await tmuxDeviceForSession(session);
     const target = session.central_runner ? await deviceOr404(session.device_id) : null;
     const device = target ? await localDeviceOr404() : previousDevice;
@@ -1239,7 +1242,9 @@ function resumeCommands(toolCommands) {
 }
 
 function commandForRestart(session, resume, toolCommands) {
-  const command = session.runner_command || toolCommands[session.tool] || "";
+  const command = session.tool === "codex"
+    ? withYolo(session.runner_command || toolCommands[session.tool] || "", session.yolo)
+    : session.runner_command || toolCommands[session.tool] || "";
   if (!resume || session.tool !== "codex") return command;
   const selector = session.codex_session_id
     ? q(session.codex_session_id)
@@ -1247,10 +1252,14 @@ function commandForRestart(session, resume, toolCommands) {
   return `${command || DEFAULT_TOOL_COMMANDS.codex} resume ${selector}`;
 }
 
-function commandForSession(tool, command, images) {
+function commandForSession(tool, command, images, yolo = false) {
   if (tool !== "codex") return command;
   const imageArgs = images.map((image) => ` --image ${q(image)}`).join("");
-  return `${command || "codex"}${imageArgs}`;
+  return `${withYolo(command || "codex", yolo)}${imageArgs}`;
+}
+
+function withYolo(command, yolo) {
+  return yolo ? `${command || DEFAULT_TOOL_COMMANDS.codex} --yolo` : command;
 }
 
 function sessionTmuxCwd(session) {
@@ -2955,6 +2964,8 @@ function selfCheckCore() {
   if (codexUsageLimitUntil("You've hit your usage limit. Try again at 4:05 AM.", null, resetNow) !== Math.floor(resetAt / 1000)) throw new Error("Codex usage reset was not classified outside goal mode");
   const exactResume = commandForRestart({ tool: "codex", runner_command: "codex --no-alt-screen", codex_session_id: "019f491a-b738-7462-8a3a-418e4532df67" }, true, {});
   if (exactResume !== "codex --no-alt-screen resume '019f491a-b738-7462-8a3a-418e4532df67'") throw new Error("Codex resume lost the exact session id");
+  if (commandForSession("codex", "codex --no-alt-screen", [], true) !== "codex --no-alt-screen --yolo") throw new Error("Codex YOLO flag was not added to new sessions");
+  if (commandForRestart({ tool: "codex", yolo: true, runner_command: "codex --no-alt-screen", codex_session_id: "019f491a-b738-7462-8a3a-418e4532df67" }, true, {}) !== "codex --no-alt-screen --yolo resume '019f491a-b738-7462-8a3a-418e4532df67'") throw new Error("Codex YOLO flag was not kept on resume");
   const remotePicker = commandForRestart({ tool: "codex", central_runner: true }, true, { codex: "codex --no-alt-screen" });
   if (!remotePicker.endsWith("resume --all")) throw new Error("remote Codex fallback can select the wrong workspace");
   if (centralWorkspacePath({ id: "ts-target" }, "/remote/repo") !== path.join(DATA, "workspaces", "ts-target", "remote-repo")) throw new Error("central workspace path was not stable per target repo");

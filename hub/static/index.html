@@ -195,6 +195,10 @@
               <select id="profile" aria-label="Profile">
                 <option value="">Auto profile</option>
               </select>
+              <label id="yolo-mode" class="yolo-mode" title="Runs Codex with no approval prompts or sandbox">
+                <input id="yolo-mode-toggle" type="checkbox" />
+                <span>YOLO</span>
+              </label>
               <button id="start" class="primary">Open Codex</button>
             </div>
             <div class="startup-image-row">
@@ -231,6 +235,7 @@
             <div class="inline-actions">
               <button id="restart" disabled>Restart</button>
               <button id="resume" disabled>Resume</button>
+              <button id="enable-yolo" disabled hidden>YOLO</button>
               <button id="forget" disabled>Forget</button>
               <button id="kill" disabled>Kill</button>
             </div>
