@@ -486,6 +486,8 @@ async function isCodexControlInput(device, session, text) {
 
 async function captureSession(id) {
   let session = await sessionOr404(id);
+  const storedMessages = await readSessionMessages(session.id);
+  if (canUseStoredCodexMessages(session, storedMessages)) return storedCodexCapture(session, storedMessages);
   const device = await tmuxDeviceForSession(session);
   session = await promoteRunningChatSession(device, session);
   const result = await captureTmux(device, session.tmux_name);
@@ -495,14 +497,12 @@ async function captureSession(id) {
   if (result.code !== 0) throw Object.assign(new Error(result.output), { status: 502 });
   await touchSession(session.id);
   const pipeSynced = await syncTmuxPipeLog(device, session).catch(() => false);
-  const storedMessages = await readSessionMessages(session.id);
   const screen = session.tool === "codex" ? await captureTmuxScreen(device, session.tmux_name) : result;
   const controlText = screen.code === 0 ? screen.output : result.output;
   // Controls must reflect the visible pane, but `/status` is a short-lived Codex
   // panel. Preserve its newest value from scrollback after it has left the screen.
   const payload = capturePayload(result.output, session, storedMessages, controlText, result.output);
-  const useStoredCodexMessages = canUseStoredCodexMessages(session, payload, storedMessages);
-  const transcript = useStoredCodexMessages ? null : await readCodexTranscript(session, device, result.output, storedMessages);
+  const transcript = await readCodexTranscript(session, device, result.output, storedMessages);
   if (transcript !== null) {
     payload.messages = await writeAuthoritativeMessages(session, transcript, storedMessages);
     payload.transcript_source = "codex-rollout";
@@ -510,9 +510,6 @@ async function captureSession(id) {
     if (settings) payload.codex_state = { ...(payload.codex_state || {}), ...settings, source: "codex-rollout" };
     payload.codex_usage = cachedCodexUsage(session) || payload.codex_usage || session.codex_usage || null;
     if (payload.agent_state !== "needs_input") payload.agent_state = cachedCodexTaskState(session) || payload.agent_state;
-  } else if (useStoredCodexMessages) {
-    payload.messages = storedMessages;
-    payload.transcript_source = "stored";
   } else if (payload.mode === "chat") {
     payload.messages = await writeMessagesSnapshot(session, payload.messages);
     payload.transcript_source = "terminal-fallback";
@@ -1656,7 +1653,7 @@ async function listAgentStates() {
   return Promise.all(sessions.map(async (session) => {
     try {
       const live = CAPTURE_STREAMS.get(session.id)?.payload;
-      if (live) {
+      if (live && live.transcript_source !== "stored") {
         const usageUntil = Number(live.usage_limited_until || session.usage_limited_until || 0);
         const state = usageUntil > Math.floor(Date.now() / 1000) ? "usage" : live.pending_control ? "needs_input" : live.agent_state;
         return { id: session.id, state, pending_control: live.pending_control || null, ready_at: session.ready_at || 0, viewed_at: session.viewed_at || 0, usage_limited_until: usageUntil };
@@ -3040,9 +3037,9 @@ function selfCheckCore() {
   if (mergedDrift.length !== 2 || mergedDrift.at(-1)?.text !== "live update") throw new Error("live commentary was hidden behind a pending user message");
   if (agentStateFromScreen({ tool: "codex" }, "• Working (2s • esc to interrupt)") !== "working") throw new Error("working Codex state was not detected");
   const storedProbe = "core-stored-codex-messages";
-  CODEX_TRANSCRIPTS.delete(storedProbe);
-  if (!canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "ready" }, { agent_state: "unknown" }, [{ text: "done" }])) throw new Error("completed Codex session did not reuse stored messages");
-  if (canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "working" }, { agent_state: "ready" }, [{ text: "done" }])) throw new Error("working Codex session skipped transcript updates");
+  if (!canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "ready" }, [{ text: "done" }])) throw new Error("completed Codex session did not reuse stored messages");
+  if (canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "working" }, [{ text: "done" }])) throw new Error("working Codex session skipped transcript updates");
+  if (storedCodexCapture({ tool: "codex", agent_state: "ready" }, [{ text: "done" }]).transcript_source !== "stored") throw new Error("completed Codex capture did not bypass tmux");
   const transcriptProgress = codexTranscriptProgress({ offset: 20, remainder: "tail", sequence: 7 });
   if (transcriptProgress.offset !== 16 || transcriptProgress.sequence !== 7) throw new Error("Codex transcript progress included an incomplete JSON line");
   const transcriptLines = splitCodexTranscriptLines("half", " line\nnext");
@@ -3080,12 +3077,30 @@ function capturePayload(text, session, storedMessages = [], controlText = text, 
   };
 }
 
-function canUseStoredCodexMessages(session, payload, storedMessages) {
+function canUseStoredCodexMessages(session, storedMessages) {
   return session?.tool === "codex"
     && session.agent_state === "ready"
-    && !["working", "needs_input"].includes(payload?.agent_state)
-    && storedMessages.length > 0
-    && !CODEX_TRANSCRIPTS.has(session.id);
+    && !session.pending_control
+    && storedMessages.length > 0;
+}
+
+function storedCodexCapture(session, messages) {
+  return {
+    text: "",
+    parsed: [],
+    lines: [],
+    messages,
+    controls: [],
+    agent_state: "ready",
+    codex_state: session.codex_state || null,
+    codex_usage: session.codex_usage || null,
+    mode: "chat",
+    tool: "codex",
+    title: session.title || "",
+    transcript_source: "stored",
+    pending_control: null,
+    usage_limited_until: Number(session.usage_limited_until || 0),
+  };
 }
 
 function parseCapture(text) {
