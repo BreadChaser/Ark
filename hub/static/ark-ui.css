@@ -163,10 +163,10 @@ body {
 }
 
 .background-grid::before {
-  inset: -64px;
+  inset: -96px;
   background:
-    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
-    linear-gradient(0deg, var(--grid-line) 1px, transparent 1px);
+    linear-gradient(90deg, var(--grid-line) 1.5px, transparent 1.5px),
+    linear-gradient(0deg, var(--grid-line) 1.5px, transparent 1.5px);
   background-size: 32px 32px;
   filter: drop-shadow(0 0 2px color-mix(in srgb, var(--grid-line) 72%, transparent));
   animation: grid-drift 60s linear infinite;
@@ -246,7 +246,7 @@ body::after {
 }
 
 @keyframes grid-drift {
-  from { transform: translate3d(-32px, -32px, 0); }
+  from { transform: translate3d(-96px, -96px, 0); }
   to { transform: translate3d(0, 0, 0); }
 }
 
