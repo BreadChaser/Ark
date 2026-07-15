@@ -170,11 +170,7 @@ async function route(req, res) {
   const messagesMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/messages$/);
   if (req.method === "GET" && messagesMatch) {
     const session = await sessionOr404(messagesMatch[1]);
-    const stored = await readSessionMessages(session.id);
-    const device = await tmuxDeviceForSession(session);
-    const transcript = await readCodexTranscript(session, device, "");
-    const messages = transcript === null ? stored : await writeAuthoritativeMessages(session, transcript, stored);
-    return json(res, 200, { messages });
+    return json(res, 200, { messages: await readSessionMessages(session.id) });
   }
   const filesMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/files$/);
   if (req.method === "GET" && filesMatch) {
@@ -505,7 +501,8 @@ async function captureSession(id) {
   // Controls must reflect the visible pane, but `/status` is a short-lived Codex
   // panel. Preserve its newest value from scrollback after it has left the screen.
   const payload = capturePayload(result.output, session, storedMessages, controlText, result.output);
-  const transcript = await readCodexTranscript(session, device, result.output);
+  const useStoredCodexMessages = canUseStoredCodexMessages(session, payload, storedMessages);
+  const transcript = useStoredCodexMessages ? null : await readCodexTranscript(session, device, result.output);
   if (transcript !== null) {
     payload.messages = await writeAuthoritativeMessages(session, transcript, storedMessages);
     payload.transcript_source = "codex-rollout";
@@ -513,6 +510,9 @@ async function captureSession(id) {
     if (settings) payload.codex_state = { ...(payload.codex_state || {}), ...settings, source: "codex-rollout" };
     payload.codex_usage = cachedCodexUsage(session) || payload.codex_usage || session.codex_usage || null;
     if (payload.agent_state !== "needs_input") payload.agent_state = cachedCodexTaskState(session) || payload.agent_state;
+  } else if (useStoredCodexMessages) {
+    payload.messages = storedMessages;
+    payload.transcript_source = "stored";
   } else if (payload.mode === "chat") {
     payload.messages = await writeMessagesSnapshot(session, payload.messages);
     payload.transcript_source = "terminal-fallback";
@@ -1666,7 +1666,7 @@ async function listAgentStates() {
       if (screen.code !== 0) return { id: session.id, state: isMissingTmux(screen.output) ? "stopped" : "unknown" };
       const controls = parseAgentControls(session.tool, screen.output);
       let state = agentStateFromScreen(session, screen.output, controls);
-      if (session.tool === "codex" && device.local) {
+      if (session.tool === "codex" && device.local && CODEX_TRANSCRIPTS.has(session.id)) {
         await readCodexTranscript(session, device, screen.output);
         if (state !== "needs_input") state = cachedCodexTaskState(session) || state;
       }
@@ -2976,6 +2976,10 @@ function selfCheckCore() {
   );
   if (mergedDrift.length !== 2 || mergedDrift.at(-1)?.text !== "live update") throw new Error("live commentary was hidden behind a pending user message");
   if (agentStateFromScreen({ tool: "codex" }, "• Working (2s • esc to interrupt)") !== "working") throw new Error("working Codex state was not detected");
+  const storedProbe = "core-stored-codex-messages";
+  CODEX_TRANSCRIPTS.delete(storedProbe);
+  if (!canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "ready" }, { agent_state: "ready" }, [{ text: "done" }])) throw new Error("completed Codex session did not reuse stored messages");
+  if (canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "working" }, { agent_state: "ready" }, [{ text: "done" }])) throw new Error("working Codex session skipped transcript updates");
   if (submitKeyForSession({ tool: "codex" }, "• Working (2s • esc to interrupt)") !== "Tab") throw new Error("working Codex message was not queued");
   if (submitKeyForSession({ tool: "codex" }, "› Write tests") !== "Enter") throw new Error("ready Codex message was not submitted");
   if (submitKeyForSession({ tool: "codex", agent_state: "working" }, "› Write tests") !== "Enter") throw new Error("stale Codex state queued a ready message");
@@ -3007,6 +3011,14 @@ function capturePayload(text, session, storedMessages = [], controlText = text, 
     tool: session?.tool || "terminal",
     title: session?.title || "",
   };
+}
+
+function canUseStoredCodexMessages(session, payload, storedMessages) {
+  return session?.tool === "codex"
+    && session.agent_state === "ready"
+    && payload?.agent_state === "ready"
+    && storedMessages.length > 0
+    && !CODEX_TRANSCRIPTS.has(session.id);
 }
 
 function parseCapture(text) {
