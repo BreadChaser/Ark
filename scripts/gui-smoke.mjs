@@ -157,6 +157,8 @@ try {
   await js('document.querySelector("#send").click(); return true;');
   await waitForTerminalLogText(disposableSession.id, "notes");
   await shot("attachment-send");
+  await sendImmediatelyWithAttachment();
+  await waitForTerminalLogText(disposableSession.id, "send-race");
   const pasted = await pasteImageInBrowser();
   assert(pasted.queue.includes("pasted.png"), "pasted file did not queue");
   await shot("attachment-paste");
@@ -1398,6 +1400,33 @@ async function attachImageInBrowser() {
         input: document.querySelector("#input").value,
         queue: document.querySelector("#attachment-queue").innerText,
       };
+    })();
+  `);
+}
+
+async function sendImmediatelyWithAttachment() {
+  await js(`
+    return (async () => {
+      const originalFetch = window.fetch;
+      window.fetch = async (input, options) => {
+        if (String(input).includes("/attachments") && options?.method === "POST") {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        }
+        return originalFetch(input, options);
+      };
+      try {
+        const input = document.querySelector("#image-input");
+        const file = new File(["race attachment"], "send-race.txt", { type: "text/plain" });
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+        document.querySelector("#send").click();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      } finally {
+        window.fetch = originalFetch;
+      }
+      return true;
     })();
   `);
 }

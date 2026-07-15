@@ -74,6 +74,7 @@ const state = {
   forceBottomSessionId: null,
   drafts: {},
   attachmentQueues: {},
+  attachmentUploads: {},
   imageViewerImages: [],
   imageViewerIndex: -1,
   adding: false,
@@ -1715,6 +1716,13 @@ async function sendInput() {
     bindComposerToSession(session.id);
     return showError("Chat changed before send. Your draft was kept in its original chat.");
   }
+  while (state.attachmentUploads[session.id]) {
+    setStatus("Finishing upload");
+    await state.attachmentUploads[session.id];
+  }
+  if (activeSession()?.id !== session.id || els.input.dataset.sessionId !== session.id) {
+    return showError("Chat changed while the attachment was uploading. It is queued in its original chat.");
+  }
   const attachments = [...attachmentQueue(session.id)];
   const typed = els.input.value.trimEnd();
   const attachmentText = attachments.map((item) => attachmentLine(item, session)).join("\n");
@@ -1945,22 +1953,31 @@ async function pasteImages(event) {
 
 async function attachImageFiles(files, session) {
   if (!session || !files.length) return;
-  clearError();
-  setStatus("Uploading");
+  const previous = state.attachmentUploads[session.id] || Promise.resolve();
+  const upload = previous.then(async () => {
+    clearError();
+    setStatus("Uploading");
+    try {
+      for (const file of files) {
+        const form = new FormData();
+        form.append("file", file);
+        const stored = await api(`/api/sessions/${session.id}/attachments`, { method: "POST", body: form });
+        attachmentQueue(session.id).push(stored);
+      }
+      if (activeSession()?.id === session.id) {
+        renderAttachmentQueue();
+        setStatus(attachmentQueueStatus(session.id));
+      }
+    } catch (error) {
+      setStatus("Disconnected");
+      showError(error.message);
+    }
+  });
+  state.attachmentUploads[session.id] = upload;
   try {
-    for (const file of files) {
-      const form = new FormData();
-      form.append("file", file);
-      const upload = await api(`/api/sessions/${session.id}/attachments`, { method: "POST", body: form });
-      attachmentQueue(session.id).push(upload);
-    }
-    if (activeSession()?.id === session.id) {
-      renderAttachmentQueue();
-      setStatus(attachmentQueueStatus(session.id));
-    }
-  } catch (error) {
-    setStatus("Disconnected");
-    showError(error.message);
+    await upload;
+  } finally {
+    if (state.attachmentUploads[session.id] === upload) delete state.attachmentUploads[session.id];
   }
 }
 
