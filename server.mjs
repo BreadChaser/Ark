@@ -2978,7 +2978,7 @@ function selfCheckCore() {
   if (agentStateFromScreen({ tool: "codex" }, "• Working (2s • esc to interrupt)") !== "working") throw new Error("working Codex state was not detected");
   const storedProbe = "core-stored-codex-messages";
   CODEX_TRANSCRIPTS.delete(storedProbe);
-  if (!canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "ready" }, { agent_state: "ready" }, [{ text: "done" }])) throw new Error("completed Codex session did not reuse stored messages");
+  if (!canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "ready" }, { agent_state: "unknown" }, [{ text: "done" }])) throw new Error("completed Codex session did not reuse stored messages");
   if (canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "working" }, { agent_state: "ready" }, [{ text: "done" }])) throw new Error("working Codex session skipped transcript updates");
   if (submitKeyForSession({ tool: "codex" }, "• Working (2s • esc to interrupt)") !== "Tab") throw new Error("working Codex message was not queued");
   if (submitKeyForSession({ tool: "codex" }, "› Write tests") !== "Enter") throw new Error("ready Codex message was not submitted");
@@ -3016,7 +3016,7 @@ function capturePayload(text, session, storedMessages = [], controlText = text, 
 function canUseStoredCodexMessages(session, payload, storedMessages) {
   return session?.tool === "codex"
     && session.agent_state === "ready"
-    && payload?.agent_state === "ready"
+    && !["working", "needs_input"].includes(payload?.agent_state)
     && storedMessages.length > 0
     && !CODEX_TRANSCRIPTS.has(session.id);
 }
