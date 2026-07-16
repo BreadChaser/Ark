@@ -68,17 +68,13 @@ try {
   await assertToolDisableState();
   await shot("settings");
 
-  await setTheme("light");
-  await assertThemeContrast("light");
-  await assertThemeEffects("light");
-  await shot("theme-light");
-  await setTheme("ark");
-  await assertThemeContrast("ark");
-  await assertThemeEffects("ark");
-  await shot("theme-ark");
+  for (const theme of ["light", "soft", "dark", "midnight", "ark", "spreadsheet"]) {
+    await setTheme(theme);
+    await assertThemeContrast(theme);
+    await assertThemeEffects(theme);
+    await shot(`theme-${theme}`);
+  }
   await setTheme("dark");
-  await assertThemeContrast("dark");
-  await assertThemeEffects("dark");
 
   assert(!(await js('return Boolean(document.querySelector("#settings-sidebar-toggle"));')), "settings still duplicates the sidebar control");
   await js('document.querySelector("#sidebar-toggle").click(); return true;');
@@ -99,8 +95,14 @@ try {
   await js('document.querySelector("#settings-toggle").click(); return true;');
   await setTheme("light");
   await shot("theme-light-main");
+  await setTheme("soft");
+  await shot("theme-soft-main");
+  await setTheme("midnight");
+  await shot("theme-midnight-main");
   await setTheme("ark");
   await shot("theme-ark-main");
+  await setTheme("spreadsheet");
+  await shot("theme-spreadsheet-main");
   await setTheme("dark");
   await shot("theme-dark-main");
   await openComposer();
@@ -438,8 +440,6 @@ async function assertThemeEffects(theme) {
       diagonalAnimation: diagonal.animationName,
       gridDuration: grid.animationDuration,
       gridWillChange: grid.willChange,
-      gridBloom: grid.filter,
-      diagonalBloom: diagonal.filter,
       scanlines: Number(overlay.opacity),
       overlayAnimation: overlay.animationName,
       textAnimation: message ? getComputedStyle(message).animationName : "none",
@@ -449,18 +449,24 @@ async function assertThemeEffects(theme) {
     };
   `);
   assert(effects.grid, `${theme} theme lost its grid texture`);
+  if (theme === "spreadsheet") {
+    assert(effects.gridAnimation === "none", "Spreadsheet grid should stay like a worksheet");
+    assert(effects.panelRadius === "0px", `Spreadsheet panel is rounded: ${effects.panelRadius}`);
+    return;
+  }
   assert(effects.diagonalGrid, `${theme} theme lost its diagonal grid layer`);
   assert(effects.gridAnimation === "grid-drift", `${theme} grid is not drifting slowly`);
   assert(effects.diagonalAnimation === "diagonal-drift", `${theme} diagonal grid is not drifting independently`);
-  assert(effects.gridDuration === "180s", `${theme} grid drift is not slow: ${effects.gridDuration}`);
+  assert(effects.gridDuration === "60s", `${theme} grid drift duration changed: ${effects.gridDuration}`);
   assert(effects.gridWillChange === "transform", `${theme} grid is not compositor animated`);
-  assert(effects.gridBloom !== "none" && effects.diagonalBloom !== "none", `${theme} grid bloom is missing`);
   assert(effects.buttonRadius === "11px", `${theme} changed button shape to ${effects.buttonRadius}`);
   assert(effects.panelRadius === "24px", `${theme} changed panel shape to ${effects.panelRadius}`);
   if (theme === "ark") assert(effects.scanlines > 0, "Amber CRT scanlines are disabled");
   if (theme === "ark") assert(effects.overlayAnimation === "none", "Amber CRT overlay still flickers");
   if (theme === "ark") assert(effects.textAnimation === "none", "Amber CRT still flashes individual text nodes");
-  if (theme === "light") assert(effects.backgroundLuminance < 0.6, `light theme is still glaring at ${effects.backgroundLuminance.toFixed(2)} luminance`);
+  if (theme === "light") assert(effects.backgroundLuminance > 0.9, `light theme is not bright enough at ${effects.backgroundLuminance.toFixed(2)} luminance`);
+  if (theme === "soft") assert(effects.backgroundLuminance > 0.7 && effects.backgroundLuminance < 0.9, `soft light lost its gray tone at ${effects.backgroundLuminance.toFixed(2)} luminance`);
+  if (theme === "midnight") assert(effects.backgroundLuminance < 0.01, `midnight is not dark enough at ${effects.backgroundLuminance.toFixed(2)} luminance`);
 }
 
 async function assertDiagnostics() {

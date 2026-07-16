@@ -40,27 +40,81 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #b9c2bf;
-  --bg-glow: rgba(25, 112, 111, 0.1);
-  --panel: rgba(205, 213, 210, 0.76);
-  --panel-solid: #d0d6d4;
-  --panel-soft: #aebbb7;
-  --panel-raised: #a3b2ad;
-  --text: #102025;
-  --muted: #344b50;
-  --faint: #3b5156;
-  --line: rgba(21, 54, 59, 0.16);
-  --line-strong: rgba(21, 54, 59, 0.27);
-  --accent: #0d716e;
-  --accent-strong: #075b59;
-  --accent-soft: rgba(13, 113, 110, 0.14);
-  --blue: #246d9e;
-  --danger: #a63f4c;
-  --warning: #855713;
-  --done: #287447;
-  --shadow: 0 24px 70px rgba(25, 49, 52, 0.18);
-  --grid-line: rgba(31, 73, 76, 0.075);
-  --vignette: rgba(31, 54, 55, 0.12);
+  --bg: #f6f8fa;
+  --bg-glow: rgba(22, 111, 120, 0.09);
+  --panel: rgba(255, 255, 255, 0.8);
+  --panel-solid: #ffffff;
+  --panel-soft: #e8eef2;
+  --panel-raised: #dce6ec;
+  --text: #16242c;
+  --muted: #50636d;
+  --faint: #60727c;
+  --line: rgba(40, 70, 82, 0.15);
+  --line-strong: rgba(22, 111, 120, 0.28);
+  --accent: #166f78;
+  --accent-strong: #0e5961;
+  --accent-soft: rgba(22, 111, 120, 0.13);
+  --blue: #236b9b;
+  --danger: #a33d4a;
+  --warning: #805612;
+  --done: #287247;
+  --shadow: 0 24px 70px rgba(29, 53, 65, 0.14);
+  --grid-line: rgba(36, 75, 89, 0.065);
+  --vignette: rgba(35, 60, 72, 0.08);
+}
+
+:root[data-theme="soft"] {
+  color-scheme: light;
+  --bg: #e3e8eb;
+  --bg-glow: rgba(39, 105, 121, 0.09);
+  --panel: rgba(243, 246, 247, 0.78);
+  --panel-solid: #f2f5f6;
+  --panel-soft: #d7e0e4;
+  --panel-raised: #cbd7dc;
+  --text: #1c2a31;
+  --muted: #4c6069;
+  --faint: #566a73;
+  --line: rgba(43, 71, 82, 0.16);
+  --line-strong: rgba(36, 107, 117, 0.28);
+  --accent: #246b75;
+  --accent-strong: #19545d;
+  --accent-soft: rgba(36, 107, 117, 0.13);
+  --blue: #3d7193;
+  --danger: #9d4350;
+  --warning: #805d22;
+  --done: #35744f;
+  --shadow: 0 24px 70px rgba(38, 57, 66, 0.16);
+  --grid-line: rgba(45, 73, 84, 0.07);
+  --vignette: rgba(37, 57, 66, 0.09);
+}
+
+:root[data-theme="midnight"] {
+  color-scheme: dark;
+  --bg: #02050a;
+  --bg-glow: rgba(66, 133, 204, 0.1);
+  --panel: rgba(5, 10, 16, 0.8);
+  --panel-solid: #050a10;
+  --panel-soft: #0a131c;
+  --panel-raised: #0e1b27;
+  --text: #edf5ff;
+  --muted: #8da0b4;
+  --faint: #718396;
+  --line: rgba(126, 157, 192, 0.14);
+  --line-strong: rgba(126, 157, 192, 0.24);
+  --accent: #78afff;
+  --accent-strong: #4b7fdb;
+  --accent-soft: rgba(120, 175, 255, 0.13);
+  --blue: #78afff;
+  --danger: #f17b89;
+  --warning: #e6b86b;
+  --done: #71d69d;
+  --shadow: 0 24px 70px rgba(0, 0, 0, 0.58);
+  --grid-line: rgba(106, 151, 210, 0.06);
+  --vignette: rgba(0, 0, 0, 0.56);
+  --terminal-bg: #010307;
+  --terminal-fg: #d9e8fb;
+  --terminal-cursor: #78afff;
+  --terminal-selection: rgba(120, 175, 255, 0.27);
 }
 
 :root[data-theme="ark"] {
@@ -108,7 +162,7 @@
   --panel-raised: #e2f0d9;
   --text: #202124;
   --muted: #5f6368;
-  --faint: #80868b;
+  --faint: #686d72;
   --line: rgba(60, 64, 67, 0.16);
   --line-strong: rgba(16, 124, 65, 0.32);
   --accent: #107c41;
@@ -138,7 +192,15 @@
   }
 
   :root[data-theme="light"] {
-    --panel: rgba(205, 213, 210, 0.6);
+    --panel: rgba(255, 255, 255, 0.64);
+  }
+
+  :root[data-theme="soft"] {
+    --panel: rgba(243, 246, 247, 0.62);
+  }
+
+  :root[data-theme="midnight"] {
+    --panel: rgba(5, 10, 16, 0.64);
   }
 
   :root[data-theme="ark"] {
@@ -294,6 +356,12 @@ body {
   content: "Q3 Budget.xlsx";
   font-size: 16px;
   font-weight: 700;
+  white-space: nowrap;
+}
+
+:root[data-theme="spreadsheet"] .topbar h1 {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 :root[data-theme="spreadsheet"] .topbar p::before {
@@ -340,6 +408,51 @@ body {
   background: #f3f2f1;
 }
 
+:root[data-theme="spreadsheet"] .topbar .session-toolbar {
+  min-height: 34px;
+  padding: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: 2px;
+  background: rgba(4, 82, 37, 0.24);
+}
+
+:root[data-theme="spreadsheet"] .topbar .segmented {
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.13);
+}
+
+:root[data-theme="spreadsheet"] .topbar .segmented button,
+:root[data-theme="spreadsheet"] .topbar .session-toolbar > .inline-actions button,
+:root[data-theme="spreadsheet"] .topbar .session-actions-toggle {
+  border-radius: 1px;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+:root[data-theme="spreadsheet"] .topbar .segmented button.active {
+  color: #107c41;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+:root[data-theme="spreadsheet"] .device-list {
+  background:
+    linear-gradient(#f2f4f2 1px, transparent 1px),
+    #ffffff;
+  background-size: 100% 24px;
+}
+
+:root[data-theme="spreadsheet"] .device-toggle,
+:root[data-theme="spreadsheet"] .device-group > :not(.device-head) button,
+:root[data-theme="spreadsheet"] .device-group [data-session-id] {
+  border-radius: 0;
+}
+
+:root[data-theme="spreadsheet"] .device-group.active .device-toggle,
+:root[data-theme="spreadsheet"] .session.active {
+  border-left: 3px solid #107c41;
+  background: #e2f0d9 !important;
+}
+
 :root[data-theme="spreadsheet"] .chat-output {
   background:
     linear-gradient(#edf0ed 1px, transparent 1px),
@@ -360,6 +473,50 @@ body {
 
 :root[data-theme="spreadsheet"] .chat-message.user .message-text {
   background: #e2f0d9;
+}
+
+:root[data-theme="spreadsheet"] .chat-message.assistant:not(.structured) .message-text {
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+:root[data-theme="spreadsheet"] .chat-message.assistant.update-group {
+  width: min(1240px, 84%);
+  max-width: min(1240px, 84%);
+  padding: 0;
+  border: 1px solid #c9d5cc;
+  border-left: 3px solid #107c41;
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+:root[data-theme="spreadsheet"] .chat-message.assistant.update-group .message-role {
+  padding: 7px 10px 5px;
+  border-bottom: 1px solid #dce8df;
+  color: #107c41;
+  font: 800 10px/1.2 var(--mono);
+}
+
+:root[data-theme="spreadsheet"] .chat-message.assistant.update-group .message-text {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+:root[data-theme="spreadsheet"] .agent-update {
+  padding: 9px 10px;
+}
+
+:root[data-theme="spreadsheet"] .agent-update + .agent-update {
+  margin-top: 0;
+  padding-top: 9px;
+  border-top: 1px solid #dce8df;
+}
+
+:root[data-theme="spreadsheet"] .agent-proof {
+  border-radius: 0;
+  background: #eaf4e5;
 }
 
 .svg-sprite {

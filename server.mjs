@@ -1066,7 +1066,7 @@ async function diagnostics() {
       theme_contrast_checks: true,
       settings_menu: true,
       last_active_session_restore: true,
-      themes: ["dark", "light", "ark"],
+      themes: ["light", "soft", "dark", "midnight", "ark", "spreadsheet"],
       terminal_sessions: true,
       terminal_view: true,
       chat_layout: true,
