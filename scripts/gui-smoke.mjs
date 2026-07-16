@@ -1021,11 +1021,27 @@ async function testChatLayout() {
       { role: "assistant", text: "Second progress update." },
       { role: "assistant", text: "Final progress update." },
     ] }, { id: "update-stack-smoke", tool: "codex" }, false);
-    const continued = document.querySelector(".chat-message.assistant.continued");
-    return { margin: getComputedStyle(continued).marginTop, rail: getComputedStyle(continued).borderLeftStyle, bubble: getComputedStyle(continued.querySelector(".message-text")).backgroundColor };
+    const group = document.querySelector(".update-group");
+    return {
+      groups: document.querySelectorAll(".update-group").length,
+      updates: group?.querySelectorAll(".agent-update").length,
+      roleIcons: group?.querySelectorAll(".message-role:not([hidden])").length,
+      bubble: getComputedStyle(group).backgroundColor,
+    };
   `);
-  assert(updateStack.margin === "-11px" && updateStack.rail === "none" && updateStack.bubble !== "rgba(0, 0, 0, 0)", `assistant updates did not form compact chat bubbles: ${JSON.stringify(updateStack)}`);
+  assert(updateStack.groups === 1 && updateStack.updates === 3 && updateStack.roleIcons === 1 && updateStack.bubble !== "rgba(0, 0, 0, 0)", `assistant updates did not form a compact group: ${JSON.stringify(updateStack)}`);
   await shot("update-stack");
+  const proofRows = await js(`
+    renderChatCapture({ messages: [
+      { role: "assistant", text: "Merged the session header.\\n\\nCommit: 45d7122\\n\\nLive now: ARK VM" },
+      { role: "assistant", text: "Validation passed." },
+    ] }, { id: "proof-row-smoke", tool: "codex" }, false);
+    return {
+      labels: [...document.querySelectorAll(".agent-proof strong")].map((item) => item.textContent).join("|"),
+      summary: document.querySelector(".agent-summary")?.textContent,
+    };
+  `);
+  assert(proofRows.labels === "Commit|Live now" && proofRows.summary === "Merged the session header.", `agent proof rows are not readable: ${JSON.stringify(proofRows)}`);
   await js('return loadChatMessages(activeSession(), true);');
   await sleep(250);
   const navStart = await js(`

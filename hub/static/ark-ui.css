@@ -1492,7 +1492,7 @@ pre {
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 21px;
+  gap: 16px;
 }
 
 .chat-history-more {
@@ -1531,6 +1531,10 @@ pre {
 
 .chat-message.continued {
   margin-top: -11px;
+}
+
+.chat-message.assistant.continued {
+  margin-top: 0;
 }
 
 .message-role {
@@ -1681,14 +1685,65 @@ pre {
 .chat-message.assistant .message-text {
   padding-left: 4px;
   background: transparent;
-  font-size: 15px;
-  line-height: 1.62;
+  font-size: 16px;
+  line-height: 1.58;
 }
 
 .chat-message.assistant:not(.structured) .message-text {
   padding: 13px 16px;
   border-bottom-left-radius: 6px;
   background: var(--panel-soft);
+}
+
+.chat-message.assistant.update-group {
+  width: min(1240px, 84%);
+  max-width: min(1240px, 84%);
+  gap: 0;
+  padding: 10px 14px 11px;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 18px 18px 18px 6px;
+  background: color-mix(in srgb, var(--panel-soft) 88%, transparent);
+}
+
+.chat-message.assistant.update-group .message-role {
+  padding: 0 0 5px;
+}
+
+.chat-message.assistant.update-group .message-text {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 16px;
+  line-height: 1.58;
+}
+
+.agent-update + .agent-update {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+}
+
+.agent-summary {
+  color: var(--text);
+  font-size: 1.04em;
+  font-weight: 750;
+}
+
+.agent-proof {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin-top: 7px;
+  padding: 5px 7px;
+  border-radius: 8px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--panel-raised) 76%, transparent);
+  font: 11px/1.4 var(--mono);
+}
+
+.agent-proof strong {
+  color: var(--accent);
+  font-size: inherit;
 }
 
 .chat-message.user .message-text {
@@ -2685,6 +2740,21 @@ body.sidebar-collapsed #sidebar-toggle::after {
 
   .chat-message.assistant:not(.structured) .message-text {
     padding: 8px 10px;
+  }
+
+  .chat-message.assistant.update-group {
+    width: 100%;
+    max-width: 100%;
+    padding: 8px 10px 9px;
+  }
+
+  .chat-message.assistant.update-group .message-text {
+    font-size: 14px;
+  }
+
+  .agent-update + .agent-update {
+    margin-top: 8px;
+    padding-top: 8px;
   }
 
   .composer {

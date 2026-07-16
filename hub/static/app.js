@@ -1567,73 +1567,17 @@ function renderChatCapture(data, session, keepBottom) {
     stream.append(earlier);
   }
   let previousRole = allMessages[start - 1]?.role || "";
-  for (const message of messages) {
-    const rawText = String(message.text || "");
-    const images = messageImages(message, session);
-    const files = (message.attachments || []).filter((attachment) => !isImageAttachment(attachment));
-    if (!rawText.trim() && !images.length && !files.length) continue;
-    const card = document.createElement("article");
-    card.className = `chat-message ${message.role || "assistant"}${message.pending ? " pending" : ""}`;
-    const continued = message.role === previousRole;
-    if (continued) card.classList.add("continued");
-    card.setAttribute("aria-label", message.role === "user" ? "You" : message.role === "system" ? "System" : toolLabel(session?.tool || "assistant"));
-    const role = document.createElement("div");
-    role.className = "message-role";
-    if (message.role === "user" || message.role === "system") {
-      role.textContent = message.role === "user" ? "You" : "System";
-    } else {
-      role.innerHTML = toolIcon(session?.tool || "terminal");
-      role.title = toolLabel(session?.tool || "assistant");
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (isPlainAssistantUpdate(message, session) && isPlainAssistantUpdate(messages[index + 1], session)) {
+      const updates = [message];
+      while (isPlainAssistantUpdate(messages[index + 1], session)) updates.push(messages[++index]);
+      stream.append(renderAssistantUpdateGroup(updates, session));
+      previousRole = "assistant";
+      continue;
     }
-    role.hidden = continued;
-    card.append(role);
-    if (rawText.trim()) {
-      const text = document.createElement("div");
-      text.className = "message-text";
-      text.innerHTML = renderMarkdown(rawText);
-      if (text.querySelector("ul, ol, pre, table, h1, h2, h3, blockquote, img")) card.classList.add("structured");
-      for (const link of text.querySelectorAll("a")) {
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-      }
-      for (const image of text.querySelectorAll("img")) {
-        image.classList.add("message-image");
-        image.loading = "lazy";
-        let link = image.closest("a");
-        if (!link) {
-          link = document.createElement("a");
-          link.href = image.src;
-          link.rel = "noopener noreferrer";
-          link.title = "Open full image";
-          image.replaceWith(link);
-          link.append(image);
-        }
-        link.removeAttribute("target");
-        link.dataset.imageViewer = "";
-      }
-      card.append(text);
-    } else {
-      card.classList.add("structured");
-    }
-    if (images.length) {
-      const gallery = document.createElement("div");
-      gallery.className = "message-images";
-      gallery.innerHTML = images.map((image) => `
-        <a href="${escapeHtml(image.url)}" rel="noopener noreferrer" title="Open full image" data-image-viewer>
-          <img class="message-image" src="${escapeHtml(image.url)}" alt="${escapeHtml(image.name)}" loading="lazy" />
-        </a>
-      `).join("");
-      card.append(gallery);
-    }
-    if (files.length) {
-      const attachments = document.createElement("div");
-      attachments.className = "message-attachments";
-      attachments.innerHTML = files.map((attachment) => `
-        <span title="${escapeHtml(attachment.path || "")}">${escapeHtml(attachment.name || attachment.path || "attachment")}</span>
-      `).join("");
-      card.append(attachments);
-    }
-    stream.append(card);
+    const card = renderChatMessage(message, session, message.role === previousRole);
+    if (card) stream.append(card);
     previousRole = message.role;
   }
   els.parsed.append(stream.childElementCount ? stream : emptySurface("No chat output yet."));
@@ -1646,6 +1590,120 @@ function renderChatCapture(data, session, keepBottom) {
     }, 150);
   }
   updateMessageNav();
+}
+
+function renderChatMessage(message, session, continued = false) {
+  const rawText = String(message.text || "");
+  const images = messageImages(message, session);
+  const files = (message.attachments || []).filter((attachment) => !isImageAttachment(attachment));
+  if (!rawText.trim() && !images.length && !files.length) return null;
+  const card = document.createElement("article");
+  card.className = `chat-message ${message.role || "assistant"}${message.pending ? " pending" : ""}`;
+  if (continued) card.classList.add("continued");
+  card.setAttribute("aria-label", message.role === "user" ? "You" : message.role === "system" ? "System" : toolLabel(session?.tool || "assistant"));
+  card.append(renderMessageRole(message, session, continued));
+  if (rawText.trim()) {
+    const text = renderMessageText(rawText);
+    if (text.querySelector("ul, ol, pre, table, h1, h2, h3, blockquote, img")) card.classList.add("structured");
+    card.append(text);
+  } else {
+    card.classList.add("structured");
+  }
+  if (images.length) {
+    const gallery = document.createElement("div");
+    gallery.className = "message-images";
+    gallery.innerHTML = images.map((image) => `
+      <a href="${escapeHtml(image.url)}" rel="noopener noreferrer" title="Open full image" data-image-viewer>
+        <img class="message-image" src="${escapeHtml(image.url)}" alt="${escapeHtml(image.name)}" loading="lazy" />
+      </a>
+    `).join("");
+    card.append(gallery);
+  }
+  if (files.length) {
+    const attachments = document.createElement("div");
+    attachments.className = "message-attachments";
+    attachments.innerHTML = files.map((attachment) => `
+      <span title="${escapeHtml(attachment.path || "")}">${escapeHtml(attachment.name || attachment.path || "attachment")}</span>
+    `).join("");
+    card.append(attachments);
+  }
+  return card;
+}
+
+function renderAssistantUpdateGroup(updates, session) {
+  const card = document.createElement("article");
+  card.className = "chat-message assistant update-group";
+  card.setAttribute("aria-label", toolLabel(session?.tool || "assistant"));
+  card.append(renderMessageRole(updates[0], session));
+  for (const update of updates) {
+    const section = document.createElement("section");
+    section.className = "agent-update";
+    const text = renderMessageText(update.text);
+    const firstParagraph = text.querySelector("p");
+    if (firstParagraph) firstParagraph.classList.add("agent-summary");
+    for (const paragraph of text.querySelectorAll("p")) promoteProofLine(paragraph);
+    section.append(text);
+    card.append(section);
+  }
+  return card;
+}
+
+function renderMessageRole(message, session, hidden = false) {
+  const role = document.createElement("div");
+  role.className = "message-role";
+  if (message.role === "user" || message.role === "system") {
+    role.textContent = message.role === "user" ? "You" : "System";
+  } else {
+    role.innerHTML = toolIcon(session?.tool || "terminal");
+    role.title = toolLabel(session?.tool || "assistant");
+  }
+  role.hidden = hidden;
+  return role;
+}
+
+function renderMessageText(value) {
+  const text = document.createElement("div");
+  text.className = "message-text";
+  text.innerHTML = renderMarkdown(value);
+  for (const link of text.querySelectorAll("a")) {
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+  }
+  for (const image of text.querySelectorAll("img")) {
+    image.classList.add("message-image");
+    image.loading = "lazy";
+    let link = image.closest("a");
+    if (!link) {
+      link = document.createElement("a");
+      link.href = image.src;
+      link.rel = "noopener noreferrer";
+      link.title = "Open full image";
+      image.replaceWith(link);
+      link.append(image);
+    }
+    link.removeAttribute("target");
+    link.dataset.imageViewer = "";
+  }
+  return text;
+}
+
+function isPlainAssistantUpdate(message, session) {
+  const text = String(message?.text || "").trim();
+  if (message?.role !== "assistant" || !text || messageImages(message, session).length || (message.attachments || []).length) return false;
+  return !/^\s*(?:[-*+]\s+|•\s+|\d+[.)]\s+|#{1,6}\s+|```|>|\|)/m.test(text);
+}
+
+function promoteProofLine(paragraph) {
+  const match = paragraph.textContent.trim().match(/^(Commit|Live(?: now)?|Validation|Checks?|Status|Deployed)\s*:\s*(.+)$/i);
+  if (!match) return;
+  const proof = document.createElement("div");
+  proof.className = "agent-proof";
+  const label = document.createElement("strong");
+  label.textContent = match[1];
+  const value = document.createElement("span");
+  value.textContent = match[2];
+  proof.append(label, value);
+  paragraph.replaceWith(proof);
 }
 
 function hideMessageNav() {
