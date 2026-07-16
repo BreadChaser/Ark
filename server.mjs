@@ -1,6 +1,8 @@
 import { execFile } from "node:child_process";
-import { createReadStream } from "node:fs";
-import { appendFile, copyFile, mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
+import { appendFile, copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { once } from "node:events";
+import { finished } from "node:stream/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -28,8 +30,9 @@ const SECRETS = path.join(DATA, "secrets.yml");
 const DEVICES = path.join(DATA, "devices.yml");
 const SESSIONS_DIR = path.join(DATA, "sessions");
 const UPLOADS = path.join(DATA, "uploads");
-const UPLOAD_LIMIT = 64 * 1024 * 1024;
-const CODEX_IMAGE_DATA_LIMIT = Math.ceil(UPLOAD_LIMIT * 4 / 3) + 128;
+const UPLOAD_LIMIT = 32 * 1024 ** 3;
+const CODEX_IMAGE_LIMIT = 64 * 1024 * 1024;
+const CODEX_IMAGE_DATA_LIMIT = Math.ceil(CODEX_IMAGE_LIMIT * 4 / 3) + 128;
 const PORT = Number(process.env.PORT || 4873);
 const HOST = process.env.HOST || "0.0.0.0";
 const TERMINAL_STREAMS = new Map();
@@ -276,11 +279,10 @@ async function route(req, res) {
   const deviceImageMatch = pathname.match(/^\/api\/devices\/([^/]+)\/(?:images|attachments)$/);
   if (req.method === "POST" && deviceImageMatch) {
     const device = await deviceOr404(deviceImageMatch[1]);
-    const upload = await readFileUpload(req);
-    const image = await storeImageUpload(upload);
+    const image = await storeImageUpload(req);
     const targetPath = await makeImageAvailable(device, image);
     return json(res, 200, {
-      name: upload.filename,
+      name: image.filename,
       path: targetPath,
       text: `Use this image: ${targetPath}`,
     });
@@ -388,17 +390,16 @@ async function route(req, res) {
   if (req.method === "POST" && imageMatch) {
     const session = await sessionOr404(imageMatch[1]);
     const device = await tmuxDeviceForSession(session);
-    const upload = await readFileUpload(req);
-    const image = await storeImageUpload(upload, session);
+    const image = await storeImageUpload(req, session);
     const targetPath = await makeImageAvailable(device, image);
     await touchSession(session.id);
     return json(res, 200, {
-      name: upload.filename,
+      name: image.filename,
       path: targetPath,
       url: `/api/sessions/${encodeURIComponent(session.id)}/attachments/${encodeURIComponent(image.filename)}`,
       text: `Use this image: ${targetPath}`,
-      type: upload.type,
-      size: upload.data.length,
+      type: image.type,
+      size: image.size,
     });
   }
 
@@ -1570,15 +1571,10 @@ function closeTerminalStream(id) {
   } catch {}
 }
 
-async function storeImageUpload(upload, session = null) {
+async function storeImageUpload(req, session = null) {
   const dir = session ? path.join(sessionDir(session.id), "attachments") : UPLOADS;
   await mkdir(dir, { recursive: true });
-  const ext = imageExt(upload.filename, upload.type);
-  const base = safeUploadName(path.basename(upload.filename, path.extname(upload.filename)) || "file");
-  const filename = `${Date.now()}-${base}-${crypto.randomUUID()}${ext}`;
-  const localPath = path.join(dir, filename);
-  await writeFile(localPath, upload.data);
-  return { filename, localPath };
+  return readFileUpload(req, dir);
 }
 
 async function makeImageAvailable(device, image) {
@@ -2302,7 +2298,7 @@ function decodeCodexImage(source) {
   }
   if (encoded.length > CODEX_IMAGE_DATA_LIMIT) return null;
   const data = Buffer.from(encoded, "base64");
-  if (!data.length || data.length > UPLOAD_LIMIT) return null;
+  if (!data.length || data.length > CODEX_IMAGE_LIMIT) return null;
   return { data, type };
 }
 
@@ -2845,48 +2841,96 @@ async function readJson(req) {
   return text ? JSON.parse(text) : {};
 }
 
-async function readFileUpload(req) {
+async function readFileUpload(req, dir) {
   const type = String(req.headers["content-type"] || "");
   const match = type.match(/boundary=(?:"([^"]+)"|([^;]+))/);
   const boundary = match?.[1] || match?.[2];
   if (!boundary) throw Object.assign(new Error("multipart file upload required"), { status: 400 });
 
-  const chunks = [];
-  let size = 0;
-  for await (const chunk of req) {
-    size += chunk.length;
-    if (size > UPLOAD_LIMIT) throw Object.assign(new Error("file is too large"), { status: 413 });
-    chunks.push(chunk);
+  const contentLength = Number(req.headers["content-length"] || 0);
+  if (Number.isFinite(contentLength) && contentLength > UPLOAD_LIMIT + 128 * 1024) {
+    throw Object.assign(new Error("file is larger than Ark's 32 GB per-file limit"), { status: 413 });
   }
 
-  const part = firstMultipartFile(Buffer.concat(chunks), boundary);
-  if (!part) throw Object.assign(new Error("file is required"), { status: 400 });
-  return part;
+  const marker = Buffer.from(`\r\n--${boundary}`);
+  let header = Buffer.alloc(0);
+  let remainder = Buffer.alloc(0);
+  let output = null;
+  let localPath = "";
+  let filename = "";
+  let partType = "application/octet-stream";
+  let size = 0;
+  let received = 0;
+  let complete = false;
+
+  const write = async (chunk) => {
+    if (!chunk.length) return;
+    size += chunk.length;
+    if (size > UPLOAD_LIMIT) throw Object.assign(new Error("file is larger than Ark's 32 GB per-file limit"), { status: 413 });
+    if (!output.write(chunk)) await once(output, "drain");
+  };
+  const consume = async (chunk) => {
+    if (complete) return;
+    const data = remainder.length ? Buffer.concat([remainder, chunk]) : chunk;
+    const end = data.indexOf(marker);
+    if (end !== -1) {
+      await write(data.subarray(0, end));
+      remainder = Buffer.alloc(0);
+      complete = true;
+      return;
+    }
+    const keep = Math.min(marker.length - 1, data.length);
+    await write(data.subarray(0, data.length - keep));
+    remainder = data.subarray(data.length - keep);
+  };
+
+  try {
+    for await (const chunk of req) {
+      received += chunk.length;
+      if (received > UPLOAD_LIMIT + 128 * 1024) throw Object.assign(new Error("file is larger than Ark's 32 GB per-file limit"), { status: 413 });
+      if (output) {
+        await consume(chunk);
+        continue;
+      }
+      header = Buffer.concat([header, chunk]);
+      const part = multipartUploadHeader(header, boundary);
+      if (!part) {
+        if (header.length > 128 * 1024) throw Object.assign(new Error("invalid multipart upload"), { status: 400 });
+        continue;
+      }
+      filename = part.filename;
+      partType = part.type;
+      const ext = imageExt(filename, partType);
+      const base = safeUploadName(path.basename(filename, path.extname(filename)) || "file");
+      const stored = `${Date.now()}-${base}-${crypto.randomUUID()}${ext}`;
+      localPath = path.join(dir, stored);
+      output = createWriteStream(localPath, { flags: "wx" });
+      await consume(header.subarray(part.dataStart));
+      header = Buffer.alloc(0);
+    }
+    if (!output || !complete) throw Object.assign(new Error("file is required"), { status: 400 });
+    output.end();
+    await finished(output);
+    return { filename, localPath, type: partType, size };
+  } catch (error) {
+    output?.destroy();
+    if (localPath) await rm(localPath, { force: true }).catch(() => {});
+    throw error;
+  }
 }
 
-function firstMultipartFile(body, boundary) {
-  const marker = Buffer.from(`--${boundary}`);
-  let start = body.indexOf(marker);
-  while (start !== -1) {
-    start += marker.length;
-    if (body.slice(start, start + 2).toString() === "--") return null;
-    if (body[start] === 13 && body[start + 1] === 10) start += 2;
-
-    const headerEnd = body.indexOf(Buffer.from("\r\n\r\n"), start);
-    if (headerEnd === -1) return null;
-    const headers = body.slice(start, headerEnd).toString("utf8");
-    const dataStart = headerEnd + 4;
-    const next = body.indexOf(marker, dataStart);
-    if (next === -1) return null;
-    const dataEnd = body[next - 2] === 13 && body[next - 1] === 10 ? next - 2 : next;
-    const filename = headerParam(headers, "filename");
-    if (filename) {
-      const partType = headers.match(/content-type:\s*([^\r\n]+)/i)?.[1]?.trim().toLowerCase() || "application/octet-stream";
-      return { filename, type: partType, data: body.slice(dataStart, dataEnd) };
-    }
-    start = next;
-  }
-  return null;
+function multipartUploadHeader(body, boundary) {
+  const headerEnd = body.indexOf(Buffer.from("\r\n\r\n"));
+  if (headerEnd === -1) return null;
+  const headers = body.subarray(0, headerEnd).toString("utf8");
+  if (!headers.startsWith(`--${boundary}\r\n`)) throw Object.assign(new Error("invalid multipart upload"), { status: 400 });
+  const filename = headerParam(headers, "filename");
+  if (!filename) throw Object.assign(new Error("file is required"), { status: 400 });
+  return {
+    filename,
+    type: headers.match(/content-type:\s*([^\r\n]+)/i)?.[1]?.trim().toLowerCase() || "application/octet-stream",
+    dataStart: headerEnd + 4,
+  };
 }
 
 function headerParam(headers, name) {
@@ -2947,6 +2991,8 @@ function selfCheckTrustedRemote() {
 function selfCheckCore() {
   if (contentType("ark-logo.svg") !== "image/svg+xml") throw new Error("SVG content type is not renderable");
   if (contentType("done.mp3") !== "audio/mpeg") throw new Error("MP3 sound effect content type is not playable");
+  const uploadHeader = multipartUploadHeader(Buffer.from("--Ark\r\nContent-Disposition: form-data; name=\"file\"; filename=\"large.iso\"\r\nContent-Type: application/octet-stream\r\n\r\npayload"), "Ark");
+  if (uploadHeader?.filename !== "large.iso" || uploadHeader.type !== "application/octet-stream" || uploadHeader.dataStart < 1) throw new Error("multipart upload header was not parsed");
   if (folderName("Ark project") !== "Ark project") throw new Error("folder name was not preserved");
   for (const invalid of ["", ".hidden", "..", "one/two"]) {
     try { folderName(invalid); } catch { continue; }
