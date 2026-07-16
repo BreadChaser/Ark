@@ -2203,7 +2203,7 @@ async function readCodexTranscriptNow(session, device, rawText, storedMessages) 
     const resume = codexTranscriptCanResume(previousSessionId, filePath, offset, info.size);
     const stored = (storedMessages || await readSessionMessages(session.id)).map(normalizeMessage);
     const messages = resume ? stored.filter((message) => message.source !== "ark") : [];
-    const complete = Boolean(session.codex_transcript_complete) || codexTranscriptCompleted(stored);
+    const complete = codexTranscriptCompleted(stored);
     cache = {
       path: readablePath,
       offset: resume ? offset : 0,
@@ -3239,7 +3239,9 @@ function selfCheckCore() {
   if (mergedDrift.length !== 2 || mergedDrift.at(-1)?.text !== "live update") throw new Error("live commentary was hidden behind a pending user message");
   if (agentStateFromScreen({ tool: "codex" }, "• Working (2s • esc to interrupt)") !== "working") throw new Error("working Codex state was not detected");
   const storedProbe = "core-stored-codex-messages";
-  if (!canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "ready", codex_transcript_complete: true }, [{ text: "done" }])) throw new Error("completed Codex session did not reuse stored messages");
+  const completedTranscript = [{ role: "assistant", phase: "final_answer", text: "done" }];
+  if (!canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "ready", codex_transcript_complete: true }, completedTranscript)) throw new Error("completed Codex session did not reuse stored messages");
+  if (canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "ready", codex_transcript_complete: true }, [...completedTranscript, { role: "user", text: "new prompt" }])) throw new Error("new Codex prompt reused a stale completed transcript");
   if (canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "ready" }, [{ text: "done" }])) throw new Error("unfinished Codex transcript was treated as complete");
   if (!codexTranscriptCompleted([{ role: "assistant", phase: "final_answer" }]) || codexTranscriptCompleted([{ role: "assistant", phase: "final_answer" }, { role: "user", phase: "" }])) throw new Error("stored Codex final state was not detected");
   if (canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "working" }, [{ text: "done" }])) throw new Error("working Codex session skipped transcript updates");
@@ -3288,7 +3290,7 @@ function canUseStoredCodexMessages(session, storedMessages) {
     && session.agent_state === "ready"
     && session.codex_transcript_complete === true
     && !session.pending_control
-    && storedMessages.length > 0;
+    && codexTranscriptCompleted(storedMessages);
 }
 
 function storedCodexCapture(session, messages) {
