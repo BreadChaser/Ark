@@ -811,6 +811,18 @@ async function testCodexControlPrompts() {
   await js(`localStorage.setItem("ark-active-session", ${JSON.stringify(disposableSession.id)}); return true;`);
   await command("WebDriver:Navigate", { url: BASE_URL });
   await wait('!document.querySelector("#codex-footer").hidden && document.querySelector("#codex-footer strong").textContent.length > 0');
+  await wait('!document.querySelector("#agent-controls").hidden');
+  const agentControls = await js(`
+    document.querySelector("#agent-controls").click();
+    return {
+      visible: !document.querySelector("#quick-actions").hidden,
+      labels: [...document.querySelectorAll("#quick-actions button")].map((button) => button.textContent.trim()).join("|"),
+      interrupt: Boolean(document.querySelector("#interrupt")),
+    };
+  `);
+  assert(agentControls.visible && agentControls.labels === "Status|Model & reasoning|Permissions" && !agentControls.interrupt, `agent controls popover is incorrect: ${JSON.stringify(agentControls)}`);
+  await js('document.querySelector("#agent-controls").click(); return true;');
+  await wait('document.querySelector("#quick-actions").hidden');
   await js('activeSession().codex_usage = { plan_type: "pro", primary: { used_percent: 91, window_minutes: 10080, resets_at: 1784310183 }, secondary: { used_percent: 36, window_minutes: 10080, resets_at: 1784914983 } }; renderCodexFooter(); return true;');
   assert(await js('return document.querySelector("#codex-footer").textContent.includes("Weekly") && document.querySelector("#codex-footer").textContent.includes("GPT-5.3 Codex Spark") && document.querySelector("#codex-footer").textContent.includes("91% used") && document.querySelector("#codex-footer").textContent.includes("36% used") && document.querySelectorAll("#codex-footer progress").length === 2 && document.querySelector(".codex-usage-warning")?.textContent.includes("nearly exhausted") && !document.querySelector("[data-auto-resume]");'), "Codex weekly usage footer is incorrect");
   await shot("codex-usage-warning");
@@ -1049,8 +1061,17 @@ async function testChatLayout() {
   const resizedAtBottom = await js('document.querySelector("#parsed").scrollTop = 100; window.dispatchEvent(new Event("resize")); return new Promise((resolve) => setTimeout(() => resolve({ top: document.querySelector("#parsed").scrollTop, max: document.querySelector("#parsed").scrollHeight - document.querySelector("#parsed").clientHeight }), 250));');
   assert(resizedAtBottom.top >= resizedAtBottom.max - 2, `resizing a chat did not return to the bottom: ${JSON.stringify(resizedAtBottom)}`);
   await command("WebDriver:SetWindowRect", { width: 2048, height: 1152 });
-  const wideLayout = await js('return { chat: document.querySelector(".chat-stream").clientWidth, assistant: document.querySelector(".chat-message.assistant").clientWidth, composer: document.querySelector(".composer").clientWidth };');
-  assert(wideLayout.chat >= 1280 && wideLayout.assistant <= 1040 && wideLayout.composer >= 1280, `fullscreen chat lost its readable measure: ${JSON.stringify(wideLayout)}`);
+  const wideLayout = await js(`
+    const chat = document.querySelector(".chat-stream").getBoundingClientRect();
+    const nav = document.querySelector("#message-nav").getBoundingClientRect();
+    return {
+      chat: Math.round(chat.width),
+      composer: document.querySelector(".composer").clientWidth,
+      navLeft: Math.round(nav.left),
+      chatLeft: Math.round(chat.left),
+    };
+  `);
+  assert(wideLayout.chat >= 1500 && wideLayout.composer >= 1500 && wideLayout.navLeft >= wideLayout.chatLeft - 52 && wideLayout.navLeft < wideLayout.chatLeft, `fullscreen chat lane or navigator is misplaced: ${JSON.stringify(wideLayout)}`);
   await shot("wide-chat");
   await command("WebDriver:SetWindowRect", { width: 390, height: 900 });
   await command("WebDriver:Navigate", { url: BASE_URL });

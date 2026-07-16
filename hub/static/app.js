@@ -72,6 +72,7 @@ const state = {
   dismissedControls: {},
   activeControlKey: null,
   controlFlow: null,
+  quickActionsOpen: false,
   forceBottomSessionId: null,
   drafts: {},
   attachmentQueues: {},
@@ -156,7 +157,7 @@ const els = {
   refreshTmux: document.querySelector("#refresh-tmux"),
   input: document.querySelector("#input"),
   send: document.querySelector("#send"),
-  interrupt: document.querySelector("#interrupt"),
+  agentControls: document.querySelector("#agent-controls"),
   restart: document.querySelector("#restart"),
   resume: document.querySelector("#resume"),
   enableYolo: document.querySelector("#enable-yolo"),
@@ -292,7 +293,7 @@ async function init() {
   });
   els.attachImage.addEventListener("click", () => els.imageInput.click());
   els.imageInput.addEventListener("change", attachImages);
-  els.interrupt.addEventListener("click", interruptSession);
+  els.agentControls.addEventListener("click", toggleAgentControls);
   els.restart.addEventListener("click", () => restartSession(false));
   els.resume.addEventListener("click", () => restartSession(true));
   els.enableYolo.addEventListener("click", enableYolo);
@@ -1330,6 +1331,9 @@ async function adoptSession(tmux) {
 function openSession(sessionId) {
   els.sessionPanel.classList.remove("session-actions-open");
   els.sessionActionsToggle.setAttribute("aria-expanded", "false");
+  state.quickActionsOpen = false;
+  els.quickActions.hidden = true;
+  els.agentControls.setAttribute("aria-expanded", "false");
   if (state.activeSessionId !== sessionId) hideControlSheet();
   const session = state.sessions.find((item) => item.id === sessionId);
   if (session) {
@@ -1792,6 +1796,9 @@ async function sendQuickCommand(event) {
     return showError("That control belonged to another chat. Nothing was sent.");
   }
   if (els.quickActions.contains(button)) {
+    state.quickActionsOpen = false;
+    els.quickActions.hidden = true;
+    els.agentControls.setAttribute("aria-expanded", "false");
     delete state.dismissedControls[owner];
     const pending = activeSession()?.pending_control;
     const requested = command.replace(/^\//, "");
@@ -2063,13 +2070,6 @@ function clearAttachmentQueue(sessionId = activeSession()?.id) {
   if (!sessionId || activeSession()?.id === sessionId) renderAttachmentQueue();
 }
 
-async function interruptSession() {
-  const session = activeSession();
-  if (!session) return;
-  await api(`/api/sessions/${session.id}/interrupt`, { method: "POST" });
-  await capture();
-}
-
 async function restartSession(resume, options = {}) {
   const session = activeSession();
   if (!session) return;
@@ -2204,6 +2204,10 @@ function activeSession() {
 
 function setView(view) {
   state.view = view === "raw" ? "raw" : "parsed";
+  if (state.view !== "parsed") {
+    state.quickActionsOpen = false;
+    els.quickActions.hidden = true;
+  }
   const session = activeSession();
   if (state.view === "parsed" && session?.tool !== "terminal") state.forceBottomSessionId = session.id;
   localStorage.setItem(VIEW_KEY, state.view);
@@ -2222,18 +2226,29 @@ function updateViewLabels(mode) {
 }
 
 function setSessionControls(enabled, stopped = false) {
+  if (!enabled || stopped) state.quickActionsOpen = false;
   els.workspace.classList.toggle("has-session", enabled);
   els.sessionPanel.classList.toggle("has-session", enabled);
-  for (const control of [els.input, els.send, els.attachImage, els.interrupt, els.restart, els.resume, els.enableYolo, els.forget, els.kill, els.sessionActionsToggle]) {
+  for (const control of [els.input, els.send, els.attachImage, els.agentControls, els.restart, els.resume, els.enableYolo, els.forget, els.kill, els.sessionActionsToggle]) {
     control.disabled = !enabled;
   }
-  for (const control of [els.input, els.send, els.attachImage, els.interrupt]) control.disabled = !enabled || stopped;
+  for (const control of [els.input, els.send, els.attachImage, els.agentControls]) control.disabled = !enabled || stopped;
   for (const control of els.quickActions.querySelectorAll("button")) control.disabled = !enabled;
 }
 
+function toggleAgentControls() {
+  if (els.agentControls.disabled || els.agentControls.hidden) return;
+  state.quickActionsOpen = !state.quickActionsOpen;
+  els.quickActions.hidden = !state.quickActionsOpen;
+  els.agentControls.setAttribute("aria-expanded", String(state.quickActionsOpen));
+}
+
 function updateQuickActions(session, mode) {
+  const available = Boolean(session && mode === "chat" && session.tool === "codex" && state.view === "parsed");
   els.quickActions.dataset.sessionId = session?.id || "";
-  els.quickActions.hidden = !(session && mode === "chat" && session.tool === "codex" && state.view === "parsed");
+  els.agentControls.hidden = !available;
+  els.quickActions.hidden = !available || !state.quickActionsOpen;
+  els.agentControls.setAttribute("aria-expanded", String(available && state.quickActionsOpen));
 }
 
 async function setAdding(next) {

@@ -7,7 +7,7 @@
     <link rel="icon" href="/static/ark-logo.svg?v=3" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
-    <link rel="stylesheet" href="/static/ark-ui.css?v=34" />
+    <link rel="stylesheet" href="/static/ark-ui.css?v=35" />
   </head>
   <body>
     <div class="background-grid" aria-hidden="true"></div>
@@ -254,11 +254,6 @@
           </nav>
           <div id="xterm" class="xterm-host" hidden></div>
           <pre id="output" class="terminal-output" hidden>No session selected.</pre>
-          <div id="quick-actions" class="quick-actions" hidden>
-            <button type="button" data-command="/status">Status</button>
-            <button type="button" data-command="/model">Model &amp; reasoning</button>
-            <button type="button" data-command="/permissions">Permissions</button>
-          </div>
           <div id="control-sheet" class="control-sheet" hidden>
             <button id="control-close" class="control-scrim" type="button" aria-label="Close selector"></button>
             <section class="control-panel" role="dialog" aria-modal="true" aria-labelledby="control-title">
@@ -278,7 +273,14 @@
               <small>Paste, drop files, or click +. Attachments send with your next message.</small>
             </div>
             <div class="composer-actions">
-              <button id="interrupt" disabled>Ctrl-C</button>
+              <div class="agent-action-menu">
+                <button id="agent-controls" type="button" title="Agent controls" aria-label="Agent controls" aria-expanded="false" disabled>⚙</button>
+                <div id="quick-actions" class="quick-actions" hidden>
+                  <button type="button" data-command="/status">Status</button>
+                  <button type="button" data-command="/model">Model &amp; reasoning</button>
+                  <button type="button" data-command="/permissions">Permissions</button>
+                </div>
+              </div>
               <button id="send" class="primary" disabled>Send</button>
             </div>
           </div>
@@ -300,6 +302,6 @@
     <script src="/vendor/xterm/addon-fit.js"></script>
     <script src="/vendor/marked/marked.js"></script>
     <script src="/vendor/dompurify/purify.js"></script>
-    <script src="/static/app.js?v=38"></script>
+    <script src="/static/app.js?v=39"></script>
   </body>
 </html>
