@@ -465,8 +465,8 @@ async function assertThemeEffects(theme) {
   if (theme === "ark") assert(effects.overlayAnimation === "none", "Amber CRT overlay still flickers");
   if (theme === "ark") assert(effects.textAnimation === "none", "Amber CRT still flashes individual text nodes");
   if (theme === "light") assert(effects.backgroundLuminance > 0.9, `light theme is not bright enough at ${effects.backgroundLuminance.toFixed(2)} luminance`);
-  if (theme === "soft") assert(effects.backgroundLuminance > 0.7 && effects.backgroundLuminance < 0.9, `soft light lost its gray tone at ${effects.backgroundLuminance.toFixed(2)} luminance`);
-  if (theme === "midnight") assert(effects.backgroundLuminance < 0.01, `midnight is not dark enough at ${effects.backgroundLuminance.toFixed(2)} luminance`);
+  if (theme === "soft") assert(effects.backgroundLuminance > 0.55 && effects.backgroundLuminance < 0.68, `soft light lost its gray tone at ${effects.backgroundLuminance.toFixed(2)} luminance`);
+  if (theme === "midnight") assert(effects.backgroundLuminance < 0.002, `midnight is not dark enough at ${effects.backgroundLuminance.toFixed(2)} luminance`);
 }
 
 async function assertDiagnostics() {
