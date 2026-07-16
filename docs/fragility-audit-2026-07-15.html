@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ARK reliability audit — 2026-07-15</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background: #0b1114; color: #e5eceb; }
+    body { max-width: 920px; margin: 0 auto; padding: 40px 24px 64px; line-height: 1.55; }
+    h1 { margin-bottom: .1rem; } h2 { margin-top: 2.1rem; }
+    .lede { color: #aebfbc; font-size: 1.08rem; }
+    .card { border: 1px solid #29403e; background: #101a1b; border-radius: 10px; padding: 16px 18px; margin: 12px 0; }
+    .fixed { border-left: 4px solid #55c58e; } .next { border-left: 4px solid #e0ad55; }
+    code { color: #a9e5d5; } small { color: #91a5a1; }
+  </style>
+</head>
+<body>
+  <h1>ARK reliability audit</h1>
+  <p class="lede">15 July 2026 — focused on recurring state, session-switching, scrolling, long-chat, and validation failures.</p>
+
+  <h2>What changed</h2>
+  <div class="card fixed"><strong>False “working” state:</strong> status parsing now examines only the recent tmux screen rather than old scrollback, so historical “Working” text cannot keep a completed chat active.</div>
+  <div class="card fixed"><strong>No dropped just-sent messages:</strong> authoritative Codex transcript writes now reread messages inside their mutation lane. A capture that started before a browser send can no longer overwrite the new user message with an old snapshot.</div>
+  <div class="card fixed"><strong>Completed-session cache reset:</strong> starting a new Codex task clears the prior rollout and transcript cache, preventing old ready state or an old rollout path from leaking into the next task. Deleted sessions also clear their caches.</div>
+  <div class="card fixed"><strong>Chat switching and scrolling:</strong> an in-flight paged history request cannot overwrite a newer live capture, the live SSE stream is no longer reopened on every render, and a resize only follows the bottom when the reader was already there.</div>
+  <div class="card fixed"><strong>Less background churn:</strong> completed Codex sessions use their persisted final state instead of probing each tmux pane every three seconds. Ordinary capture ticks also stop rewriting session metadata when nothing changed.</div>
+  <div class="card fixed"><strong>A working release check:</strong> the browser smoke test had stopped halfway through on an invalid reference to private module state. It now checks the visible image-viewer DOM, and <code>npm run verify</code> runs both static/core checks and the full browser smoke suite.</div>
+
+  <h2>Evidence</h2>
+  <div class="card"><code>npm run verify</code> passed on the audited tree. It includes syntax checks, parser fixtures, core/self checks, service-unit generation, and the isolated Firefox browser smoke suite.</div>
+
+  <h2>Important remaining work</h2>
+  <div class="card next"><strong>Long-chat transport is still the largest performance risk.</strong> Each active capture currently reads, merges, signs, and SSE-sends the full transcript. The UI only renders a tail, but it still receives and processes the whole history. The next substantial reliability slice should stream state plus a message tail/delta, with the existing paged message endpoint responsible for older history.</div>
+  <div class="card next"><strong>Remote terminal logs are copied in full.</strong> Remote pipe-log synchronization currently replaces the complete growing log each capture. It should use an offset-based append protocol, like the Codex transcript reader.</div>
+  <div class="card next"><strong>Message paging is UI pagination only.</strong> The server currently parses the entire JSONL file before selecting a page. A backward tail reader is worthwhile after capture payloads stop carrying full histories.</div>
+  <div class="card next"><strong>Shutdown remains abrupt.</strong> The systemd unit correctly keeps tmux alive, but the Node service should still close SSE/terminal attachments cleanly on SIGTERM. This is a small separate hardening task.</div>
+
+  <h2>Suggested order</h2>
+  <ol>
+    <li>Convert active chat capture to tail/delta transport and measure long-chat latency.</li>
+    <li>Make remote pipe-log sync incremental.</li>
+    <li>Add graceful Node shutdown and then profile memory by separating the Node process from preserved Codex/tmux workers.</li>
+  </ol>
+  <p><small>This audit intentionally avoids redesigning ARK or changing its private-network deployment model.</small></p>
+</body>
+</html>

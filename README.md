@@ -52,6 +52,8 @@ agent/config.
 - [Migration](docs/MIGRATION.md) records the current Proxmox deployment and
   cutover boundaries.
 - [Direction](docs/DIRECTION.md) records product constraints and deferred work.
+- [Reliability audit](docs/fragility-audit-2026-07-15.html) records the latest
+  fixes, evidence, and the highest-value remaining hardening work.
 
 ## V1
 

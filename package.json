@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.mjs",
     "check": "node --check server.mjs && node --check hub/static/app.js && node --check scripts/gui-smoke.mjs && node --check scripts/ark-service.mjs && node scripts/control-parser-check.mjs && ARK_SELF_CHECK=trusted-remote node server.mjs && ARK_SELF_CHECK=core node server.mjs && node scripts/ark-service.mjs unit >/dev/null",
+    "verify": "npm run check && npm run gui-smoke",
     "gui-smoke": "node scripts/gui-smoke.mjs",
     "service:unit": "node scripts/ark-service.mjs unit",
     "service:install": "node scripts/ark-service.mjs install",

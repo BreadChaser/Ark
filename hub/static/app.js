@@ -55,7 +55,9 @@ const state = {
   lastCapture: null,
   captures: {},
   captureRequests: new Set(),
+  captureSessionId: null,
   chatMessages: {},
+  chatMessageVersions: {},
   loadedChatSessions: new Set(),
   chatRenderLimits: {},
   chatHistoryStarts: {},
@@ -312,10 +314,12 @@ async function init() {
   els.viewRaw.addEventListener("click", () => setView("raw"));
   let resizeTimer;
   window.addEventListener("resize", () => {
+    const sessionId = activeSession()?.id;
+    const keepBottom = isNearBottom(els.parsed);
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
       const session = activeSession();
-      if (session && session.tool !== "terminal" && state.view === "parsed") scrollToBottom(els.parsed);
+      if (keepBottom && session?.id === sessionId && session.tool !== "terminal" && state.view === "parsed") scrollToBottom(els.parsed);
     }, 80);
   });
   els.repo.addEventListener("change", rememberRepo);
@@ -1393,7 +1397,11 @@ async function openDeviceComposer(deviceId, anchor) {
 }
 
 function startPolling() {
+  const sessionId = activeSession()?.id;
+  if (!sessionId) return stopPolling();
+  if (state.captureSessionId === sessionId && (state.captureSource || state.poll)) return;
   stopPolling();
+  state.captureSessionId = sessionId;
   if (!("EventSource" in window)) {
     els.sessionPanel.dataset.captureTransport = "poll";
     capture();
@@ -1401,8 +1409,6 @@ function startPolling() {
     return;
   }
   els.sessionPanel.dataset.captureTransport = "stream";
-  const sessionId = activeSession()?.id;
-  if (!sessionId) return;
   const source = new EventSource(`/api/sessions/${encodeURIComponent(sessionId)}/capture/stream`);
   source.onopen = () => setStatus("Connected");
   source.onmessage = (event) => applyCapture(sessionId, JSON.parse(event.data));
@@ -1423,6 +1429,7 @@ function stopPolling() {
   state.poll = null;
   state.captureSource?.close();
   state.captureSource = null;
+  state.captureSessionId = null;
 }
 
 async function capture() {
@@ -1451,6 +1458,7 @@ function applyCapture(sessionId, data) {
   if (data.mode === "chat" && Array.isArray(data.messages)) {
     state.chatMessages[session.id] = data.messages;
     state.chatHistoryStarts[session.id] = 0;
+    state.chatMessageVersions[session.id] = (state.chatMessageVersions[session.id] || 0) + 1;
   }
   const nextAgentState = Number(data.usage_limited_until || 0) > Math.floor(Date.now() / 1000) ? "usage" : data.pending_control ? "needs_input" : data.agent_state;
   const stateChanged = nextAgentState && state.sessionStates[session.id] !== nextAgentState;
@@ -2104,8 +2112,10 @@ async function loadChatMessages(session, force = false) {
   if (!session || session.tool === "terminal" || (!force && state.loadedChatSessions.has(session.id))) return;
   state.loadedChatSessions.add(session.id);
   state.chatLoading.add(session.id);
+  const version = state.chatMessageVersions[session.id] || 0;
   try {
     const data = await api(`/api/sessions/${session.id}/messages?limit=${CHAT_FETCH_LIMIT}`);
+    if ((state.chatMessageVersions[session.id] || 0) !== version) return;
     state.chatMessages[session.id] = data.messages || [];
     state.chatHistoryStarts[session.id] = Math.max(0, Number(data.start) || 0);
     if (activeSession()?.id === session.id) {
@@ -2125,8 +2135,10 @@ async function showEarlierChatMessages(event) {
   if (!session) return;
   const start = Math.max(0, Number(state.chatHistoryStarts[session.id]) || 0);
   if (start) {
+    const version = state.chatMessageVersions[session.id] || 0;
     try {
       const data = await api(`/api/sessions/${session.id}/messages?limit=${CHAT_FETCH_LIMIT}&before=${start}`);
+      if ((state.chatMessageVersions[session.id] || 0) !== version) return;
       state.chatMessages[session.id] = mergeLocalChatMessages(data.messages || [], state.chatMessages[session.id] || []);
       state.chatHistoryStarts[session.id] = Math.max(0, Number(data.start) || 0);
     } catch (error) {
@@ -2406,13 +2418,15 @@ function activeSession() {
 }
 
 function setView(view) {
-  state.view = view === "raw" ? "raw" : "parsed";
+  const next = view === "raw" ? "raw" : "parsed";
+  const changed = state.view !== next;
+  state.view = next;
   if (state.view !== "parsed") {
     state.quickActionsOpen = false;
     els.quickActions.hidden = true;
   }
   const session = activeSession();
-  if (state.view === "parsed" && session?.tool !== "terminal") state.forceBottomSessionId = session.id;
+  if (changed && state.view === "parsed" && session?.tool !== "terminal") state.forceBottomSessionId = session.id;
   localStorage.setItem(VIEW_KEY, state.view);
   els.defaultView.value = state.view;
   els.viewParsed.classList.toggle("active", state.view === "parsed");

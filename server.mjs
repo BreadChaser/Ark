@@ -501,7 +501,6 @@ async function captureSession(id) {
     throw Object.assign(new Error("This tmux session is stopped. Use Resume or Restart."), { status: 410 });
   }
   if (result.code !== 0) throw Object.assign(new Error(result.output), { status: 502 });
-  await touchSession(session.id);
   const pipeSynced = await syncTmuxPipeLog(device, session).catch(() => false);
   const screen = session.tool === "codex" ? await captureTmuxScreen(device, session.tmux_name) : result;
   const controlText = screen.code === 0 ? screen.output : result.output;
@@ -510,7 +509,7 @@ async function captureSession(id) {
   const payload = capturePayload(result.output, session, storedMessages, controlText, result.output);
   const transcript = await readCodexTranscript(session, device, result.output, storedMessages);
   if (transcript !== null) {
-    payload.messages = await writeAuthoritativeMessages(session, transcript, storedMessages);
+    payload.messages = await writeAuthoritativeMessages(session, transcript);
     payload.transcript_source = "codex-rollout";
     const settings = cachedCodexSettings(session);
     if (settings) payload.codex_state = { ...(payload.codex_state || {}), ...settings, source: "codex-rollout" };
@@ -1659,6 +1658,14 @@ async function listAgentStates() {
         const state = usageUntil > Math.floor(Date.now() / 1000) ? "usage" : live.pending_control ? "needs_input" : live.agent_state;
         return { id: session.id, state, pending_control: live.pending_control || null, ready_at: session.ready_at || 0, viewed_at: session.viewed_at || 0, usage_limited_until: usageUntil };
       }
+      // Completed Codex chats are already backed by their persisted rollout.
+      // Probing every old tmux pane every three seconds adds latency without
+      // producing new state; GUI and terminal sends clear this completion flag.
+      if (session.tool === "codex" && session.agent_state === "ready" && session.codex_transcript_complete && !session.pending_control) {
+        const usageUntil = Number(session.usage_limited_until || 0);
+        const state = usageUntil > Math.floor(Date.now() / 1000) ? "usage" : "ready";
+        return { id: session.id, state, pending_control: null, ready_at: session.ready_at || 0, viewed_at: session.viewed_at || 0, usage_limited_until: usageUntil };
+      }
       const device = await tmuxDeviceForSession(session);
       const screen = await captureTmuxScreen(device, session.tmux_name);
       if (screen.code !== 0) return { id: session.id, state: isMissingTmux(screen.output) ? "stopped" : "unknown" };
@@ -1863,6 +1870,10 @@ async function touchSession(id) {
 
 async function markCodexTranscriptActive(session) {
   if (session?.tool !== "codex" || !session.codex_transcript_complete) return;
+  // A completed cache belongs to the previous task. Keeping it would make the
+  // next prompt inherit its old ready state and rollout path.
+  CODEX_ROLLOUTS.delete(session.id);
+  CODEX_TRANSCRIPTS.delete(session.id);
   session.codex_transcript_complete = false;
   const stored = await withMutation("store", async () => {
     const data = await readStore();
@@ -1876,6 +1887,9 @@ async function markCodexTranscriptActive(session) {
 }
 
 async function deleteSession(id) {
+  CODEX_ROLLOUTS.delete(id);
+  CODEX_TRANSCRIPTS.delete(id);
+  CONTROL_MISSES.delete(id);
   await withMutation("store", async () => {
     const data = await readStore();
     data.sessions = data.sessions.filter((item) => item.id !== id);
@@ -1942,8 +1956,8 @@ async function sessionFiles(session) {
 }
 
 async function writeSessionCapture(session, rawText, payload, options = {}) {
-  await writeSessionFiles(session);
   const dir = sessionDir(session.id);
+  await mkdir(dir, { recursive: true });
   const terminalLog = path.join(dir, "terminal.log");
   try {
     if (options.forceTerminalLog) throw new Error("fresh capture fallback");
@@ -2056,9 +2070,11 @@ async function writeMessagesFile(session, messages) {
   await writeFile(path.join(sessionDir(session.id), "messages.jsonl"), lines ? `${lines}\n` : "");
 }
 
-async function writeAuthoritativeMessages(session, transcript, stored = []) {
+async function writeAuthoritativeMessages(session, transcript) {
   return withMutation(`messages:${session.id}`, async () => {
-    const current = stored.length ? stored.map(normalizeMessage) : (await readSessionMessages(session.id)).map(normalizeMessage);
+    // Read inside the mutation lane. A capture may have read an older snapshot
+    // while a browser send was waiting to append its user message.
+    const current = (await readSessionMessages(session.id)).map(normalizeMessage);
     const messages = mergeCodexTranscript(transcript, current);
     if (JSON.stringify(messages) !== JSON.stringify(current)) await writeMessagesFile(session, messages);
     return messages;
