@@ -49,12 +49,8 @@
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     const count = mobile.matches ? 46 : Math.max(108, Math.min(152, Math.round(width * height / 15000)));
     particles = Array.from({ length: Math.round(count * density) }, seed);
-    const trailCount = mobile.matches ? 6 : 12;
-    contourTrails = Array.from({ length: trailCount }, () => {
-      const trail = seedContourTrail();
-      trail.age = Math.random() * trail.life;
-      return trail;
-    });
+    const trailCount = mobile.matches ? 5 : 9;
+    contourTrails = Array.from({ length: trailCount }, (_, index) => seedContourTrail(index, trailCount));
   }
 
   function angle(x, y, time) {
@@ -65,30 +61,34 @@
       + Math.sin((sx + sy) * 0.58 + time * 0.055) * 0.5;
   }
 
-  function seedContourTrail() {
+  function seedContourTrail(index, count) {
     return {
-      age: 0,
-      life: 7000 + Math.random() * 6500,
-      level: Math.random(),
-      shift: (Math.random() - 0.5) * 0.045,
-      peak: 0.28 + Math.random() * 0.48,
-      peakWidth: 0.035 + Math.random() * 0.075,
+      level: count > 1 ? index / (count - 1) : 0.5,
+      scanOffset: Math.random(),
+      scanSpeed: 0.31 + Math.random() * 0.12,
       phase: Math.random() * Math.PI * 2,
     };
   }
 
   function ridge(position, trail, time) {
     const peak = (center, span, weight) => Math.max(0, 1 - Math.abs(position - center) / span) * weight;
-    const shifted = position + trail.shift;
-    const detail = Math.sin(shifted * 25 + trail.phase + time * 0.08) * 0.03
-      + Math.sin(shifted * 57 - trail.phase + time * 0.045) * 0.014;
-    return peak(0.17, 0.15, 0.52) + peak(0.43, 0.09, 0.92)
-      + peak(0.56, 0.16, 0.46) + peak(0.72, 0.14, 0.7) + peak(0.89, 0.1, 0.34)
-      + peak(trail.peak, trail.peakWidth, 0.16) + detail;
+    const shape = Math.floor(time * 0.38) * 31;
+    const mountain = (offset, start, span) => peak(
+      start + random(shape + offset) * span,
+      0.04 + random(shape + offset + 0.5) * 0.11,
+      0.3 + random(shape + offset + 1) * 0.72,
+    );
+    const detail = Math.sin(position * 31 + trail.phase) * 0.018 + Math.sin(position * 63 - trail.phase) * 0.008;
+    return mountain(1, 0.08, 0.16) + mountain(3, 0.28, 0.18)
+      + mountain(5, 0.48, 0.17) + mountain(7, 0.7, 0.18) + detail;
   }
 
-  function drawContours(time, elapsed = 0) {
-    context.clearRect(0, 0, width, height);
+  function drawContours(time) {
+    context.save();
+    context.globalCompositeOperation = "destination-out";
+    context.globalAlpha = mobile.matches ? 0.045 : 0.035;
+    context.fillRect(0, 0, width, height);
+    context.restore();
     context.save();
     context.lineCap = "round";
     context.lineJoin = "round";
@@ -96,23 +96,22 @@
     context.shadowBlur = mobile.matches ? 0 : 5;
     const step = mobile.matches ? 10 : 7;
     for (const trail of contourTrails) {
-      trail.age += elapsed * 16.667;
-      if (trail.age >= trail.life) Object.assign(trail, seedContourTrail());
-      const fade = Math.sin(Math.PI * trail.age / trail.life) ** 0.7;
-      const baseline = height * (0.67 + trail.level * 0.27);
-      const depth = height * (0.21 - trail.level * 0.085);
+      const head = ((time * trail.scanSpeed + trail.scanOffset) % 1) * width;
+      const tail = Math.max(0, head - width * 0.19);
+      const baseline = height * (0.68 + trail.level * 0.24);
+      const depth = height * (0.23 - trail.level * 0.1);
       context.beginPath();
-      for (let x = 0; x <= width + step; x += step) {
+      for (let x = tail; x <= head + step; x += step) {
         const position = x / width;
-        const texture = Math.sin(position * 18 + trail.phase + time * 0.075) * (2.1 + trail.level * 2)
-          + Math.sin(position * 49 - trail.phase + time * 0.045) * 1.35;
+        const texture = Math.sin(position * 18 + trail.phase) * (2.1 + trail.level * 2)
+          + Math.sin(position * 49 - trail.phase) * 1.35;
         const y = baseline - ridge(position, trail, time) * depth + texture;
-        if (x === 0) context.moveTo(x, y);
+        if (x === tail) context.moveTo(x, y);
         else context.lineTo(x, y);
       }
       context.strokeStyle = trail.level > 0.64 ? sceneSecondary : scenePrimary;
       context.shadowColor = context.strokeStyle;
-      context.globalAlpha = fade * (0.13 + (1 - trail.level) * 0.1);
+      context.globalAlpha = 0.2 - trail.level * 0.07;
       context.stroke();
     }
 
@@ -123,7 +122,7 @@
       const pulse = Math.max(0, Math.sin(time * (0.8 + random(index + 1009)) + random(index + 1103) * Math.PI * 2));
       const bright = index % 6 === 0 && pulse > 0.74;
       context.fillStyle = index % 4 === 0 ? sceneSecondary : scenePrimary;
-      context.globalAlpha = 0.08 + pulse * 0.2;
+      context.globalAlpha = 0.02 + pulse * 0.045;
       context.beginPath();
       context.arc(x, y, bright ? 1.25 : 0.72, 0, Math.PI * 2);
       context.fill();
@@ -140,22 +139,6 @@
       }
     }
 
-    const glints = mobile.matches ? 8 : 24;
-    for (let index = 0; index < glints; index += 1) {
-      const trail = contourTrails[index % contourTrails.length];
-      const position = (random(index + 1201) + time * (0.0025 + random(index + 1303) * 0.002)) % 1;
-      const baseline = height * (0.67 + trail.level * 0.27);
-      const depth = height * (0.21 - trail.level * 0.085);
-      const x = position * width;
-      const y = baseline - ridge(position, trail, time) * depth
-        + Math.sin(position * 18 + trail.phase + time * 0.075) * (2.1 + trail.level * 2)
-        + Math.sin(position * 49 - trail.phase + time * 0.045) * 1.35;
-      context.fillStyle = index % 4 === 0 ? sceneSecondary : scenePrimary;
-      context.globalAlpha = Math.sin(Math.PI * trail.age / trail.life) ** 0.7 * (0.14 + random(index + 1409) * 0.12);
-      context.beginPath();
-      context.arc(x, y, mobile.matches ? 0.65 : 0.9, 0, Math.PI * 2);
-      context.fill();
-    }
     context.restore();
   }
 
@@ -212,7 +195,7 @@
     previous = now;
     const time = now / 1000;
     if (scene === "contours") {
-      drawContours(time, elapsed);
+      drawContours(time);
       return;
     }
     if (scene === "stars") {
