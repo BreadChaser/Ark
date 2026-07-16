@@ -1584,6 +1584,7 @@ function renderChatCapture(data, session, keepBottom) {
     const text = document.createElement("div");
     text.className = "message-text";
     text.innerHTML = renderMarkdown(message.text);
+    if (text.querySelector("ul, ol, pre, table, h1, h2, h3, blockquote, img")) card.classList.add("structured");
     for (const link of text.querySelectorAll("a")) {
       link.target = "_blank";
       link.rel = "noopener noreferrer";
@@ -1641,14 +1642,12 @@ function renderChatCapture(data, session, keepBottom) {
 
 function hideMessageNav() {
   els.messageNav.hidden = true;
-  els.sessionPanel.classList.remove("has-message-nav");
 }
 
 function updateMessageNav() {
   const messages = [...els.parsed.querySelectorAll(".chat-message.user")];
   const visible = els.parsed.classList.contains("chat-output") && !els.parsed.hidden && messages.length > 1;
   els.messageNav.hidden = !visible;
-  els.sessionPanel.classList.toggle("has-message-nav", visible);
   if (!visible) return;
   const positions = messages.map(messageOffset);
   const threshold = els.parsed.scrollTop + 32;

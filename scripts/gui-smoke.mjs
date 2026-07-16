@@ -990,9 +990,12 @@ async function testChatLayout() {
   assert(longChat.cards === 120 && longChat.more.includes("140 hidden"), `long chat was fully rendered: ${JSON.stringify(longChat)}`);
   const evidenceColumns = await js(`
     renderChatCapture({ messages: [{ role: "assistant", text: "- Validation is green:\\n    - synthetic tests\\n    - network tests\\n    - map probe\\n    - ASan run\\n    - Windows viewer\\n    - structure hygiene" }] }, { id: "evidence-grid-smoke", tool: "codex" }, false);
-    return getComputedStyle(document.querySelector(".message-text li > ul")).gridTemplateColumns.split(" ").length;
+    return {
+      columns: getComputedStyle(document.querySelector(".message-text li > ul")).gridTemplateColumns.split(" ").length,
+      structured: document.querySelector(".chat-message.assistant").classList.contains("structured"),
+    };
   `);
-  assert(evidenceColumns > 1, "nested evidence list did not use the available width");
+  assert(evidenceColumns.columns > 1 && evidenceColumns.structured, "nested evidence list did not use the available width");
   await shot("evidence-grid");
   const updateStack = await js(`
     renderChatCapture({ messages: [
@@ -1001,9 +1004,9 @@ async function testChatLayout() {
       { role: "assistant", text: "Final progress update." },
     ] }, { id: "update-stack-smoke", tool: "codex" }, false);
     const continued = document.querySelector(".chat-message.assistant.continued");
-    return { margin: getComputedStyle(continued).marginTop, rail: getComputedStyle(continued).borderLeftStyle, divider: getComputedStyle(continued.querySelector(".message-text"), "::before").width };
+    return { margin: getComputedStyle(continued).marginTop, rail: getComputedStyle(continued).borderLeftStyle, bubble: getComputedStyle(continued.querySelector(".message-text")).backgroundColor };
   `);
-  assert(updateStack.margin === "-21px" && updateStack.rail === "solid" && updateStack.divider === "72px", `assistant updates did not form a compact stack: ${JSON.stringify(updateStack)}`);
+  assert(updateStack.margin === "-11px" && updateStack.rail === "none" && updateStack.bubble !== "rgba(0, 0, 0, 0)", `assistant updates did not form compact chat bubbles: ${JSON.stringify(updateStack)}`);
   await shot("update-stack");
   await js('return loadChatMessages(activeSession(), true);');
   await sleep(250);
@@ -1063,15 +1066,18 @@ async function testChatLayout() {
   await command("WebDriver:SetWindowRect", { width: 2048, height: 1152 });
   const wideLayout = await js(`
     const chat = document.querySelector(".chat-stream").getBoundingClientRect();
+    const composer = document.querySelector(".composer").getBoundingClientRect();
     const nav = document.querySelector("#message-nav").getBoundingClientRect();
     return {
       chat: Math.round(chat.width),
       composer: document.querySelector(".composer").clientWidth,
       navLeft: Math.round(nav.left),
-      chatLeft: Math.round(chat.left),
+      navTop: Math.round(nav.top),
+      composerTop: Math.round(composer.top),
+      composerBottom: Math.round(composer.bottom),
     };
   `);
-  assert(wideLayout.chat >= 1500 && wideLayout.composer >= 1500 && wideLayout.navLeft >= wideLayout.chatLeft - 52 && wideLayout.navLeft < wideLayout.chatLeft, `fullscreen chat lane or navigator is misplaced: ${JSON.stringify(wideLayout)}`);
+  assert(wideLayout.chat >= 1500 && wideLayout.composer >= 1500 && wideLayout.navTop >= wideLayout.composerTop && wideLayout.navTop < wideLayout.composerBottom, `fullscreen chat lane or navigator is misplaced: ${JSON.stringify(wideLayout)}`);
   await shot("wide-chat");
   await command("WebDriver:SetWindowRect", { width: 390, height: 900 });
   await command("WebDriver:Navigate", { url: BASE_URL });
