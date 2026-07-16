@@ -1,0 +1,7 @@
+✨ Update available! 0.144.1 -> 0.144.4
+
+› 1. Update now (runs the official installer)
+  2. Skip
+  3. Skip until next version
+
+  Press enter to continue

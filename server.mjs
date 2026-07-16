@@ -1377,10 +1377,9 @@ async function captureTmuxScreen(device, tmuxName) {
 function textSendCommand(tmuxName, text, submit, key = "Enter", tool = "") {
   const target = q(tmuxName);
   const submitKey = submit ? `; tmux send-keys -t ${target} ${key}` : "";
-  // Codex 0.144+ detects rapid plain text as a paste burst and deliberately
-  // turns an immediate Enter into a newline. Give its 120 ms burst window time
-  // to flush before delivering the submit key.
-  const settle = submit && tool === "codex" && text ? "; sleep 0.15" : "";
+  // Codex treats a rapid burst as a paste. On a loaded remote tmux, its input
+  // loop may not see that burst until after the old 150 ms delay elapsed.
+  const settle = submit && tool === "codex" && text ? "; sleep 0.5" : "";
   return `tmux copy-mode -q -t ${target} 2>/dev/null || true; tmux send-keys -t ${target} -l ${q(text)}${settle}${submitKey}`;
 }
 
@@ -2941,6 +2940,9 @@ async function localDeviceOr404() {
 }
 
 async function tmuxDeviceForSession(session) {
+  // Central-runner agents always belong to this hub, even when an imported
+  // pre-migration session retained the device where it used to run.
+  if (session.central_runner) return localDeviceOr404();
   return deviceOr404(session.tmux_device_id || session.device_id);
 }
 
@@ -3216,7 +3218,7 @@ function selfCheckCore() {
   if (submitKeyForSession({ tool: "codex" }, "• Working (2s • esc to interrupt)") !== "Tab") throw new Error("working Codex message was not queued");
   if (submitKeyForSession({ tool: "codex" }, "› Write tests") !== "Enter") throw new Error("ready Codex message was not submitted");
   if (submitKeyForSession({ tool: "codex", agent_state: "working" }, "› Write tests") !== "Enter") throw new Error("stale Codex state queued a ready message");
-  if (!textSendCommand("Ark-test", "paste", true, "Enter", "codex").includes("sleep 0.15; tmux send-keys")) throw new Error("Codex paste submit did not settle before Enter");
+  if (!textSendCommand("Ark-test", "paste", true, "Enter", "codex").includes("sleep 0.5; tmux send-keys")) throw new Error("Codex paste submit did not settle before Enter");
   if (agentStateFromScreen({ tool: "codex" }, "Would you like to run this command?\n1. Yes\n2. No\nPress enter to confirm") !== "needs_input") throw new Error("Codex input state was not detected");
   const approval = parseCodexControls("Would you like to run the following command? 1. Yes, proceed 2. No, cancel Press enter to confirm or esc to cancel", parseTerminalLines("Would you like to run the following command?\n1. Yes, proceed\n2. No, cancel\nPress enter to confirm or esc to cancel"));
   if (approval[0]?.kind !== "approval" || approval[0].choices.length !== 3) throw new Error("Codex command approval prompt was not actionable");

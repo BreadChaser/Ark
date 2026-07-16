@@ -11,6 +11,7 @@ const cases = {
   "approval-command-numbers.txt": { kind: "approval", state: "needs_input", choices: 3, labels: ["Yes, proceed", "Yes, remember", "No"] },
   "stale-status-approval.txt": { kind: "approval", state: "needs_input", choices: 3 },
   "hook-update.txt": { kind: "input", state: "needs_input", choices: 2 },
+  "codex-update.txt": { kind: "input", state: "needs_input", choices: 3, labels: ["Update now (runs the official installer)", "Skip", "Skip until next version"] },
   "ordinary.txt": { kind: null, state: "ready" },
   "diff-control.txt": { kind: null, state: "ready" },
   "model.txt": { kind: "model", state: "needs_input", choices: 7, labels: ["gpt-5.5", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark"] },
