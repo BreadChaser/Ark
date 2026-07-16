@@ -49,7 +49,7 @@
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     const count = mobile.matches ? 46 : Math.max(108, Math.min(152, Math.round(width * height / 15000)));
     particles = Array.from({ length: Math.round(count * density) }, seed);
-    const trailCount = mobile.matches ? 5 : 9;
+    const trailCount = mobile.matches ? 4 : 6;
     contourTrails = Array.from({ length: trailCount }, (_, index) => seedContourTrail(index, trailCount));
   }
 
@@ -64,21 +64,22 @@
   function seedContourTrail(index, count) {
     return {
       level: count > 1 ? index / (count - 1) : 0.5,
-      scanOffset: Math.random(),
-      scanSpeed: 0.31 + Math.random() * 0.12,
       phase: Math.random() * Math.PI * 2,
     };
   }
 
   function ridge(position, trail, time) {
-    const peak = (center, span, weight) => Math.max(0, 1 - Math.abs(position - center) / span) * weight;
-    const shape = Math.floor(time * 0.38) * 31;
+    const peak = (center, span, weight) => {
+      const value = Math.max(0, 1 - Math.abs(position - center) / span);
+      return value * (0.34 + value * 0.66) * weight;
+    };
+    const shape = Math.floor(time * 0.1 + 0.42) * 31;
     const mountain = (offset, start, span) => peak(
       start + random(shape + offset) * span,
       0.04 + random(shape + offset + 0.5) * 0.11,
       0.3 + random(shape + offset + 1) * 0.72,
     );
-    const detail = Math.sin(position * 31 + trail.phase) * 0.018 + Math.sin(position * 63 - trail.phase) * 0.008;
+    const detail = Math.sin(position * 31 + trail.phase) * 0.01 + Math.sin(position * 63 - trail.phase) * 0.005;
     return mountain(1, 0.08, 0.16) + mountain(3, 0.28, 0.18)
       + mountain(5, 0.48, 0.17) + mountain(7, 0.7, 0.18) + detail;
   }
@@ -86,7 +87,7 @@
   function drawContours(time) {
     context.save();
     context.globalCompositeOperation = "destination-out";
-    context.globalAlpha = mobile.matches ? 0.045 : 0.035;
+    context.globalAlpha = mobile.matches ? 0.018 : 0.014;
     context.fillRect(0, 0, width, height);
     context.restore();
     context.save();
@@ -95,16 +96,16 @@
     context.lineWidth = mobile.matches ? 0.7 : 0.9;
     context.shadowBlur = mobile.matches ? 0 : 5;
     const step = mobile.matches ? 10 : 7;
+    const head = ((time * 0.1 + 0.42) % 1) * width;
+    const tail = Math.max(0, head - width * 0.1);
     for (const trail of contourTrails) {
-      const head = ((time * trail.scanSpeed + trail.scanOffset) % 1) * width;
-      const tail = Math.max(0, head - width * 0.19);
       const baseline = height * (0.68 + trail.level * 0.24);
       const depth = height * (0.23 - trail.level * 0.1);
       context.beginPath();
       for (let x = tail; x <= head + step; x += step) {
         const position = x / width;
-        const texture = Math.sin(position * 18 + trail.phase) * (2.1 + trail.level * 2)
-          + Math.sin(position * 49 - trail.phase) * 1.35;
+        const texture = Math.sin(position * 18 + trail.phase) * (0.9 + trail.level)
+          + Math.sin(position * 49 - trail.phase) * 0.6;
         const y = baseline - ridge(position, trail, time) * depth + texture;
         if (x === tail) context.moveTo(x, y);
         else context.lineTo(x, y);
