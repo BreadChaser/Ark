@@ -1482,14 +1482,13 @@ pre {
 }
 
 .chat-output {
-  padding: 26px 18px 20px;
+  padding: 18px 12px 12px;
   background: linear-gradient(180deg, color-mix(in srgb, var(--panel-solid) 45%, transparent), transparent 30%);
 }
 
 .chat-stream {
-  width: min(1400px, 100%);
+  width: 100%;
   min-height: 100%;
-  margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 21px;
@@ -1505,23 +1504,16 @@ pre {
 }
 
 .chat-message {
-  max-width: min(1320px, 94%);
+  max-width: 92%;
   display: grid;
   gap: 5px;
 }
 
 .chat-message.assistant,
 .chat-message.system {
-  align-self: flex-start;
-}
-
-.chat-message.assistant.structured {
   width: 100%;
-  max-width: min(1360px, 100%);
-}
-
-.chat-message.assistant:not(.structured) {
-  width: min(1320px, 94%);
+  align-self: flex-start;
+  max-width: 100%;
 }
 
 .chat-message.user {
@@ -1866,7 +1858,7 @@ pre {
 
 .composer {
   grid-row: 4;
-  width: min(1400px, calc(100% - 26px));
+  width: calc(100% - 26px);
   min-height: 66px;
   justify-self: center;
   display: grid;
@@ -2463,29 +2455,6 @@ body.sidebar-collapsed #sidebar-toggle::after {
 
 .control-panel {
   animation-name: pop-in;
-}
-
-@media (min-width: 1500px) {
-  .chat-stream {
-    width: min(1680px, 100%);
-  }
-
-  .chat-message {
-    max-width: min(1580px, 94%);
-  }
-
-  .chat-message.assistant.structured {
-    max-width: min(1620px, 100%);
-  }
-
-  .chat-message.assistant:not(.structured) {
-    width: min(1500px, 94%);
-  }
-
-  .composer {
-    width: min(1680px, calc(100% - 26px));
-  }
-
 }
 
 @media (max-width: 760px) {

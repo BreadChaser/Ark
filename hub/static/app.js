@@ -1567,6 +1567,10 @@ function renderChatCapture(data, session, keepBottom) {
   }
   let previousRole = allMessages[start - 1]?.role || "";
   for (const message of messages) {
+    const rawText = String(message.text || "");
+    const images = messageImages(message, session);
+    const files = (message.attachments || []).filter((attachment) => !isImageAttachment(attachment));
+    if (!rawText.trim() && !images.length && !files.length) continue;
     const card = document.createElement("article");
     card.className = `chat-message ${message.role || "assistant"}${message.pending ? " pending" : ""}`;
     const continued = message.role === previousRole;
@@ -1581,31 +1585,35 @@ function renderChatCapture(data, session, keepBottom) {
       role.title = toolLabel(session?.tool || "assistant");
     }
     role.hidden = continued;
-    const text = document.createElement("div");
-    text.className = "message-text";
-    text.innerHTML = renderMarkdown(message.text);
-    if (text.querySelector("ul, ol, pre, table, h1, h2, h3, blockquote, img")) card.classList.add("structured");
-    for (const link of text.querySelectorAll("a")) {
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-    }
-    for (const image of text.querySelectorAll("img")) {
-      image.classList.add("message-image");
-      image.loading = "lazy";
-      let link = image.closest("a");
-      if (!link) {
-        link = document.createElement("a");
-        link.href = image.src;
+    card.append(role);
+    if (rawText.trim()) {
+      const text = document.createElement("div");
+      text.className = "message-text";
+      text.innerHTML = renderMarkdown(rawText);
+      if (text.querySelector("ul, ol, pre, table, h1, h2, h3, blockquote, img")) card.classList.add("structured");
+      for (const link of text.querySelectorAll("a")) {
+        link.target = "_blank";
         link.rel = "noopener noreferrer";
-        link.title = "Open full image";
-        image.replaceWith(link);
-        link.append(image);
       }
-      link.removeAttribute("target");
-      link.dataset.imageViewer = "";
+      for (const image of text.querySelectorAll("img")) {
+        image.classList.add("message-image");
+        image.loading = "lazy";
+        let link = image.closest("a");
+        if (!link) {
+          link = document.createElement("a");
+          link.href = image.src;
+          link.rel = "noopener noreferrer";
+          link.title = "Open full image";
+          image.replaceWith(link);
+          link.append(image);
+        }
+        link.removeAttribute("target");
+        link.dataset.imageViewer = "";
+      }
+      card.append(text);
+    } else {
+      card.classList.add("structured");
     }
-    card.append(role, text);
-    const images = messageImages(message, session);
     if (images.length) {
       const gallery = document.createElement("div");
       gallery.className = "message-images";
@@ -1616,7 +1624,6 @@ function renderChatCapture(data, session, keepBottom) {
       `).join("");
       card.append(gallery);
     }
-    const files = (message.attachments || []).filter((attachment) => !isImageAttachment(attachment));
     if (files.length) {
       const attachments = document.createElement("div");
       attachments.className = "message-attachments";

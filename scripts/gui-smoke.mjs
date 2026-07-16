@@ -997,6 +997,18 @@ async function testChatLayout() {
   `);
   assert(evidenceColumns.columns > 1 && evidenceColumns.structured, "nested evidence list did not use the available width");
   await shot("evidence-grid");
+  const attachmentOnly = await js(`
+    renderChatCapture({ messages: [
+      { role: "assistant", text: "", attachments: [{ name: "attachment-only.png", filename: "attachment-only.png", type: "image/png" }] },
+      { role: "assistant", text: "" },
+    ] }, { id: "attachment-only-smoke", tool: "codex" }, false);
+    return {
+      cards: document.querySelectorAll(".chat-message").length,
+      emptyText: document.querySelectorAll(".chat-message .message-text").length,
+      images: document.querySelectorAll(".chat-message .message-images img").length,
+    };
+  `);
+  assert(attachmentOnly.cards === 1 && attachmentOnly.emptyText === 0 && attachmentOnly.images === 1, `attachment-only message rendered an empty bubble: ${JSON.stringify(attachmentOnly)}`);
   const updateStack = await js(`
     renderChatCapture({ messages: [
       { role: "assistant", text: "First progress update." },
