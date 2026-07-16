@@ -2166,7 +2166,7 @@ async function readCodexTranscriptNow(session, device, rawText, storedMessages) 
     const offset = Number(session.codex_transcript_offset || 0);
     const resume = offset > 0 && offset <= info.size;
     const stored = (storedMessages || await readSessionMessages(session.id)).map(normalizeMessage);
-    const messages = resume || stored.some((message) => message.source === "codex-rollout") ? stored : [];
+    const messages = resume || stored.some((message) => message.source === "codex-rollout") ? stored.filter((message) => message.source !== "ark") : [];
     cache = {
       path: readablePath,
       offset: resume ? offset : 0,
