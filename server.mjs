@@ -3146,6 +3146,7 @@ function selfCheckCore() {
   if (transcriptLines.lines[0] !== "half line" || transcriptLines.remainder !== "next") throw new Error("Codex transcript chunks lost a line boundary");
   if (submitKeyForSession({ tool: "codex" }, "• Working (2s • esc to interrupt)") !== "Tab") throw new Error("working Codex message was not queued");
   if (submitKeyForSession({ tool: "codex" }, "› Write tests") !== "Enter") throw new Error("ready Codex message was not submitted");
+  if (submitKeyForSession({ tool: "codex" }, "• Working (2s • esc to interrupt)\n\n› Write tests") !== "Enter") throw new Error("stale working output queued a ready Codex message");
   if (submitKeyForSession({ tool: "codex", agent_state: "working" }, "› Write tests") !== "Enter") throw new Error("stale Codex state queued a ready message");
   if (!textSendCommand("Ark-test", "paste", true, "Enter", "codex").includes("sleep 0.15; tmux send-keys")) throw new Error("Codex paste submit did not settle before Enter");
   if (agentStateFromScreen({ tool: "codex" }, "Would you like to run this command?\n1. Yes\n2. No\nPress enter to confirm") !== "needs_input") throw new Error("Codex input state was not detected");
