@@ -496,12 +496,16 @@ async function captureSession(id) {
   if (canUseStoredCodexMessages(session, storedMessages)) return storedCodexCapture(session, storedMessages);
   const device = await tmuxDeviceForSession(session);
   session = await promoteRunningChatSession(device, session);
-  const result = await captureTmux(device, session.tmux_name);
+  // Chat captures use Codex's structured rollout; the full tmux history is only
+  // needed by terminal sessions. The visible pane supplies current controls.
+  const result = session.tool === "codex"
+    ? await captureTmuxScreen(device, session.tmux_name)
+    : await captureTmux(device, session.tmux_name);
   if (result.code !== 0 && isMissingTmux(result.output)) {
     throw Object.assign(new Error("This tmux session is stopped. Use Resume or Restart."), { status: 410 });
   }
   if (result.code !== 0) throw Object.assign(new Error(result.output), { status: 502 });
-  const screen = session.tool === "codex" ? await captureTmuxScreen(device, session.tmux_name) : result;
+  const screen = result;
   const controlText = screen.code === 0 ? screen.output : result.output;
   // Controls must reflect the visible pane, but `/status` is a short-lived Codex
   // panel. Preserve its newest value from scrollback after it has left the screen.
