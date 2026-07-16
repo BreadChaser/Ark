@@ -122,6 +122,7 @@ const els = {
   sessionName: document.querySelector("#session-name"),
   sessionDetail: document.querySelector("#session-detail"),
   sessionStorage: document.querySelector("#session-storage"),
+  topbar: document.querySelector(".topbar"),
   output: document.querySelector("#output"),
   parsed: document.querySelector("#parsed"),
   messageNav: document.querySelector("#message-nav"),
@@ -300,7 +301,7 @@ async function init() {
   els.forget.addEventListener("click", () => deleteSession(false));
   els.kill.addEventListener("click", () => deleteSession(true));
   els.sessionActionsToggle.addEventListener("click", () => {
-    const open = els.sessionPanel.classList.toggle("session-actions-open");
+    const open = els.topbar.classList.toggle("session-actions-open");
     els.sessionActionsToggle.setAttribute("aria-expanded", String(open));
   });
   els.viewParsed.addEventListener("click", () => setView("parsed"));
@@ -1329,7 +1330,7 @@ async function adoptSession(tmux) {
 }
 
 function openSession(sessionId) {
-  els.sessionPanel.classList.remove("session-actions-open");
+  els.topbar.classList.remove("session-actions-open");
   els.sessionActionsToggle.setAttribute("aria-expanded", "false");
   state.quickActionsOpen = false;
   els.quickActions.hidden = true;

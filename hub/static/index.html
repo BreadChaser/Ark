@@ -7,7 +7,7 @@
     <link rel="icon" href="/static/ark-logo.svg?v=3" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
-    <link rel="stylesheet" href="/static/ark-ui.css?v=38" />
+    <link rel="stylesheet" href="/static/ark-ui.css?v=39" />
   </head>
   <body>
     <div class="background-grid" aria-hidden="true"></div>
@@ -50,6 +50,26 @@
             <span id="session-model"></span>
             <span id="session-reasoning"></span>
             <span id="session-speed"></span>
+          </div>
+        </div>
+        <div class="session-toolbar">
+          <div class="session-summary">
+            <span id="session-kind">No session</span>
+            <strong id="session-name">Pick a machine</strong>
+            <small id="session-detail">Open or attach a tmux session.</small>
+            <small id="session-storage"></small>
+          </div>
+          <div class="segmented" hidden>
+            <button id="view-parsed" class="active">Terminal</button>
+            <button id="view-raw">Raw debug</button>
+          </div>
+          <button id="session-actions-toggle" class="session-actions-toggle" type="button" aria-label="More session actions" aria-expanded="false">•••</button>
+          <div class="inline-actions">
+            <button id="restart" disabled>Restart</button>
+            <button id="resume" disabled>Resume</button>
+            <button id="enable-yolo" disabled hidden>YOLO</button>
+            <button id="forget" disabled>Forget</button>
+            <button id="kill" disabled>Kill</button>
           </div>
         </div>
         <div class="top-actions">
@@ -221,26 +241,6 @@
         </section>
 
         <section id="session-panel" class="session-panel">
-          <div class="session-toolbar">
-            <div class="session-summary">
-              <span id="session-kind">No session</span>
-              <strong id="session-name">Pick a machine</strong>
-              <small id="session-detail">Open or attach a tmux session.</small>
-              <small id="session-storage"></small>
-            </div>
-            <div class="segmented" hidden>
-              <button id="view-parsed" class="active">Terminal</button>
-              <button id="view-raw">Raw debug</button>
-            </div>
-            <button id="session-actions-toggle" class="session-actions-toggle" type="button" aria-label="More session actions" aria-expanded="false">•••</button>
-            <div class="inline-actions">
-              <button id="restart" disabled>Restart</button>
-              <button id="resume" disabled>Resume</button>
-              <button id="enable-yolo" disabled hidden>YOLO</button>
-              <button id="forget" disabled>Forget</button>
-              <button id="kill" disabled>Kill</button>
-            </div>
-          </div>
           <div id="parsed" class="parsed-output">
             <div class="empty-session">
               <span>No session open</span>
@@ -302,6 +302,6 @@
     <script src="/vendor/xterm/addon-fit.js"></script>
     <script src="/vendor/marked/marked.js"></script>
     <script src="/vendor/dompurify/purify.js"></script>
-    <script src="/static/app.js?v=41"></script>
+    <script src="/static/app.js?v=42"></script>
   </body>
 </html>

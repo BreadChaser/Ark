@@ -384,6 +384,7 @@ async function assertSelectedSessionChrome() {
       headerHeight: document.querySelector(".topbar").getBoundingClientRect().height,
       titleCenter: Math.round((document.querySelector("#title").getBoundingClientRect().top + document.querySelector("#title").getBoundingClientRect().bottom) / 2),
       metaCenter: Math.round((document.querySelector("#meta").getBoundingClientRect().top + document.querySelector("#meta").getBoundingClientRect().bottom) / 2),
+      toolbarMerged: Boolean(document.querySelector(".topbar > .session-toolbar")) && !document.querySelector("#session-panel > .session-toolbar"),
       machineHeight: Math.max(...[...document.querySelectorAll(".device-toggle")].map((item) => item.getBoundingClientRect().height)),
     };
   `);
@@ -396,6 +397,7 @@ async function assertSelectedSessionChrome() {
   assert(chrome.summaryDisplay === "none", "session identity is repeated inside the session panel");
   assert(!chrome.meta.includes(disposableSession.tmux_name), "top header repeats tmux implementation detail");
   assert(chrome.headerHeight <= 46 && Math.abs(chrome.titleCenter - chrome.metaCenter) <= 2, "session header is not compacted to one row");
+  assert(chrome.toolbarMerged, "session toolbar is still separated from the session header");
   assert(chrome.machineHeight <= 42, `machine rows are still oversized: ${chrome.machineHeight}px`);
 }
 
