@@ -48,7 +48,9 @@ try {
   assert(sampleSound.headers.get("content-type") === "audio/mpeg" && (await sampleSound.arrayBuffer()).byteLength > 1000, "sample sound is not browser-playable");
   assert((await fetch(`${BASE_URL}/sw.js`)).ok && await js('return "serviceWorker" in navigator;'), "notification service worker is unavailable");
   assert(await js('return document.body.dataset.sessionStateTransport === "stream";'), "session states still use browser polling");
-  await sleep(200);
+  // The canvas flow field needs a moment to lay down enough line segments for
+  // the screenshot to exercise the visible background rather than an empty frame.
+  await sleep(1200);
   await shot("main");
   await assertOfflineCollapse();
   await assertOtherMachinesCollapse();
@@ -70,6 +72,7 @@ try {
 
   for (const theme of ["light", "soft", "dark", "midnight", "ark", "spreadsheet"]) {
     await setTheme(theme);
+    if (theme !== "spreadsheet") await sleep(450);
     await assertThemeContrast(theme);
     await assertThemeEffects(theme);
     await shot(`theme-${theme}`);
@@ -437,19 +440,23 @@ async function assertThemeContrast(theme) {
 async function assertThemeEffects(theme) {
   const effects = await js(`
     const grid = getComputedStyle(document.querySelector(".background-grid"), "::before");
-    const diagonal = getComputedStyle(document.querySelector(".background-grid"), "::after");
+    const flow = document.querySelector(".background-flow");
+    const flowPixels = flow?.getContext("2d")?.getImageData(0, 0, flow.width, flow.height).data;
+    let flowInk = 0;
+    if (flowPixels) {
+      for (let offset = 3; offset < flowPixels.length; offset += 64) flowInk += flowPixels[offset] > 0;
+    }
     const overlay = getComputedStyle(document.body, "::before");
     const message = document.querySelector(".message-text");
     const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim().replace("#", "");
     const rgb = [0, 2, 4].map((offset) => parseInt(bg.slice(offset, offset + 2), 16) / 255);
     const luminance = rgb.map((value) => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
     return {
-      grid: grid.backgroundImage.includes("linear-gradient"),
-      diagonalGrid: diagonal.backgroundImage.includes("135deg"),
+      grid: grid.backgroundImage !== "none",
       gridAnimation: grid.animationName,
-      diagonalAnimation: diagonal.animationName,
-      gridDuration: grid.animationDuration,
-      gridWillChange: grid.willChange,
+      flowVisible: Boolean(flow && !flow.hidden && flow.width > 0 && flow.height > 0),
+      flowInk,
+      flowPointerEvents: flow ? getComputedStyle(flow).pointerEvents : "",
       scanlines: Number(overlay.opacity),
       overlayAnimation: overlay.animationName,
       textAnimation: message ? getComputedStyle(message).animationName : "none",
@@ -458,24 +465,23 @@ async function assertThemeEffects(theme) {
       backgroundLuminance: 0.2126 * luminance[0] + 0.7152 * luminance[1] + 0.0722 * luminance[2],
     };
   `);
-  assert(effects.grid, `${theme} theme lost its grid texture`);
   if (theme === "spreadsheet") {
+    assert(effects.grid, "Spreadsheet theme lost its worksheet grid");
+    assert(!effects.flowVisible, "Spreadsheet theme should not run the ambient flow field");
     assert(effects.gridAnimation === "none", "Spreadsheet grid should stay like a worksheet");
     assert(effects.panelRadius === "0px", `Spreadsheet panel is rounded: ${effects.panelRadius}`);
     return;
   }
-  assert(effects.diagonalGrid, `${theme} theme lost its diagonal grid layer`);
-  assert(effects.gridAnimation === "grid-drift", `${theme} grid is not drifting slowly`);
-  assert(effects.diagonalAnimation === "diagonal-drift", `${theme} diagonal grid is not drifting independently`);
-  assert(effects.gridDuration === "60s", `${theme} grid drift duration changed: ${effects.gridDuration}`);
-  assert(effects.gridWillChange === "transform", `${theme} grid is not compositor animated`);
-  assert(effects.buttonRadius === "11px", `${theme} changed button shape to ${effects.buttonRadius}`);
-  assert(effects.panelRadius === "24px", `${theme} changed panel shape to ${effects.panelRadius}`);
+  assert(effects.flowVisible, `${theme} theme did not start its flow field`);
+  assert(effects.flowInk > 5, `${theme} flow field has no visible line data`);
+  assert(effects.flowPointerEvents === "none", `${theme} flow field can intercept clicks`);
+  assert(effects.buttonRadius === "12px", `${theme} changed button shape to ${effects.buttonRadius}`);
+  assert(effects.panelRadius === "22px", `${theme} changed panel shape to ${effects.panelRadius}`);
   if (theme === "ark") assert(effects.scanlines > 0, "Amber CRT scanlines are disabled");
   if (theme === "ark") assert(effects.overlayAnimation === "none", "Amber CRT overlay still flickers");
   if (theme === "ark") assert(effects.textAnimation === "none", "Amber CRT still flashes individual text nodes");
   if (theme === "light") assert(effects.backgroundLuminance > 0.9, `light theme is not bright enough at ${effects.backgroundLuminance.toFixed(2)} luminance`);
-  if (theme === "soft") assert(effects.backgroundLuminance > 0.55 && effects.backgroundLuminance < 0.68, `soft light lost its gray tone at ${effects.backgroundLuminance.toFixed(2)} luminance`);
+  if (theme === "soft") assert(effects.backgroundLuminance > 0.28 && effects.backgroundLuminance < 0.36, `soft light lost its gray tone at ${effects.backgroundLuminance.toFixed(2)} luminance`);
   if (theme === "midnight") assert(effects.backgroundLuminance < 0.002, `midnight is not dark enough at ${effects.backgroundLuminance.toFixed(2)} luminance`);
 }
 

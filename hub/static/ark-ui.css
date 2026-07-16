@@ -31,6 +31,11 @@
   --background-secondary-pattern: linear-gradient(135deg, transparent 49.7%, color-mix(in srgb, var(--grid-line) 72%, transparent) 50%, transparent 50.3%);
   --background-secondary-size: 280px 280px;
   --background-secondary-motion: diagonal-drift 60s linear infinite;
+  --flow-colors: #5ed0c5, #58a8ef, #b8e7df;
+  --flow-opacity: 0.38;
+  --flow-scale: 0.9;
+  --flow-speed: 0.82;
+  --flow-density: 1;
   --scanline-a: transparent;
   --scanline-b: transparent;
   --scanline-opacity: 0;
@@ -84,6 +89,11 @@
   --background-secondary-pattern: none;
   --background-secondary-size: auto;
   --background-secondary-motion: none;
+  --flow-colors: #146f78, #4a84b8, #70b9c0;
+  --flow-opacity: 0.32;
+  --flow-scale: 1.25;
+  --flow-speed: 0.56;
+  --flow-density: 0.8;
   --vignette: rgba(35, 60, 72, 0.08);
 }
 
@@ -96,8 +106,8 @@
   --panel-soft: #a2adaf;
   --panel-raised: #929d9f;
   --text: #172024;
-  --muted: #39464b;
-  --faint: #536065;
+  --muted: #202b30;
+  --faint: #263238;
   --line: rgba(27, 38, 42, 0.28);
   --line-strong: rgba(43, 67, 73, 0.42);
   --accent: #315b63;
@@ -116,6 +126,11 @@
   --background-secondary-pattern: none;
   --background-secondary-size: auto;
   --background-secondary-motion: none;
+  --flow-colors: #315b63, #7a8f92, #547278;
+  --flow-opacity: 0.28;
+  --flow-scale: 1.65;
+  --flow-speed: 0.42;
+  --flow-density: 0.7;
   --vignette: rgba(37, 48, 50, 0.16);
 }
 
@@ -152,6 +167,11 @@
   --background-secondary-pattern: none;
   --background-secondary-size: auto;
   --background-secondary-motion: none;
+  --flow-colors: #9aa8ff, #c28be6, #6ed6bd;
+  --flow-opacity: 0.34;
+  --flow-scale: 0.78;
+  --flow-speed: 0.5;
+  --flow-density: 0.92;
   --vignette: rgba(0, 0, 0, 0.7);
   --terminal-bg: #000000;
   --terminal-fg: #e1e5ff;
@@ -189,6 +209,11 @@
   --background-secondary-pattern: linear-gradient(135deg, transparent 49.7%, color-mix(in srgb, var(--grid-line) 72%, transparent) 50%, transparent 50.3%);
   --background-secondary-size: 280px 280px;
   --background-secondary-motion: diagonal-drift 60s linear infinite;
+  --flow-colors: #ffb02e, #f8df8a, #dd7625;
+  --flow-opacity: 0.34;
+  --flow-scale: 0.96;
+  --flow-speed: 0.9;
+  --flow-density: 1.1;
   --scanline-a: rgba(255, 232, 170, 0.09);
   --scanline-b: rgba(255, 176, 47, 0.05);
   --scanline-opacity: 0.58;
@@ -234,6 +259,7 @@
   --radius-md: 2px;
   --radius-xs: 1px;
   --radius-sm: 2px;
+  --flow-opacity: 0;
   --font: Aptos, Calibri, Arial, sans-serif;
   --mono: "Cascadia Mono", Consolas, monospace;
 }
@@ -291,12 +317,22 @@ body {
   text-shadow: var(--text-glow);
 }
 
+.background-flow,
 .background-grid {
   position: fixed;
-  z-index: -1;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
+}
+
+.background-flow {
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.background-grid {
+  z-index: -1;
 }
 
 .background-grid::before,
@@ -1267,6 +1303,8 @@ pre {
 }
 
 .main {
+  position: relative;
+  z-index: 1;
   width: auto;
   min-height: 100dvh;
   margin-left: calc(var(--sidebar-width) + 24px);

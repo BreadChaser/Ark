@@ -2523,6 +2523,7 @@ function setTheme(theme) {
   document.documentElement.dataset.theme = theme;
   localStorage.setItem(THEME_KEY, theme);
   if (state.terminal) state.terminal.options.theme = terminalTheme();
+  window.dispatchEvent(new Event("ark-theme"));
 }
 
 function toggleSettings(event) {
