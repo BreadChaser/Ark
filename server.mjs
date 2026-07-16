@@ -2162,11 +2162,13 @@ async function readCodexTranscriptNow(session, device, rawText, storedMessages) 
     return null;
   }
   let cache = CODEX_TRANSCRIPTS.get(session.id);
-  if (!cache || info.size < cache.offset) {
+  if (!cache || cache.path !== readablePath || info.size < cache.offset) {
     const offset = Number(session.codex_transcript_offset || 0);
     const resume = offset > 0 && offset <= info.size;
-    const messages = resume ? (storedMessages || await readSessionMessages(session.id)).map(normalizeMessage) : [];
+    const stored = (storedMessages || await readSessionMessages(session.id)).map(normalizeMessage);
+    const messages = resume || stored.some((message) => message.source === "codex-rollout") ? stored : [];
     cache = {
+      path: readablePath,
       offset: resume ? offset : 0,
       remainder: "",
       messages,
@@ -2550,17 +2552,17 @@ async function codexRolloutPath(session, device, rawText) {
   const cached = CODEX_ROLLOUTS.get(session.id);
   if (cached) return cached;
   const home = session.runner_account_home || profileEnv(session.runner_env).CODEX_HOME || path.join(os.homedir(), ".codex");
+  const script = `root=$(tmux display-message -p -t ${q(session.tmux_name)} '#{pane_pid}'); pids="$root"; frontier="$root"; while [ -n "$frontier" ]; do next=""; for p in $frontier; do kids=$(pgrep -P "$p" 2>/dev/null || true); pids="$pids $kids"; next="$next $kids"; done; frontier="$next"; done; for p in $pids; do for fd in /proc/$p/fd/*; do readlink "$fd" 2>/dev/null || true; done; done | grep -m1 '/rollout-.*[.]jsonl$'`;
+  const open = await runOnDevice(device, script, 5000);
+  if (open.code === 0 && open.output.trim()) {
+    return rememberCodexRollout(session, open.output.trim());
+  }
   const sessionId = session.codex_session_id || (stripAnsi(String(rawText || "")).match(/Session:\s*([0-9a-f-]{36})/i) || [])[1];
   if (sessionId) {
     const exact = await runOnDevice(device, `find ${q(path.join(home, "sessions"))} -type f -name ${q(`*${sessionId}*.jsonl`)} -print -quit`, 5000);
     if (exact.code === 0 && exact.output.trim()) {
       return rememberCodexRollout(session, exact.output.trim());
     }
-  }
-  const script = `root=$(tmux display-message -p -t ${q(session.tmux_name)} '#{pane_pid}'); pids="$root"; frontier="$root"; while [ -n "$frontier" ]; do next=""; for p in $frontier; do kids=$(pgrep -P "$p" 2>/dev/null || true); pids="$pids $kids"; next="$next $kids"; done; frontier="$next"; done; for p in $pids; do for fd in /proc/$p/fd/*; do readlink "$fd" 2>/dev/null || true; done; done | grep -m1 '/rollout-.*[.]jsonl$'`;
-  const open = await runOnDevice(device, script, 5000);
-  if (open.code === 0 && open.output.trim()) {
-    return rememberCodexRollout(session, open.output.trim());
   }
   const recent = await runOnDevice(device, `find ${q(path.join(home, "sessions"))} -type f -name 'rollout-*.jsonl' -printf '%T@ %p\\n' 2>/dev/null | sort -nr | head -50`, 5000);
   const expectedCwd = session.central_runner ? DATA : expandHomePath(session.cwd);
