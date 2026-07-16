@@ -1583,7 +1583,7 @@ function renderChatCapture(data, session, keepBottom) {
   const start = Math.max(0, allMessages.length - limit);
   const messages = allMessages.slice(start);
   const hidden = Math.max(0, Number(state.chatHistoryStarts[session?.id] || 0)) + start;
-  const signature = `${hidden}\u0000${messages.map((message) => `${message.id || ""}\u0000${message.role}\u0000${message.pending ? "1" : ""}\u0000${message.text}\u0000${JSON.stringify(message.attachments || [])}`).join("\u0001")}`;
+  const signature = `${hidden}\u0000${messages.map((message) => `${message.id || ""}\u0000${message.role}\u0000${message.pending ? "1" : ""}\u0000${message.tool_status || ""}\u0000${message.text}\u0000${JSON.stringify(message.attachments || [])}`).join("\u0001")}`;
   if (state.renderedChatSignatures[session?.id] === signature && els.parsed.querySelector(":scope > .chat-stream")) {
     if (keepBottom) scrollToBottom(els.parsed);
     updateMessageNav();
@@ -1625,6 +1625,7 @@ function renderChatCapture(data, session, keepBottom) {
 }
 
 function renderChatMessage(message, session, continued = false) {
+  if (message.role === "tool") return renderToolCall(message);
   const rawText = String(message.text || "");
   const images = messageImages(message, session);
   const files = (message.attachments || []).filter((attachment) => !isImageAttachment(attachment));
@@ -1659,6 +1660,27 @@ function renderChatMessage(message, session, continued = false) {
     `).join("");
     card.append(attachments);
   }
+  return card;
+}
+
+function renderToolCall(message) {
+  const status = ["running", "completed", "failed"].includes(message.tool_status) ? message.tool_status : "completed";
+  const card = document.createElement("article");
+  card.className = `chat-tool-call ${status}`;
+  card.setAttribute("aria-label", `${status === "running" ? "Running" : status === "failed" ? "Failed" : "Completed"} tool call`);
+  const icon = document.createElement("span");
+  icon.className = "tool-call-icon";
+  icon.innerHTML = toolIcon("terminal");
+  const copy = document.createElement("span");
+  copy.className = "tool-call-copy";
+  const name = document.createElement("strong");
+  name.textContent = message.tool_name || "tool";
+  const summary = document.createElement("small");
+  summary.textContent = message.text || "";
+  copy.append(name, summary);
+  const state = document.createElement("em");
+  state.textContent = status === "running" ? "Running" : status === "failed" ? "Failed" : "Done";
+  card.append(icon, copy, state);
   return card;
 }
 

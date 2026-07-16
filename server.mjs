@@ -2070,7 +2070,7 @@ function sameUserMessage(left, right) {
 }
 
 function normalizeMessage(message) {
-  return {
+  const normalized = {
     id: message.id || crypto.randomUUID(),
     created_at: message.created_at || new Date().toISOString(),
     role: message.role || "assistant",
@@ -2079,6 +2079,12 @@ function normalizeMessage(message) {
     source: String(message.source || ""),
     phase: String(message.phase || ""),
   };
+  if (normalized.role === "tool") {
+    normalized.tool_name = String(message.tool_name || "tool");
+    normalized.tool_call_id = String(message.tool_call_id || "");
+    normalized.tool_status = String(message.tool_status || "completed");
+  }
+  return normalized;
 }
 
 function mergeChatMessages(parsed, stored) {
@@ -2169,6 +2175,7 @@ async function readCodexTranscriptNow(session, device, rawText, storedMessages) 
       settings: resume ? session.codex_state || null : null,
       usage: resume ? session.codex_usage || null : null,
       taskState: resume && ["working", "ready"].includes(session.agent_state) ? session.agent_state : null,
+      toolCalls: new Map(messages.filter((message) => message.role === "tool" && message.tool_call_id).map((message) => [message.tool_call_id, message])),
     };
     CODEX_TRANSCRIPTS.set(session.id, cache);
   }
@@ -2189,7 +2196,7 @@ async function readCodexTranscriptNow(session, device, rawText, storedMessages) 
       updateCodexSettings(cache, row);
       const imageMessage = await codexTranscriptImageMessage(session, row, cache);
       if (imageMessage) cache.messages.push(imageMessage);
-      const message = codexTranscriptMessage(row, cache.sequence++);
+      const message = codexTranscriptMessage(row, cache.sequence++, cache);
       if (message) cache.messages.push(message);
       if (++parsed % 128 === 0) await yieldToEventLoop();
     }
@@ -2487,8 +2494,30 @@ function cachedCodexTaskState(session) {
   return CODEX_TRANSCRIPTS.get(session.id)?.taskState || null;
 }
 
-function codexTranscriptMessage(row, sequence) {
+function codexTranscriptMessage(row, sequence, cache = null) {
   const payload = row?.payload || {};
+  if (row?.type === "response_item" && ["function_call", "custom_tool_call"].includes(payload.type)) {
+    const callId = String(payload.call_id || payload.id || `tool-${sequence}`);
+    const message = {
+      id: `codex-tool-${crypto.createHash("sha1").update(callId).digest("hex").slice(0, 20)}`,
+      created_at: String(row.timestamp || new Date().toISOString()),
+      role: "tool",
+      text: codexToolCallSummary(payload.name, payload.arguments ?? payload.input),
+      attachments: [],
+      source: "codex-rollout",
+      phase: "tool",
+      tool_name: String(payload.name || "tool"),
+      tool_call_id: callId,
+      tool_status: payload.status === "failed" ? "failed" : payload.status === "completed" ? "completed" : "running",
+    };
+    cache?.toolCalls?.set(callId, message);
+    return message;
+  }
+  if (row?.type === "response_item" && ["function_call_output", "custom_tool_call_output"].includes(payload.type)) {
+    const call = cache?.toolCalls?.get(String(payload.call_id || ""));
+    if (call) call.tool_status = "completed";
+    return null;
+  }
   if (row?.type !== "event_msg" || !["user_message", "agent_message"].includes(payload.type)) return null;
   const text = String(payload.message || "").trim();
   if (!text || /^Ark context target=/i.test(text) || /^<environment_context>/i.test(text)) return null;
@@ -2504,6 +2533,17 @@ function codexTranscriptMessage(row, sequence) {
     source: "codex-rollout",
     phase,
   };
+}
+
+function codexToolCallSummary(name, input) {
+  let value = input;
+  if (typeof value === "string") {
+    try { value = JSON.parse(value); } catch {}
+  }
+  if (value && typeof value === "object") value = value.cmd ?? value.command ?? value.path ?? value.query ?? value.prompt ?? "";
+  return String(value || name || "tool")
+    .replace(/((?:--(?:token|api-key|password)|\b(?:api[_-]?key|token|password|authorization))\s*(?:=|:|\s)\s*)(?:"[^"]*"|'[^']*'|\S+)/gi, "$1[redacted]")
+    .replace(/\s+/g, " ").trim().slice(0, 240) || String(name || "tool");
 }
 
 async function codexRolloutPath(session, device, rawText) {
@@ -3046,7 +3086,10 @@ function selfCheckCore() {
   if (toolImage.length !== 1 || toolImage[0].type !== "image/webp") throw new Error("Codex tool image was not parsed");
   const imageCache = { imageHashes: new Map() };
   if (seenCodexImage(imageCache, "same", 1000) || !seenCodexImage(imageCache, "same", 2000) || seenCodexImage(imageCache, "same", 123000)) throw new Error("Codex image reposts were deduplicated outside one tool event");
-  if (codexTranscriptMessage({ type: "response_item", payload: { type: "function_call" } }, 2)) throw new Error("Codex tool call leaked into chat");
+  const toolCache = { toolCalls: new Map() };
+  const toolCall = codexTranscriptMessage({ type: "response_item", payload: { type: "function_call", call_id: "tool-1", name: "exec", arguments: '{"cmd":"npm run check"}' } }, 2, toolCache);
+  codexTranscriptMessage({ type: "response_item", payload: { type: "function_call_output", call_id: "tool-1" } }, 3, toolCache);
+  if (toolCall?.role !== "tool" || toolCall.text !== "npm run check" || toolCall.tool_status !== "completed") throw new Error("Codex tool call was not tracked");
   const usage = codexUsage({ limit_id: "codex", plan_type: "pro", primary: { used_percent: 15, window_minutes: 10080, resets_at: 123 } });
   if (usage.primary.used_percent !== 15 || usage.secondary || usage.plan_type !== "pro") throw new Error("Codex usage limits were not normalized");
   const statusUsage = codexUsageFromScreen("│ >_ OpenAI Codex\n│ Model: gpt-5.6-sol\n│ Account: tony@example.com (Pro)\n│ Weekly limit: 39% left\n│   (resets 23:02 on 17 Jul)\n│ GPT-5.3-Codex-Spark weekly limit: 81% left", new Date(2026, 6, 12, 4, 0).getTime());

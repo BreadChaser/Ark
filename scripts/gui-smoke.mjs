@@ -1047,6 +1047,17 @@ async function testChatLayout() {
   `);
   assert(updateStack.groups === 1 && updateStack.updates === 3 && updateStack.roleIcons === 1 && updateStack.bubble !== "rgba(0, 0, 0, 0)", `assistant updates did not form a compact group: ${JSON.stringify(updateStack)}`);
   await shot("update-stack");
+  const toolCall = await js(`
+    renderChatCapture({ messages: [
+      { role: "user", text: "Check the build." },
+      { role: "tool", tool_name: "exec", tool_status: "running", text: "npm run check" },
+      { role: "assistant", text: "I am checking it now." },
+    ] }, { id: "tool-call-smoke", tool: "codex" }, false);
+    const row = document.querySelector(".chat-tool-call");
+    return { count: document.querySelectorAll(".chat-tool-call").length, text: row?.innerText || "", running: row?.classList.contains("running") };
+  `);
+  assert(toolCall.count === 1 && toolCall.running && toolCall.text.includes("npm run check") && toolCall.text.includes("Running"), `tool call was not rendered: ${JSON.stringify(toolCall)}`);
+  await shot("tool-call");
   const proofRows = await js(`
     renderChatCapture({ messages: [
       { role: "assistant", text: "Merged the session header.\\n\\nCommit: 45d7122\\n\\nLive now: ARK VM" },
