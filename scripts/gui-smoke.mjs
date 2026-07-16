@@ -139,6 +139,16 @@ try {
   assert(!/\\[[^\\]]+\\]0:[^\\n]*\\*/.test(terminalText), "tmux status bar leaked into the app terminal");
   await assertLiveTerminalLog(disposableSession.id, "keyboard-send-smoke");
   await assertSessionFiles(disposableSession.id, { terminal: true });
+  const restartConfirmations = await js(`
+    const originalConfirm = window.confirm;
+    const prompts = [];
+    window.confirm = (message) => (prompts.push(message), false);
+    document.querySelector("#restart").click();
+    document.querySelector("#resume").click();
+    window.confirm = originalConfirm;
+    return prompts;
+  `);
+  assert(restartConfirmations.length === 2 && restartConfirmations.every((prompt) => /^Restart/.test(prompt)), "restart controls can still run without confirmation");
   await shot("send");
 
   const terminalViewSwitch = await js('return { hidden: document.querySelector("#view-raw").parentElement.hidden, rawHidden: document.querySelector("#output").hidden };');

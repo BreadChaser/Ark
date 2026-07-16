@@ -295,8 +295,8 @@ async function init() {
   els.attachImage.addEventListener("click", () => els.imageInput.click());
   els.imageInput.addEventListener("change", attachImages);
   els.agentControls.addEventListener("click", toggleAgentControls);
-  els.restart.addEventListener("click", () => restartSession(false));
-  els.resume.addEventListener("click", () => restartSession(true));
+  els.restart.addEventListener("click", () => confirmRestart(false));
+  els.resume.addEventListener("click", () => confirmRestart(true));
   els.enableYolo.addEventListener("click", enableYolo);
   els.forget.addEventListener("click", () => deleteSession(false));
   els.kill.addEventListener("click", () => deleteSession(true));
@@ -2149,6 +2149,14 @@ async function restartSession(resume, options = {}) {
     renderMain();
   }
   await Promise.all([refreshTmux(), capture()]);
+}
+
+async function confirmRestart(resume) {
+  const session = activeSession();
+  if (!session) return;
+  const action = resume ? "Restart and resume" : "Restart";
+  if (!confirm(`${action} ${session.tmux_name}?`)) return;
+  await restartSession(resume);
 }
 
 async function enableYolo() {
