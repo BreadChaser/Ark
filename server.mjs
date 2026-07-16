@@ -2199,7 +2199,8 @@ async function readCodexTranscriptNow(session, device, rawText, storedMessages) 
   }
   let cache = CODEX_TRANSCRIPTS.get(session.id);
   if (!cache || cache.path !== readablePath || info.size < cache.offset) {
-    const resume = codexTranscriptCanResume(previousSessionId, filePath, session.codex_transcript_offset, info.size);
+    const offset = Number(session.codex_transcript_offset || 0);
+    const resume = codexTranscriptCanResume(previousSessionId, filePath, offset, info.size);
     const stored = (storedMessages || await readSessionMessages(session.id)).map(normalizeMessage);
     const messages = resume ? stored.filter((message) => message.source !== "ark") : [];
     const complete = Boolean(session.codex_transcript_complete) || codexTranscriptCompleted(stored);
