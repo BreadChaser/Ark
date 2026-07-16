@@ -1009,7 +1009,7 @@ async function testChatLayout() {
     renderChatCapture({ messages: Array.from({ length: 260 }, (_, index) => ({ role: index % 2 ? "assistant" : "user", text: "long chat message " + index })) }, { id: "long-chat-smoke", tool: "opencode" }, false);
     return { cards: document.querySelectorAll(".chat-message").length, more: document.querySelector("[data-show-earlier]")?.textContent || "" };
   `);
-  assert(longChat.cards === 120 && longChat.more.includes("140 hidden"), `long chat was fully rendered: ${JSON.stringify(longChat)}`);
+  assert(longChat.cards === 60 && longChat.more.includes("200 hidden"), `long chat was fully rendered: ${JSON.stringify(longChat)}`);
   const evidenceColumns = await js(`
     renderChatCapture({ messages: [{ role: "assistant", text: "- Validation is green:\\n    - synthetic tests\\n    - network tests\\n    - map probe\\n    - ASan run\\n    - Windows viewer\\n    - structure hygiene" }] }, { id: "evidence-grid-smoke", tool: "codex" }, false);
     return {

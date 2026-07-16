@@ -173,7 +173,7 @@ async function route(req, res) {
   const messagesMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/messages$/);
   if (req.method === "GET" && messagesMatch) {
     const session = await sessionOr404(messagesMatch[1]);
-    return json(res, 200, { messages: await readSessionMessages(session.id) });
+    return json(res, 200, messagePage(await readSessionMessages(session.id), url.searchParams.get("limit"), url.searchParams.get("before")));
   }
   const filesMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/files$/);
   if (req.method === "GET" && filesMatch) {
@@ -2002,6 +2002,15 @@ async function readSessionMessages(id) {
   }
 }
 
+function messagePage(messages, limitValue = null, beforeValue = null) {
+  const total = messages.length;
+  if (limitValue === null) return { messages, total, start: 0 };
+  const limit = clampNumber(limitValue, 1, 120);
+  const end = beforeValue === null ? total : clampNumber(beforeValue, 0, total);
+  const start = Math.max(0, end - limit);
+  return { messages: messages.slice(start, end), total, start };
+}
+
 async function writeSessionEvent(session, message) {
   return withMutation(`messages:${session.id}`, async () => {
     const messages = await readSessionMessages(session.id);
@@ -3086,6 +3095,8 @@ function selfCheckCore() {
   if (!canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "ready" }, [{ text: "done" }])) throw new Error("completed Codex session did not reuse stored messages");
   if (canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "working" }, [{ text: "done" }])) throw new Error("working Codex session skipped transcript updates");
   if (storedCodexCapture({ tool: "codex", agent_state: "ready" }, [{ text: "done" }]).transcript_source !== "stored") throw new Error("completed Codex capture did not bypass tmux");
+  const messagePageProbe = messagePage([0, 1, 2, 3, 4], 2, 4);
+  if (messagePageProbe.start !== 2 || messagePageProbe.total !== 5 || messagePageProbe.messages.join(",") !== "2,3") throw new Error("chat history paging lost the requested window");
   const transcriptProgress = codexTranscriptProgress({ offset: 20, remainder: "tail", sequence: 7 });
   if (transcriptProgress.offset !== 16 || transcriptProgress.sequence !== 7) throw new Error("Codex transcript progress included an incomplete JSON line");
   const transcriptLines = splitCodexTranscriptLines("half", " line\nnext");

@@ -11,7 +11,8 @@ const SOUND_VOLUME_KEY = "ark-sound-volume";
 const SOUND_CHOICE_KEYS = { done: "ark-done-sound", input: "ark-input-sound" };
 const SOUND_VERSION = "7";
 const PASTE_ATTACHMENT_THRESHOLD = 50_000;
-const CHAT_RENDER_LIMIT = 120;
+const CHAT_FETCH_LIMIT = 60;
+const CHAT_RENDER_LIMIT = 60;
 let attachmentUploadSequence = 0;
 const SOUND_CHOICES = {
   done: [
@@ -57,6 +58,9 @@ const state = {
   chatMessages: {},
   loadedChatSessions: new Set(),
   chatRenderLimits: {},
+  chatHistoryStarts: {},
+  chatLoading: new Set(),
+  renderedChatSignatures: {},
   sentChat: {},
   sessionStates: {},
   sessionStatesLoading: false,
@@ -425,12 +429,14 @@ function applySessionStates(states) {
     const session = state.sessions.find((entry) => entry.id === item.id);
     if (!session) continue;
     const completed = Number(item.ready_at || 0) > Number(session.ready_at || 0);
+    session.agent_state = item.state;
     session.pending_control = item.pending_control || null;
     session.ready_at = Math.max(Number(item.ready_at || 0), Number(session.ready_at || 0));
     session.viewed_at = Math.max(Number(item.viewed_at || 0), Number(session.viewed_at || 0));
     session.usage_limited_until = Number(item.usage_limited_until || 0);
     playAgentTransition(previous[item.id], item.state, completed);
     if (item.id === state.activeSessionId && sessionIsDone(session, item.state)) markSessionViewed(session);
+    if (item.id === state.activeSessionId && item.state !== "ready" && !state.captureSource && !sessionIsStopped(session)) startPolling();
   }
   renderSidebar();
 }
@@ -863,6 +869,10 @@ function renderMain() {
     if (stopped) {
       stopPolling();
       stopTerminalStream();
+    } else if (isCompletedCodexChat(session)) {
+      stopPolling();
+      stopTerminalStream();
+      setStatus("Connected");
     } else {
       startPolling();
     }
@@ -918,6 +928,10 @@ function sessionIsStopped(session) {
   return Array.isArray(sessions)
     && !state.tmuxErrors[deviceId]
     && !sessions.some((tmux) => tmux.name === session.tmux_name);
+}
+
+function isCompletedCodexChat(session) {
+  return session?.tool === "codex" && session.agent_state === "ready" && !session.pending_control;
 }
 
 function renderDirs() {
@@ -1347,7 +1361,7 @@ function openSession(sessionId) {
   state.activeSessionId = sessionId;
   state.forceBottomSessionId = sessionId;
   bindComposerToSession(sessionId);
-  state.lastCapture = state.captures[sessionId] || null;
+  state.lastCapture = isCompletedCodexChat(session) ? null : state.captures[sessionId] || null;
   state.adding = false;
   localStorage.setItem(ACTIVE_SESSION_KEY, sessionId);
   localStorage.setItem(ACTIVE_DEVICE_KEY, state.activeDeviceId);
@@ -1434,13 +1448,17 @@ async function capture() {
 function applyCapture(sessionId, data) {
   const session = state.sessions.find((item) => item.id === sessionId);
   if (!session || activeSession()?.id !== sessionId) return;
-  if (data.mode === "chat") state.chatMessages[session.id] = data.messages || [];
+  if (data.mode === "chat" && Array.isArray(data.messages)) {
+    state.chatMessages[session.id] = data.messages;
+    state.chatHistoryStarts[session.id] = 0;
+  }
   const nextAgentState = Number(data.usage_limited_until || 0) > Math.floor(Date.now() / 1000) ? "usage" : data.pending_control ? "needs_input" : data.agent_state;
   const stateChanged = nextAgentState && state.sessionStates[session.id] !== nextAgentState;
   const pendingChanged = session.pending_control?.id !== data.pending_control?.id;
   if (nextAgentState) {
     playAgentTransition(state.sessionStates[session.id], nextAgentState);
     state.sessionStates[session.id] = nextAgentState;
+    session.agent_state = nextAgentState;
   }
   session.pending_control = data.pending_control || null;
   if (data.codex_state?.model) session.codex_state = data.codex_state;
@@ -1509,6 +1527,12 @@ function renderCapture() {
     renderChatCapture({ messages: storedMessages }, session, keepParsedBottom);
     return;
   }
+  if (!data && mode === "chat" && state.chatLoading.has(session?.id)) {
+    hideMessageNav();
+    els.output.textContent = "Loading recent messages…";
+    els.parsed.innerHTML = '<div class="surface-empty">Loading recent messages…</div>';
+    return;
+  }
   if (!data) {
     hideMessageNav();
     els.output.textContent = "No session selected.";
@@ -1558,12 +1582,20 @@ function renderChatCapture(data, session, keepBottom) {
   const limit = Math.max(CHAT_RENDER_LIMIT, Number(state.chatRenderLimits[session?.id]) || CHAT_RENDER_LIMIT);
   const start = Math.max(0, allMessages.length - limit);
   const messages = allMessages.slice(start);
-  if (start) {
+  const hidden = Math.max(0, Number(state.chatHistoryStarts[session?.id] || 0)) + start;
+  const signature = `${hidden}\u0000${messages.map((message) => `${message.id || ""}\u0000${message.role}\u0000${message.pending ? "1" : ""}\u0000${message.text}\u0000${JSON.stringify(message.attachments || [])}`).join("\u0001")}`;
+  if (state.renderedChatSignatures[session?.id] === signature && els.parsed.querySelector(":scope > .chat-stream")) {
+    if (keepBottom) scrollToBottom(els.parsed);
+    updateMessageNav();
+    return;
+  }
+  state.renderedChatSignatures[session?.id] = signature;
+  if (hidden) {
     const earlier = document.createElement("button");
     earlier.type = "button";
     earlier.className = "chat-history-more";
     earlier.dataset.showEarlier = "";
-    earlier.textContent = `Show ${Math.min(CHAT_RENDER_LIMIT, start)} earlier messages (${start} hidden)`;
+    earlier.textContent = `Show ${Math.min(CHAT_FETCH_LIMIT, hidden)} earlier messages (${hidden} hidden)`;
     stream.append(earlier);
   }
   let previousRole = allMessages[start - 1]?.role || "";
@@ -1821,6 +1853,8 @@ async function sendInput() {
       state.sentChat[session.id] = (state.sentChat[session.id] || []).filter((message) => message.id !== pendingId);
       if (sent.message) state.chatMessages[session.id] = mergeLocalChatMessages(state.chatMessages[session.id] || [], [sent.message]);
       renderCapture();
+      session.agent_state = "working";
+      startPolling();
     }
     await capture();
     if (sent.queued) setStatus("Queued for Codex");
@@ -1988,23 +2022,38 @@ function closeControlSheet() {
 async function loadChatMessages(session, force = false) {
   if (!session || session.tool === "terminal" || (!force && state.loadedChatSessions.has(session.id))) return;
   state.loadedChatSessions.add(session.id);
+  state.chatLoading.add(session.id);
   try {
-    const data = await api(`/api/sessions/${session.id}/messages`);
+    const data = await api(`/api/sessions/${session.id}/messages?limit=${CHAT_FETCH_LIMIT}`);
     state.chatMessages[session.id] = data.messages || [];
+    state.chatHistoryStarts[session.id] = Math.max(0, Number(data.start) || 0);
     if (activeSession()?.id === session.id) {
       state.forceBottomSessionId = session.id;
       renderCapture();
     }
   } catch {
     state.loadedChatSessions.delete(session.id);
+  } finally {
+    state.chatLoading.delete(session.id);
   }
 }
 
-function showEarlierChatMessages(event) {
+async function showEarlierChatMessages(event) {
   if (!event.target.closest("[data-show-earlier]")) return;
   const session = activeSession();
   if (!session) return;
-  state.chatRenderLimits[session.id] = Math.max(CHAT_RENDER_LIMIT, Number(state.chatRenderLimits[session.id]) || CHAT_RENDER_LIMIT) + CHAT_RENDER_LIMIT;
+  const start = Math.max(0, Number(state.chatHistoryStarts[session.id]) || 0);
+  if (start) {
+    try {
+      const data = await api(`/api/sessions/${session.id}/messages?limit=${CHAT_FETCH_LIMIT}&before=${start}`);
+      state.chatMessages[session.id] = mergeLocalChatMessages(data.messages || [], state.chatMessages[session.id] || []);
+      state.chatHistoryStarts[session.id] = Math.max(0, Number(data.start) || 0);
+    } catch (error) {
+      showError(error.message);
+      return;
+    }
+  }
+  state.chatRenderLimits[session.id] = Math.max(CHAT_RENDER_LIMIT, Number(state.chatRenderLimits[session.id]) || CHAT_RENDER_LIMIT) + CHAT_FETCH_LIMIT;
   renderCapture();
 }
 
