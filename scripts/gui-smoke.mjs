@@ -457,6 +457,7 @@ async function assertThemeEffects(theme) {
       flowVisible: Boolean(flow && !flow.hidden && flow.width > 0 && flow.height > 0),
       flowInk,
       flowPointerEvents: flow ? getComputedStyle(flow).pointerEvents : "",
+      scene: getComputedStyle(document.documentElement).getPropertyValue("--flow-scene").trim(),
       scanlines: Number(overlay.opacity),
       overlayAnimation: overlay.animationName,
       textAnimation: message ? getComputedStyle(message).animationName : "none",
@@ -482,6 +483,8 @@ async function assertThemeEffects(theme) {
   if (theme === "ark") assert(effects.textAnimation === "none", "Amber CRT still flashes individual text nodes");
   if (theme === "light") assert(effects.backgroundLuminance > 0.9, `light theme is not bright enough at ${effects.backgroundLuminance.toFixed(2)} luminance`);
   if (theme === "soft") assert(effects.backgroundLuminance > 0.28 && effects.backgroundLuminance < 0.36, `soft light lost its gray tone at ${effects.backgroundLuminance.toFixed(2)} luminance`);
+  if (theme === "dark") assert(effects.scene === "contours", "Dusk theme lost its contour scene");
+  if (theme === "midnight") assert(effects.scene === "stars", "Midnight theme lost its star scene");
   if (theme === "midnight") assert(effects.backgroundLuminance < 0.002, `midnight is not dark enough at ${effects.backgroundLuminance.toFixed(2)} luminance`);
 }
 
