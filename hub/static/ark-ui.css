@@ -20,6 +20,15 @@
   --done: #65d991;
   --shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
   --grid-line: rgba(121, 183, 193, 0.08);
+  --background-ambient:
+    radial-gradient(ellipse at 12% -10%, rgba(49, 153, 180, 0.18), transparent 38rem),
+    radial-gradient(ellipse at 98% 110%, rgba(79, 126, 180, 0.11), transparent 36rem);
+  --background-primary-pattern: repeating-radial-gradient(ellipse at 14% 42%, transparent 0 42px, rgba(121, 183, 193, 0.075) 43px 44px);
+  --background-primary-size: auto;
+  --background-primary-motion: topography-drift 86s linear infinite;
+  --background-secondary-pattern: linear-gradient(120deg, transparent 49.75%, rgba(121, 183, 193, 0.075) 50%, transparent 50.25%);
+  --background-secondary-size: 240px 240px;
+  --background-secondary-motion: diagonal-drift 72s linear infinite;
   --scanline-a: transparent;
   --scanline-b: transparent;
   --scanline-opacity: 0;
@@ -64,6 +73,17 @@
   --done: #287247;
   --shadow: 0 24px 70px rgba(29, 53, 65, 0.14);
   --grid-line: rgba(36, 75, 89, 0.065);
+  --background-ambient:
+    radial-gradient(ellipse at 8% 0%, rgba(62, 172, 188, 0.17), transparent 34rem),
+    radial-gradient(ellipse at 94% 92%, rgba(79, 128, 204, 0.12), transparent 34rem);
+  --background-primary-pattern:
+    linear-gradient(90deg, rgba(45, 104, 132, 0.065) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(45, 104, 132, 0.04) 1px, transparent 1px);
+  --background-primary-size: 96px 96px, 24px 24px;
+  --background-primary-motion: drafting-drift 96s linear infinite;
+  --background-secondary-pattern: linear-gradient(135deg, transparent 49.8%, rgba(45, 104, 132, 0.08) 50%, transparent 50.2%);
+  --background-secondary-size: 192px 192px;
+  --background-secondary-motion: diagonal-drift 88s linear infinite;
   --vignette: rgba(35, 60, 72, 0.08);
 }
 
@@ -89,6 +109,15 @@
   --done: #3d7151;
   --shadow: 0 24px 70px rgba(42, 52, 58, 0.19);
   --grid-line: rgba(47, 65, 73, 0.09);
+  --background-ambient:
+    radial-gradient(ellipse at 15% 8%, rgba(132, 166, 179, 0.32), transparent 36rem),
+    radial-gradient(ellipse at 90% 88%, rgba(101, 128, 139, 0.22), transparent 38rem);
+  --background-primary-pattern: repeating-radial-gradient(ellipse at 72% 32%, transparent 0 58px, rgba(69, 94, 105, 0.095) 59px 60px);
+  --background-primary-size: auto;
+  --background-primary-motion: fog-drift 112s linear infinite;
+  --background-secondary-pattern: linear-gradient(150deg, transparent 49.8%, rgba(72, 98, 109, 0.055) 50%, transparent 50.2%);
+  --background-secondary-size: 360px 360px;
+  --background-secondary-motion: diagonal-drift 108s linear infinite;
   --vignette: rgba(37, 48, 55, 0.11);
 }
 
@@ -114,6 +143,17 @@
   --done: #78d4a4;
   --shadow: 0 24px 70px rgba(0, 0, 0, 0.72);
   --grid-line: rgba(127, 139, 205, 0.045);
+  --background-ambient:
+    radial-gradient(ellipse at 18% 14%, rgba(71, 81, 159, 0.2), transparent 32rem),
+    radial-gradient(ellipse at 88% 88%, rgba(105, 51, 128, 0.13), transparent 42rem);
+  --background-primary-pattern:
+    radial-gradient(circle, rgba(180, 190, 255, 0.34) 0 1px, transparent 1.5px),
+    radial-gradient(circle, rgba(154, 168, 255, 0.22) 0 1px, transparent 1.5px);
+  --background-primary-size: 109px 109px, 173px 173px;
+  --background-primary-motion: star-drift 128s linear infinite;
+  --background-secondary-pattern: radial-gradient(ellipse at 50% 50%, transparent 0 58%, rgba(142, 154, 255, 0.12) 59% 59.4%, transparent 60%);
+  --background-secondary-size: 680px 680px;
+  --background-secondary-motion: orbit-drift 150s linear infinite;
   --vignette: rgba(0, 0, 0, 0.7);
   --terminal-bg: #000000;
   --terminal-fg: #e1e5ff;
@@ -143,6 +183,12 @@
   --done: #8fd45d;
   --shadow: 0 0 0 1px rgba(255, 176, 47, 0.08), 0 18px 48px rgba(0, 0, 0, 0.72);
   --grid-line: rgba(255, 176, 47, 0.085);
+  --background-primary-pattern: repeating-radial-gradient(circle at 50% 54%, transparent 0 72px, rgba(255, 176, 47, 0.12) 73px 74px);
+  --background-primary-size: auto;
+  --background-primary-motion: radar-drift 94s linear infinite;
+  --background-secondary-pattern: linear-gradient(121deg, transparent 49.8%, rgba(255, 176, 47, 0.13) 50%, transparent 50.2%);
+  --background-secondary-size: 320px 320px;
+  --background-secondary-motion: diagonal-drift 70s linear infinite;
   --scanline-a: rgba(255, 232, 170, 0.09);
   --scanline-b: rgba(255, 176, 47, 0.05);
   --scanline-opacity: 0.58;
@@ -240,10 +286,7 @@ body {
   min-width: 320px;
   overflow: hidden;
   color: var(--text);
-  background:
-    radial-gradient(circle at 12% -10%, var(--bg-glow), transparent 38rem),
-    radial-gradient(circle at 98% 110%, rgba(79, 126, 180, 0.09), transparent 36rem),
-    var(--bg);
+  background: var(--background-ambient), var(--bg);
   font: 500 14px/1.45 var(--font);
   text-shadow: var(--text-glow);
 }
@@ -266,18 +309,16 @@ body {
 
 .background-grid::before {
   inset: -96px;
-  background:
-    linear-gradient(90deg, var(--grid-line) 1.5px, transparent 1.5px),
-    linear-gradient(0deg, var(--grid-line) 1.5px, transparent 1.5px);
-  background-size: 32px 32px;
-  animation: grid-drift 60s linear infinite;
+  background: var(--background-primary-pattern);
+  background-size: var(--background-primary-size);
+  animation: var(--background-primary-motion);
 }
 
 .background-grid::after {
   inset: -280px;
-  background: linear-gradient(135deg, transparent 49.7%, color-mix(in srgb, var(--grid-line) 72%, transparent) 50%, transparent 50.3%);
-  background-size: 280px 280px;
-  animation: diagonal-drift 60s linear infinite;
+  background: var(--background-secondary-pattern);
+  background-size: var(--background-secondary-size);
+  animation: var(--background-secondary-motion);
 }
 
 :root[data-theme="spreadsheet"] body {
@@ -604,6 +645,36 @@ body::after {
 @keyframes grid-drift {
   from { transform: translate3d(-96px, -96px, 0); }
   to { transform: translate3d(0, 0, 0); }
+}
+
+@keyframes topography-drift {
+  from { transform: translate3d(-130px, -56px, 0) rotate(-1deg); }
+  to { transform: translate3d(34px, 58px, 0) rotate(-1deg); }
+}
+
+@keyframes drafting-drift {
+  from { transform: translate3d(-96px, -96px, 0); }
+  to { transform: translate3d(0, 0, 0); }
+}
+
+@keyframes fog-drift {
+  from { transform: translate3d(-112px, 48px, 0) scale(1.04); }
+  to { transform: translate3d(84px, -52px, 0) scale(1.04); }
+}
+
+@keyframes star-drift {
+  from { transform: translate3d(-128px, 68px, 0); }
+  to { transform: translate3d(92px, -44px, 0); }
+}
+
+@keyframes orbit-drift {
+  from { transform: translate3d(160px, -100px, 0) rotate(0deg); }
+  to { transform: translate3d(-120px, 90px, 0) rotate(8deg); }
+}
+
+@keyframes radar-drift {
+  from { transform: translate3d(-88px, 54px, 0) scale(1.04); }
+  to { transform: translate3d(76px, -64px, 0) scale(1.04); }
 }
 
 @keyframes diagonal-drift {
