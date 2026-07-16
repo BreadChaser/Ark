@@ -33,6 +33,7 @@ for (const [name, expected] of Object.entries(cases)) {
   }
   if (expected.fields) assert.deepEqual(controls[0].fields.map((field) => field.label), expected.fields, `${name} fields`);
   if (name === "approval.txt") assert.match(controls[0].prompt, /Command: npm run check\nReason: Verify Ark/, `${name} request context`);
+  if (name === "codex-update.txt") assert.match(controls[0].prompt, /Update available!/, `${name} prompt`);
 }
 
 assert.deepEqual(
