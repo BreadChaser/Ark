@@ -1053,9 +1053,20 @@ async function testChatLayout() {
       { role: "assistant", phase: "final_answer", text: "Finished." },
     ] }, { id: "final-answer-smoke", tool: "codex" }, false);
     const card = document.querySelector(".chat-message.final-answer");
-    return { cards: document.querySelectorAll(".chat-message").length, final: Boolean(card), background: card && getComputedStyle(card).backgroundColor };
+    return { cards: document.querySelectorAll(".chat-message").length, final: Boolean(card), background: card && getComputedStyle(card).backgroundColor, narrow: card && card.offsetWidth < document.querySelector(".chat-stream").clientWidth };
   `);
-  assert(finalAnswer.cards === 2 && finalAnswer.final && finalAnswer.background !== "rgba(0, 0, 0, 0)", `final answer was not separated from progress updates: ${JSON.stringify(finalAnswer)}`);
+  assert(finalAnswer.cards === 2 && finalAnswer.final && finalAnswer.narrow && finalAnswer.background !== "rgba(0, 0, 0, 0)", `final answer was not separated from progress updates: ${JSON.stringify(finalAnswer)}`);
+  const chatSwitch = await js(`
+    const first = { id: "chat-switch-first", tool: "codex" };
+    const second = { id: "chat-switch-second", tool: "codex" };
+    renderChatCapture({ messages: [{ role: "assistant", text: "First chat only." }] }, first, false);
+    renderChatCapture({ messages: [{ role: "assistant", text: "Second chat only." }] }, second, false);
+    renderChatCapture({ messages: [{ role: "assistant", text: "First chat only." }] }, first, false);
+    renderChatCapture({ messages: [{ role: "assistant", text: "Second chat only." }] }, second, false);
+    const stream = document.querySelector(".chat-stream");
+    return { session: stream?.dataset.sessionId, text: stream?.innerText || "" };
+  `);
+  assert(chatSwitch.session === "chat-switch-second" && chatSwitch.text.includes("Second chat only.") && !chatSwitch.text.includes("First chat only."), `switching chats kept the old DOM: ${JSON.stringify(chatSwitch)}`);
   const toolCall = await js(`
     renderChatCapture({ messages: [
       { role: "user", text: "Check the build." },

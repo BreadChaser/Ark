@@ -1581,7 +1581,8 @@ function renderChatCapture(data, session, keepBottom) {
   const messages = allMessages.slice(start);
   const hidden = Math.max(0, Number(state.chatHistoryStarts[session?.id] || 0)) + start;
   const signature = `${hidden}\u0000${messages.map((message) => `${message.id || ""}\u0000${message.role}\u0000${message.phase || ""}\u0000${message.pending ? "1" : ""}\u0000${message.tool_status || ""}\u0000${message.tool_detail || ""}\u0000${message.text}\u0000${JSON.stringify(message.attachments || [])}`).join("\u0001")}`;
-  if (state.renderedChatSignatures[session?.id] === signature && els.parsed.querySelector(":scope > .chat-stream")) {
+  const currentStream = els.parsed.querySelector(":scope > .chat-stream");
+  if (state.renderedChatSignatures[session?.id] === signature && currentStream?.dataset.sessionId === session?.id) {
     if (keepBottom) scrollToBottom(els.parsed);
     updateMessageNav();
     return;
@@ -1592,6 +1593,7 @@ function renderChatCapture(data, session, keepBottom) {
   els.parsed.innerHTML = "";
   const stream = document.createElement("div");
   stream.className = "chat-stream";
+  stream.dataset.sessionId = session?.id || "";
   if (hidden) {
     const earlier = document.createElement("button");
     earlier.type = "button";
