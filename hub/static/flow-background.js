@@ -49,7 +49,7 @@
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     const count = mobile.matches ? 46 : Math.max(108, Math.min(152, Math.round(width * height / 15000)));
     particles = Array.from({ length: Math.round(count * density) }, seed);
-    const trailCount = mobile.matches ? 4 : 6;
+    const trailCount = mobile.matches ? 3 : 4;
     contourTrails = Array.from({ length: trailCount }, (_, index) => seedContourTrail(index, trailCount));
   }
 
@@ -64,56 +64,68 @@
   function seedContourTrail(index, count) {
     return {
       level: count > 1 ? index / (count - 1) : 0.5,
-      phase: Math.random() * Math.PI * 2,
     };
   }
 
-  function ridge(position, trail, time) {
+  function ridge(position, time) {
     const peak = (center, span, weight) => {
       const value = Math.max(0, 1 - Math.abs(position - center) / span);
       return value * (0.34 + value * 0.66) * weight;
     };
-    const shape = Math.floor(time * 0.1 + 0.42) * 31;
+    const shape = Math.floor(time * 0.08 + 0.42) * 31;
     const mountain = (offset, start, span) => peak(
       start + random(shape + offset) * span,
       0.04 + random(shape + offset + 0.5) * 0.11,
       0.3 + random(shape + offset + 1) * 0.72,
     );
-    const detail = Math.sin(position * 31 + trail.phase) * 0.01 + Math.sin(position * 63 - trail.phase) * 0.005;
+    const detail = Math.sin(position * 31) * 0.008 + Math.sin(position * 63) * 0.004;
     return mountain(1, 0.08, 0.16) + mountain(3, 0.28, 0.18)
       + mountain(5, 0.48, 0.17) + mountain(7, 0.7, 0.18) + detail;
   }
 
   function drawContours(time) {
-    context.save();
-    context.globalCompositeOperation = "destination-out";
-    context.globalAlpha = mobile.matches ? 0.018 : 0.014;
-    context.fillRect(0, 0, width, height);
-    context.restore();
+    context.clearRect(0, 0, width, height);
     context.save();
     context.lineCap = "round";
     context.lineJoin = "round";
     context.lineWidth = mobile.matches ? 0.7 : 0.9;
     context.shadowBlur = mobile.matches ? 0 : 5;
     const step = mobile.matches ? 10 : 7;
-    const head = ((time * 0.1 + 0.42) % 1) * width;
-    const tail = Math.max(0, head - width * 0.1);
+    const head = ((time * 0.08 + 0.42) % 1) * width;
+    const tail = Math.max(0, head - width * 0.52);
+    const span = head - tail;
+    const slices = 8;
     for (const trail of contourTrails) {
-      const baseline = height * (0.68 + trail.level * 0.24);
-      const depth = height * (0.23 - trail.level * 0.1);
+      const baseline = height * 0.67 + trail.level * height * 0.26;
+      const depth = height * 0.2;
       context.beginPath();
-      for (let x = tail; x <= head + step; x += step) {
+      for (let x = 0; x <= width + step; x += step) {
         const position = x / width;
-        const texture = Math.sin(position * 18 + trail.phase) * (0.9 + trail.level)
-          + Math.sin(position * 49 - trail.phase) * 0.6;
-        const y = baseline - ridge(position, trail, time) * depth + texture;
-        if (x === tail) context.moveTo(x, y);
+        const texture = Math.sin(position * 18) * 0.8 + Math.sin(position * 49) * 0.4;
+        const y = baseline - ridge(position, time) * depth + texture;
+        if (x === 0) context.moveTo(x, y);
         else context.lineTo(x, y);
       }
       context.strokeStyle = trail.level > 0.64 ? sceneSecondary : scenePrimary;
       context.shadowColor = context.strokeStyle;
-      context.globalAlpha = 0.2 - trail.level * 0.07;
+      context.globalAlpha = 0.035;
       context.stroke();
+      for (let slice = 0; slice < slices; slice += 1) {
+        const start = tail + span * slice / slices;
+        const end = tail + span * (slice + 1) / slices;
+        context.beginPath();
+        for (let x = start; x <= end + step; x += step) {
+          const position = x / width;
+          const texture = Math.sin(position * 18) * 0.8 + Math.sin(position * 49) * 0.4;
+          const y = baseline - ridge(position, time) * depth + texture;
+          if (x === start) context.moveTo(x, y);
+          else context.lineTo(x, y);
+        }
+        context.strokeStyle = trail.level > 0.64 ? sceneSecondary : scenePrimary;
+        context.shadowColor = context.strokeStyle;
+        context.globalAlpha = (slice + 1) / slices * (0.42 - trail.level * 0.12);
+        context.stroke();
+      }
     }
 
     const stars = mobile.matches ? 7 : 18;
@@ -123,7 +135,7 @@
       const pulse = Math.max(0, Math.sin(time * (0.8 + random(index + 1009)) + random(index + 1103) * Math.PI * 2));
       const bright = index % 6 === 0 && pulse > 0.74;
       context.fillStyle = index % 4 === 0 ? sceneSecondary : scenePrimary;
-      context.globalAlpha = 0.02 + pulse * 0.045;
+      context.globalAlpha = 0.1 + pulse * 0.2;
       context.beginPath();
       context.arc(x, y, bright ? 1.25 : 0.72, 0, Math.PI * 2);
       context.fill();
