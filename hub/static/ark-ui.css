@@ -31,9 +31,13 @@
   --terminal-selection: rgba(94, 208, 197, 0.28);
   --sidebar-width: 264px;
   --rail-width: 58px;
-  --radius-xl: 24px;
-  --radius-lg: 18px;
-  --radius-md: 13px;
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-card: var(--radius-md);
+  --radius-panel: var(--radius-xl);
   --font: "Avenir Next", "Century Gothic", "Trebuchet MS", sans-serif;
   --mono: "Cascadia Code", "SFMono-Regular", "Liberation Mono", monospace;
 }
@@ -182,6 +186,8 @@
   --radius-xl: 0;
   --radius-lg: 2px;
   --radius-md: 2px;
+  --radius-xs: 1px;
+  --radius-sm: 2px;
   --font: Aptos, Calibri, Arial, sans-serif;
   --mono: "Cascadia Mono", Consolas, monospace;
 }
@@ -640,7 +646,7 @@ textarea {
 button {
   min-height: 36px;
   padding: 7px 12px;
-  border-radius: 11px;
+  border-radius: var(--radius-md);
   background: var(--panel-soft);
   cursor: pointer;
   transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
@@ -685,7 +691,7 @@ textarea {
   width: 100%;
   min-height: 40px;
   padding: 9px 11px;
-  border-radius: 11px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--panel-solid) 78%, transparent);
 }
 
@@ -772,7 +778,7 @@ pre {
   margin: 0 10px 10px;
   padding: 10px;
   border: 1px solid var(--line);
-  border-radius: 13px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--panel-soft) 78%, transparent);
 }
 
@@ -856,7 +862,7 @@ pre {
   margin-top: 8px;
   padding: 6px 8px;
   border: 1px solid color-mix(in srgb, var(--warning) 38%, transparent);
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
   color: var(--warning);
   background: color-mix(in srgb, var(--warning) 8%, transparent);
   font-size: 9px;
@@ -866,7 +872,7 @@ pre {
   margin: 3px 10px 5px;
   padding: 8px;
   border: 1px solid color-mix(in srgb, var(--warning) 42%, transparent);
-  border-radius: 13px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--warning) 9%, transparent);
 }
 
@@ -953,7 +959,7 @@ pre {
   height: 24px;
   display: grid;
   place-items: center;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   color: var(--accent);
   background: var(--panel-raised);
   font-size: 11px;
@@ -1344,7 +1350,7 @@ pre {
   padding: 14px;
   overflow: auto;
   border: 1px solid var(--line-strong);
-  border-radius: 21px;
+  border-radius: var(--radius-lg);
   background: var(--panel-solid);
   box-shadow: var(--shadow);
   animation: pop-in 160ms ease both;
@@ -1474,7 +1480,7 @@ pre {
   max-width: min(620px, calc(100vw - 30px));
   padding: 10px 14px;
   border: 1px solid color-mix(in srgb, var(--danger) 55%, transparent);
-  border-radius: 13px;
+  border-radius: var(--radius-md);
   color: #fff3f3;
   background: color-mix(in srgb, var(--danger) 28%, var(--panel-solid));
   box-shadow: var(--shadow);
@@ -1550,7 +1556,7 @@ pre {
   display: flex;
   gap: 2px;
   padding: 3px;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: var(--panel-soft);
 }
 
@@ -1725,7 +1731,7 @@ pre {
 
 .message-text {
   padding: 13px 16px;
-  border-radius: 18px;
+  border-radius: var(--radius-lg);
   color: var(--text);
   background: var(--panel-soft);
   white-space: normal;
@@ -1820,7 +1826,7 @@ pre {
 
 .message-text code {
   padding: 0.12em 0.38em;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   color: color-mix(in srgb, var(--accent) 82%, var(--text));
   background: var(--panel-raised);
   font: 0.88em/1.5 var(--mono);
@@ -1832,7 +1838,7 @@ pre {
   padding: 13px 14px;
   overflow: auto;
   border: 1px solid var(--line);
-  border-radius: 13px;
+  border-radius: var(--radius-md);
   color: var(--terminal-fg);
   background: var(--terminal-bg);
 }
@@ -1859,7 +1865,7 @@ pre {
 
 .chat-message.assistant:not(.structured) .message-text {
   padding: 13px 16px;
-  border-bottom-left-radius: 6px;
+  border-bottom-left-radius: var(--radius-xs);
   background: var(--panel-soft);
 }
 
@@ -1870,7 +1876,7 @@ pre {
   padding: 12px 16px;
   border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
   border-left: 3px solid var(--accent);
-  border-radius: 18px 18px 18px 6px;
+  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-lg) var(--radius-xs);
   background: color-mix(in srgb, var(--panel-soft) 82%, var(--accent));
 }
 
@@ -1890,7 +1896,7 @@ pre {
   gap: 0;
   padding: 10px 14px 11px;
   border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
-  border-radius: 18px 18px 18px 6px;
+  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-lg) var(--radius-xs);
   background: color-mix(in srgb, var(--panel-soft) 88%, transparent);
 }
 
@@ -1924,7 +1930,7 @@ pre {
   gap: 7px;
   margin-top: 7px;
   padding: 5px 7px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   color: var(--muted);
   background: color-mix(in srgb, var(--panel-raised) 76%, transparent);
   font: 11px/1.4 var(--mono);
@@ -1936,7 +1942,7 @@ pre {
 }
 
 .chat-message.user .message-text {
-  border-bottom-right-radius: 6px;
+  border-bottom-right-radius: var(--radius-xs);
   background: var(--accent-soft);
 }
 
@@ -1961,7 +1967,7 @@ pre {
   overflow: hidden;
   border: 1px solid var(--line);
   border-left: 3px solid var(--line-strong);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   color: var(--muted);
   background: color-mix(in srgb, var(--panel-soft) 72%, transparent);
   font: 11px/1.35 var(--mono);
@@ -2182,7 +2188,7 @@ pre {
   margin: 0 13px 13px;
   padding: 9px;
   border: 1px solid var(--line-strong);
-  border-radius: 21px;
+  border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--panel-solid) 82%, transparent);
   box-shadow: 0 16px 42px rgba(0, 0, 0, 0.25);
 }
@@ -2192,7 +2198,7 @@ pre {
   height: 42px;
   min-height: 42px;
   padding: 0;
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   color: var(--muted);
   background: var(--panel-soft);
   font-size: 21px;
@@ -2227,7 +2233,7 @@ pre {
 .composer-actions > button,
 #agent-controls {
   min-height: 42px;
-  border-radius: 14px;
+  border-radius: var(--radius-md);
 }
 
 #agent-controls {
@@ -2288,7 +2294,7 @@ pre {
   width: 96px;
   height: 64px;
   overflow: hidden;
-  border-radius: 11px;
+  border-radius: var(--radius-md);
   background: var(--panel-soft);
 }
 
@@ -2387,7 +2393,7 @@ pre {
   gap: 1px;
   overflow: hidden;
   border: 1px solid var(--line-strong);
-  border-radius: 25px;
+  border-radius: var(--radius-xl);
   background: var(--panel-solid);
   box-shadow: var(--shadow);
   transform: translate(-50%, -50%);
@@ -2526,7 +2532,7 @@ pre {
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent;
   border: 1px solid var(--line-strong);
-  border-radius: 24px;
+  border-radius: var(--radius-xl);
   background: var(--panel-solid);
   box-shadow: var(--shadow);
   animation: modal-in 170ms ease both;
@@ -2565,7 +2571,7 @@ pre {
   padding: 11px 13px;
   overflow: auto;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   color: var(--text);
   background: var(--panel-soft);
   white-space: pre-wrap;
@@ -2591,7 +2597,7 @@ pre {
   align-content: center;
   gap: 3px;
   padding: 12px 13px;
-  border-radius: 15px;
+  border-radius: var(--radius-md);
   color: var(--text);
   border-color: color-mix(in srgb, var(--line-strong) 82%, transparent);
   background: color-mix(in srgb, var(--panel-soft) 82%, var(--panel-solid));
@@ -2640,7 +2646,7 @@ pre {
   display: inline-grid;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   color: var(--accent);
   background: var(--accent-soft);
   font: 800 11px/1 var(--mono);
@@ -2700,7 +2706,7 @@ pre {
   display: grid;
   place-items: center;
   border: 1px solid var(--line);
-  border-radius: 15px;
+  border-radius: var(--radius-md);
   color: var(--accent);
   background: var(--accent-soft);
   font-weight: 800;
@@ -2808,7 +2814,7 @@ body.sidebar-collapsed #sidebar-toggle::after {
 
   .sidebar {
     inset: 8px auto 8px 8px;
-    border-radius: 20px;
+    border-radius: var(--radius-xl);
     background: var(--panel-solid);
     transition: none;
   }
@@ -2886,7 +2892,7 @@ body.sidebar-collapsed #sidebar-toggle::after {
   }
 
   .session-panel {
-    border-radius: 19px;
+    border-radius: var(--radius-xl);
   }
 
   .session-toolbar {
@@ -2920,7 +2926,7 @@ body.sidebar-collapsed #sidebar-toggle::after {
     min-width: 132px;
     padding: 5px;
     border: 1px solid var(--line-strong);
-    border-radius: 14px;
+    border-radius: var(--radius-md);
     background: var(--panel-solid);
     box-shadow: var(--shadow);
   }
@@ -2980,7 +2986,7 @@ body.sidebar-collapsed #sidebar-toggle::after {
 
   .message-text {
     padding: 8px 10px;
-    border-radius: 14px;
+    border-radius: var(--radius-lg);
     font-size: 13px;
   }
 
@@ -3013,14 +3019,14 @@ body.sidebar-collapsed #sidebar-toggle::after {
     gap: 5px;
     margin: 0 5px 5px;
     padding: 5px;
-    border-radius: 16px;
+    border-radius: var(--radius-lg);
   }
 
   .composer > #attach-image {
     width: 36px;
     height: 36px;
     min-height: 36px;
-    border-radius: 12px;
+    border-radius: var(--radius-md);
   }
 
   .composer textarea {
@@ -3051,7 +3057,7 @@ body.sidebar-collapsed #sidebar-toggle::after {
     max-height: calc(100dvh - 22px);
     grid-template-columns: 1fr;
     overflow: auto;
-    border-radius: 21px;
+    border-radius: var(--radius-xl);
   }
 
   .project-panel,
@@ -3084,7 +3090,7 @@ body.sidebar-collapsed #sidebar-toggle::after {
     width: 100%;
     max-height: 82dvh;
     padding: 14px 12px calc(12px + env(safe-area-inset-bottom));
-    border-radius: 22px;
+    border-radius: var(--radius-xl);
     animation: sheet-in 180ms ease both;
   }
 
@@ -3106,7 +3112,7 @@ body.sidebar-collapsed #sidebar-toggle::after {
   .control-field {
     min-height: 54px;
     padding: 9px 10px;
-    border-radius: 13px;
+    border-radius: var(--radius-md);
   }
 }
 
