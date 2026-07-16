@@ -524,6 +524,7 @@ async function captureSession(id) {
   payload.pending_control = session.pending_control || null;
   payload.usage_limited_until = session.usage_limited_until || 0;
   if (payload.pending_control && !payload.controls.some(actionableControl)) payload.controls.unshift(payload.pending_control);
+  if (payload.mode === "chat") Object.assign(payload, chatCapturePage(payload.messages));
   await writeSessionCapture(session, result.output, payload);
   return payload;
 }
@@ -1867,17 +1868,23 @@ async function touchSession(id) {
 }
 
 async function markCodexTranscriptActive(session) {
-  if (session?.tool !== "codex" || !session.codex_transcript_complete) return;
+  if (session?.tool !== "codex") return;
+  const completed = Boolean(session.codex_transcript_complete);
+  if (!completed && session.agent_state === "working") return;
   // A completed cache belongs to the previous task. Keeping it would make the
   // next prompt inherit its old ready state and rollout path.
-  CODEX_ROLLOUTS.delete(session.id);
-  CODEX_TRANSCRIPTS.delete(session.id);
+  if (completed) {
+    CODEX_ROLLOUTS.delete(session.id);
+    CODEX_TRANSCRIPTS.delete(session.id);
+  }
   session.codex_transcript_complete = false;
+  session.agent_state = "working";
   const stored = await withMutation("store", async () => {
     const data = await readStore();
     const found = data.sessions.find((item) => item.id === session.id);
     if (!found) return null;
     delete found.codex_transcript_complete;
+    found.agent_state = "working";
     await writeStore(data);
     return found;
   });
@@ -2042,6 +2049,17 @@ function messagePage(messages, limitValue = null, beforeValue = null) {
   return { messages: messages.slice(start, end), total, start };
 }
 
+function chatCapturePage(messages, conversationLimit = 60) {
+  let conversations = 0;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index].role === "tool") continue;
+    if (++conversations > conversationLimit) {
+      return { messages: messages.slice(index + 1), message_start: index + 1, message_total: messages.length };
+    }
+  }
+  return { messages, message_start: 0, message_total: messages.length };
+}
+
 async function writeSessionEvent(session, message) {
   return withMutation(`messages:${session.id}`, async () => {
     const messages = await readSessionMessages(session.id);
@@ -2201,7 +2219,7 @@ async function readCodexTranscriptNow(session, device, rawText, storedMessages) 
     const offset = Number(session.codex_transcript_offset || 0);
     const stored = (storedMessages || await readSessionMessages(session.id)).map(normalizeMessage);
     const complete = codexTranscriptCompleted(stored);
-    const resume = canResumeCodexTranscript(stored, previousSessionId, filePath, offset, info.size);
+    const resume = canResumeCodexTranscript(stored, previousSessionId, session.agent_state, filePath, offset, info.size);
     const messages = resume ? stored.filter((message) => message.source !== "ark") : [];
     cache = {
       path: readablePath,
@@ -2281,8 +2299,9 @@ function codexTranscriptCanResume(sessionId, filePath, offset, size) {
     && (!sessionId || !selectedSessionId || sessionId === selectedSessionId);
 }
 
-function canResumeCodexTranscript(messages, sessionId, filePath, offset, size) {
-  return codexTranscriptCompleted(messages) && codexTranscriptCanResume(sessionId, filePath, offset, size);
+function canResumeCodexTranscript(messages, sessionId, agentState, filePath, offset, size) {
+  return (codexTranscriptCompleted(messages) || agentState === "working")
+    && codexTranscriptCanResume(sessionId, filePath, offset, size);
 }
 
 function codexTranscriptCompleted(messages) {
@@ -3187,8 +3206,9 @@ function selfCheckCore() {
   if (!isPrimaryCodexRollout({ source: "cli" }) || isPrimaryCodexRollout({ source: { subagent: {} } })) throw new Error("subagent rollout was selected as the terminal transcript");
   if (!codexTranscriptCanResume("019f5ae3-5527-7ed2-88a8-e386d98d985f", "/tmp/rollout-2026-07-13T09-51-15-019f5ae3-5527-7ed2-88a8-e386d98d985f.jsonl", 12, 20)
     || codexTranscriptCanResume("019f6020-d10a-7701-87dd-35fdc2c4c1df", "/tmp/rollout-2026-07-13T09-51-15-019f5ae3-5527-7ed2-88a8-e386d98d985f.jsonl", 12, 20)) throw new Error("stale Codex rollout resumed into the active transcript");
-  if (!canResumeCodexTranscript([{ role: "assistant", phase: "final_answer" }], "019f5ae3-5527-7ed2-88a8-e386d98d985f", "/tmp/rollout-2026-07-13T09-51-15-019f5ae3-5527-7ed2-88a8-e386d98d985f.jsonl", 12, 20)
-    || canResumeCodexTranscript([{ role: "assistant", phase: "final_answer" }, { role: "user" }], "019f5ae3-5527-7ed2-88a8-e386d98d985f", "/tmp/rollout-2026-07-13T09-51-15-019f5ae3-5527-7ed2-88a8-e386d98d985f.jsonl", 12, 20)) throw new Error("incomplete Codex transcript reused its old offset");
+  if (!canResumeCodexTranscript([{ role: "assistant", phase: "final_answer" }], "019f5ae3-5527-7ed2-88a8-e386d98d985f", "ready", "/tmp/rollout-2026-07-13T09-51-15-019f5ae3-5527-7ed2-88a8-e386d98d985f.jsonl", 12, 20)
+    || !canResumeCodexTranscript([{ role: "assistant", phase: "commentary" }], "019f5ae3-5527-7ed2-88a8-e386d98d985f", "working", "/tmp/rollout-2026-07-13T09-51-15-019f5ae3-5527-7ed2-88a8-e386d98d985f.jsonl", 12, 20)
+    || canResumeCodexTranscript([{ role: "assistant", phase: "final_answer" }, { role: "user" }], "019f5ae3-5527-7ed2-88a8-e386d98d985f", "ready", "/tmp/rollout-2026-07-13T09-51-15-019f5ae3-5527-7ed2-88a8-e386d98d985f.jsonl", 12, 20)) throw new Error("incomplete Codex transcript reused its old offset");
   const generatedImage = codexTranscriptImages({ type: "event_msg", payload: { type: "image_generation_end", status: "completed", result: Buffer.from("image").toString("base64") } });
   if (generatedImage.length !== 1 || generatedImage[0].type !== "image/png") throw new Error("Codex generated image was not parsed");
   const toolImage = codexTranscriptImages({ type: "response_item", payload: { type: "function_call_output", output: [{ type: "input_image", image_url: `data:image/webp;base64,${Buffer.from("image").toString("base64")}` }] } });
@@ -3253,6 +3273,15 @@ function selfCheckCore() {
   if (storedCodexCapture({ tool: "codex", agent_state: "ready" }, [{ text: "done" }]).transcript_source !== "stored") throw new Error("completed Codex capture did not bypass tmux");
   const messagePageProbe = messagePage([0, 1, 2, 3, 4], 2, 4);
   if (messagePageProbe.start !== 2 || messagePageProbe.total !== 5 || messagePageProbe.messages.join(",") !== "2,3") throw new Error("chat history paging lost the requested window");
+  const capturePageProbe = chatCapturePage([
+    { role: "user", text: "old" },
+    { role: "assistant", text: "old answer" },
+    { role: "tool", text: "tool 1" },
+    { role: "tool", text: "tool 2" },
+    { role: "user", text: "new" },
+    { role: "assistant", text: "new answer" },
+  ], 2);
+  if (capturePageProbe.message_start !== 2 || capturePageProbe.messages.length !== 4 || capturePageProbe.message_total !== 6) throw new Error("chat capture dropped tool context or sent the full transcript");
   const transcriptProgress = codexTranscriptProgress({ offset: 20, remainder: "tail", sequence: 7 });
   if (transcriptProgress.offset !== 16 || transcriptProgress.sequence !== 7) throw new Error("Codex transcript progress included an incomplete JSON line");
   const transcriptLines = splitCodexTranscriptLines("half", " line\nnext");
@@ -3299,11 +3328,14 @@ function canUseStoredCodexMessages(session, storedMessages) {
 }
 
 function storedCodexCapture(session, messages) {
+  const page = chatCapturePage(messages);
   return {
     text: "",
     parsed: [],
     lines: [],
-    messages,
+    messages: page.messages,
+    message_start: page.message_start,
+    message_total: page.message_total,
     controls: [],
     agent_state: "ready",
     codex_state: session.codex_state || null,

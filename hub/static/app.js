@@ -1458,7 +1458,7 @@ function applyCapture(sessionId, data) {
   if (!session || activeSession()?.id !== sessionId) return;
   if (data.mode === "chat" && Array.isArray(data.messages)) {
     state.chatMessages[session.id] = data.messages;
-    state.chatHistoryStarts[session.id] = 0;
+    state.chatHistoryStarts[session.id] = Math.max(0, Number(data.message_start) || 0);
     state.chatMessageVersions[session.id] = (state.chatMessageVersions[session.id] || 0) + 1;
   }
   const nextAgentState = Number(data.usage_limited_until || 0) > Math.floor(Date.now() / 1000) ? "usage" : data.pending_control ? "needs_input" : data.agent_state;
