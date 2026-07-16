@@ -1416,7 +1416,8 @@ pre {
   background: var(--danger);
 }
 
-.settings-toggle {
+.settings-toggle,
+.chill-toggle {
   border-color: transparent;
   color: var(--muted);
   background: transparent;
@@ -1433,7 +1434,7 @@ pre {
   overflow: auto;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--panel-solid) 86%, transparent);
+  background: color-mix(in srgb, var(--panel-solid) 65%, var(--bg));
   box-shadow: var(--shadow);
   backdrop-filter: blur(12px) saturate(115%);
   animation: pop-in 160ms ease both;
@@ -1453,8 +1454,7 @@ pre {
 }
 
 .settings-head small,
-.settings-note,
-.diagnostics {
+.settings-note {
   color: var(--muted);
   font-size: 12px;
 }
@@ -1474,6 +1474,19 @@ pre {
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.09em;
+}
+
+.settings-details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+}
+
+.settings-details[open] summary {
+  margin-bottom: 3px;
+  color: var(--text);
 }
 
 .sound-gallery,
@@ -2953,7 +2966,8 @@ body.sidebar-collapsed #sidebar-toggle::after {
     display: none !important;
   }
 
-  .settings-toggle {
+  .settings-toggle,
+  .chill-toggle {
     min-width: 36px;
     padding: 0;
     font-size: 0;
@@ -2962,6 +2976,11 @@ body.sidebar-collapsed #sidebar-toggle::after {
   .settings-toggle::before {
     content: "⚙";
     font-size: 18px;
+  }
+
+  .chill-toggle::before {
+    content: "◌";
+    font-size: 22px;
   }
 
   .settings-menu {

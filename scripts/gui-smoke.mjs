@@ -56,6 +56,7 @@ try {
   await assertOtherMachinesCollapse();
 
   await js('document.querySelector("#settings-toggle").click(); return true;');
+  await wait('!document.querySelector("#settings-menu").hidden');
   await wait('document.querySelectorAll("#tool-status .tool-card").length === 4');
   assert(await js('return document.querySelectorAll("[data-sound-preview]").length === 8 && document.querySelectorAll("[data-sound-use]").length === 8 && Boolean(document.querySelector("#sound-volume"));'), "sound choices are missing from settings");
   await js('document.querySelector("[data-sound-use=\\"done:message\\"]").click(); return true;');
@@ -64,16 +65,15 @@ try {
   await wait('[...document.querySelectorAll("#profile-status [data-profile-login]")].some((button) => button.textContent.trim() === "Login")');
   await wait('/Signed in as|Needs login/.test(document.querySelector("#profile-status").textContent)');
   await wait('document.querySelector("#secret-form") && document.querySelector("#secret-status")');
-  await wait('document.querySelectorAll(".diagnostic-row").length >= 1', 45000);
   await assertDiagnostics();
   await assertProfileYamlConfig();
   await assertToolDisableState();
   await shot("settings");
-  assert(await js('return Boolean(document.querySelector("#chill-mode"));'), "chill mode toggle is missing from Appearance");
+  assert(await js('const chill = document.querySelector("#chill-mode"); return Boolean(chill) && !document.querySelector("#settings-menu").contains(chill);'), "chill mode toggle is not in the top bar");
   await js('document.querySelector("#chill-mode").click(); return true;');
   await wait('document.body.classList.contains("chill-mode") && getComputedStyle(document.querySelector("main")).display === "none"');
   await shot("chill-mode");
-  await js('document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); return true;');
+  await js('document.querySelector(".background-flow").click(); return true;');
   await wait('!document.body.classList.contains("chill-mode") && getComputedStyle(document.querySelector("main")).display !== "none"');
   await js('document.querySelector("#settings-toggle").click(); return true;');
 
@@ -468,7 +468,7 @@ async function assertThemeEffects(theme) {
       scanlines: Number(overlay.opacity),
       overlayAnimation: overlay.animationName,
       textAnimation: message ? getComputedStyle(message).animationName : "none",
-      buttonRadius: getComputedStyle(document.querySelector("#settings-refresh")).borderRadius,
+      buttonRadius: getComputedStyle(document.querySelector("#chill-mode")).borderRadius,
       panelRadius: getComputedStyle(document.querySelector("#session-panel")).borderRadius,
       backgroundLuminance: 0.2126 * luminance[0] + 0.7152 * luminance[1] + 0.0722 * luminance[2],
     };

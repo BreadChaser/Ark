@@ -7,7 +7,7 @@
     <link rel="icon" href="/static/ark-logo.svg?v=3" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
-    <link rel="stylesheet" href="/static/ark-ui.css?v=51" />
+    <link rel="stylesheet" href="/static/ark-ui.css?v=54" />
   </head>
   <body>
     <canvas class="background-flow" aria-hidden="true"></canvas>
@@ -75,6 +75,7 @@
         </div>
         <div class="top-actions">
           <span id="status" class="status-pill">Idle</span>
+          <button id="chill-mode" class="chill-toggle" type="button" aria-pressed="false" title="Show only the theme background">Chill</button>
           <button id="settings-toggle" class="settings-toggle" aria-expanded="false">Settings</button>
           <div id="settings-menu" class="settings-menu" hidden>
             <div class="settings-head">
@@ -94,11 +95,9 @@
                   <option value="spreadsheet">Spreadsheet</option>
                 </select>
               </label>
-              <button id="chill-mode" type="button" aria-pressed="false">Chill mode</button>
-              <small class="settings-note">Show only the theme background. Press Esc to return.</small>
             </section>
             <section class="settings-section">
-              <h2>Behavior</h2>
+              <h2>Session</h2>
               <label>
                 Default tool
                 <select id="default-tool" aria-label="Default tool">
@@ -115,12 +114,9 @@
                   <option value="raw">Chat terminal fallback</option>
                 </select>
               </label>
-              <label>
-                Attachments
-                <select id="image-mode" aria-label="Image attach behavior">
-                  <option value="queue">Queue until send</option>
-                </select>
-              </label>
+            </section>
+            <section class="settings-section">
+              <h2>Alerts</h2>
               <button id="enable-notifications" type="button">Enable input notifications</button>
               <label>
                 Sound volume <output id="sound-volume-value">60%</output>
@@ -130,7 +126,8 @@
               <small id="sound-status" class="settings-note">Sounds activate after a click or key press.</small>
               <small id="notification-status" class="settings-note">Ark can notify this device when a session needs you.</small>
             </section>
-            <section class="settings-section">
+            <details class="settings-section settings-details">
+              <summary>Accounts &amp; API keys</summary>
               <h2>API keys</h2>
               <p class="settings-note">Keys are stored server-side in Ark and only shown masked here.</p>
               <form id="secret-form" class="secret-form">
@@ -146,8 +143,6 @@
                 <button id="add-secret" class="primary" type="submit">Add key</button>
               </form>
               <div id="secret-status" class="tool-status">No API keys stored.</div>
-            </section>
-            <section class="settings-section">
               <h2>Codex accounts</h2>
               <p class="settings-note">Profiles can set <code>CODEX_HOME</code> so one Codex install can run multiple accounts.</p>
               <form id="account-form" class="account-form">
@@ -156,15 +151,10 @@
                 <button id="add-account" class="primary" type="submit">Add account</button>
               </form>
               <div id="profile-status" class="tool-status">Checking...</div>
-            </section>
-            <section class="settings-section">
-              <h2>Tools on selected machine</h2>
-              <div id="tool-status" class="tool-status">Checking...</div>
-            </section>
+            </details>
             <details class="settings-section settings-details">
-              <summary>Diagnostics</summary>
-              <h2>Diagnostics</h2>
-              <div id="diagnostics" class="diagnostics">Checking...</div>
+              <summary>Tools on selected machine</summary>
+              <div id="tool-status" class="tool-status">Checking...</div>
             </details>
             <details class="settings-section settings-details">
               <summary>Tool commands</summary>
@@ -187,7 +177,6 @@
                 <button id="reset-tool-commands">Reset</button>
               </div>
             </details>
-            <button id="settings-refresh">Refresh devices</button>
           </div>
           <button id="refresh" hidden>Refresh</button>
         </div>
@@ -308,6 +297,6 @@
     <script src="/vendor/marked/marked.js"></script>
     <script src="/vendor/dompurify/purify.js"></script>
     <script src="/static/flow-background.js?v=2"></script>
-    <script src="/static/app.js?v=52"></script>
+    <script src="/static/app.js?v=54"></script>
   </body>
 </html>

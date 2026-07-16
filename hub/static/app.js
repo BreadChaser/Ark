@@ -5,7 +5,6 @@ const THEME_KEY = "ark-theme";
 const VIEW_KEY = "ark-view-mode";
 const SIDEBAR_COLLAPSED_KEY = "ark-sidebar-collapsed";
 const DEFAULT_TOOL_KEY = "ark-default-tool";
-const IMAGE_MODE_KEY = "ark-image-mode";
 const NOTIFIED_CONTROLS_KEY = "ark-notified-controls";
 const SOUND_VOLUME_KEY = "ark-sound-volume";
 const SOUND_CHOICE_KEYS = { done: "ark-done-sound", input: "ark-input-sound" };
@@ -43,7 +42,6 @@ const state = {
   tmuxLoading: new Set(),
   dirs: [],
   settings: null,
-  diagnostics: null,
   startupImages: [],
   dirCwd: "~",
   dirParent: "~",
@@ -177,10 +175,8 @@ const els = {
   chillMode: document.querySelector("#chill-mode"),
   settingsToggle: document.querySelector("#settings-toggle"),
   settingsMenu: document.querySelector("#settings-menu"),
-  settingsRefresh: document.querySelector("#settings-refresh"),
   defaultTool: document.querySelector("#default-tool"),
   defaultView: document.querySelector("#default-view"),
-  imageMode: document.querySelector("#image-mode"),
   enableNotifications: document.querySelector("#enable-notifications"),
   soundGallery: document.querySelector("#sound-gallery"),
   soundVolume: document.querySelector("#sound-volume"),
@@ -198,7 +194,6 @@ const els = {
   secretValue: document.querySelector("#secret-value"),
   secretBaseUrl: document.querySelector("#secret-base-url"),
   secretStatus: document.querySelector("#secret-status"),
-  diagnostics: document.querySelector("#diagnostics"),
   toolCommandInputs: [...document.querySelectorAll("[data-tool-command]")],
   saveToolCommands: document.querySelector("#save-tool-commands"),
   resetToolCommands: document.querySelector("#reset-tool-commands"),
@@ -220,7 +215,6 @@ async function init() {
   els.theme.value = localStorage.getItem(THEME_KEY) || "dark";
   els.defaultTool.value = localStorage.getItem(DEFAULT_TOOL_KEY) || "codex";
   els.defaultView.value = state.view;
-  els.imageMode.value = "queue";
   els.soundVolume.value = String(Math.round(state.soundVolume * 100));
   els.soundVolumeValue.value = `${els.soundVolume.value}%`;
   els.tool.value = els.defaultTool.value;
@@ -245,7 +239,6 @@ async function init() {
     updateStartButton();
   });
   els.defaultView.addEventListener("change", () => setView(els.defaultView.value));
-  els.imageMode.addEventListener("change", () => localStorage.setItem(IMAGE_MODE_KEY, "queue"));
   els.enableNotifications.addEventListener("click", enableNotifications);
   els.soundGallery.addEventListener("click", handleSoundChoice);
   els.soundVolume.addEventListener("input", () => {
@@ -255,7 +248,6 @@ async function init() {
   });
   renderSoundChoices();
   els.settingsToggle.addEventListener("click", toggleSettings);
-  els.settingsRefresh.addEventListener("click", refresh);
   els.saveToolCommands.addEventListener("click", () => saveToolCommands(false));
   els.resetToolCommands.addEventListener("click", () => saveToolCommands(true));
   els.accountForm.addEventListener("submit", createAccount);
@@ -263,6 +255,11 @@ async function init() {
   els.secretForm.addEventListener("submit", createSecret);
   els.secretStatus.addEventListener("click", handleSecretAction);
   document.addEventListener("click", closeSettingsOutside);
+  document.addEventListener("click", (event) => {
+    if (!document.body.classList.contains("chill-mode")) return;
+    event.preventDefault();
+    setChillMode(false);
+  }, true);
   els.sidebarToggle.addEventListener("click", toggleSidebar);
   els.sidebarOpen.addEventListener("click", toggleSidebar);
   els.main.addEventListener("click", closeSidebarFromMain, true);
@@ -392,7 +389,6 @@ async function refresh() {
   }
   renderSidebar();
   await loadTools(state.activeDeviceId);
-  await loadDiagnostics();
   renderMain();
   loadSidebarTmux();
 }
@@ -498,7 +494,6 @@ async function saveToolCommands(reset) {
     renderSettings();
     await loadTools(state.activeDeviceId);
     await loadProfiles();
-    await loadDiagnostics();
     setStatus(reset ? "Settings reset" : "Settings saved");
   } catch (error) {
     showError(error.message);
@@ -514,15 +509,6 @@ async function loadTools(deviceId) {
   }
   renderToolStatus();
   updateToolOptions();
-}
-
-async function loadDiagnostics() {
-  try {
-    state.diagnostics = await api("/api/diagnostics");
-  } catch (error) {
-    state.diagnostics = { error: error.message };
-  }
-  renderDiagnostics();
 }
 
 async function loadProfiles() {
@@ -1006,35 +992,6 @@ function toolStatusLine(tool) {
   return bits.join(" / ") || "built in";
 }
 
-function renderDiagnostics() {
-  if (!state.diagnostics || state.diagnostics.error) {
-    els.diagnostics.textContent = state.diagnostics?.error || "Diagnostics unavailable.";
-    return;
-  }
-  const available = new Map();
-  for (const device of state.diagnostics.tool_devices || []) {
-    for (const tool of device.tools || []) {
-      if (!tool.available || tool.tool === "terminal") continue;
-      if (!available.has(tool.tool)) available.set(tool.tool, []);
-      available.get(tool.tool).push(device.label);
-    }
-  }
-  els.diagnostics.innerHTML = ["codex", "opencode", "claude"].map((tool) => {
-    const labels = available.get(tool) || [];
-    return `
-      <div class="diagnostic-row ${labels.length ? "ok" : "missing"}">
-        <span>${escapeHtml(toolLabel(tool))}</span>
-        <small>${escapeHtml(labels.length ? labels.join(", ") : "not found on reachable machines")}</small>
-      </div>
-    `;
-  }).join("") + `
-    <div class="diagnostic-row ok">
-      <span>Devices</span>
-      <small>${escapeHtml(`${state.diagnostics.device_count || 0} saved to ${state.diagnostics.device_inventory_path || "devices.yml"}`)}</small>
-    </div>
-  `;
-}
-
 function renderSettings() {
   const commands = state.settings?.tool_commands || {};
   for (const input of els.toolCommandInputs) {
@@ -1114,7 +1071,6 @@ async function createAccount(event) {
     renderProfileStatus();
     renderProfileOptions();
     await loadTools(state.activeDeviceId);
-    await loadDiagnostics();
     setStatus("Account added");
   } catch (error) {
     showError(error.message);
@@ -1135,7 +1091,6 @@ async function handleAccountAction(event) {
     renderProfileStatus();
     renderProfileOptions();
     await loadTools(state.activeDeviceId);
-    await loadDiagnostics();
     setStatus("Account removed");
   } catch (error) {
     showError(error.message);
@@ -1209,7 +1164,6 @@ async function createSecret(event) {
     els.secretValue.value = "";
     els.secretBaseUrl.value = "";
     renderSecrets();
-    await loadDiagnostics();
     setStatus("API key added");
   } catch (error) {
     showError(error.message);
@@ -1235,7 +1189,6 @@ async function handleSecretAction(event) {
     const data = await api(`/api/secrets/${encodeURIComponent(id)}`, { method: "DELETE" });
     state.secrets = data.secrets || [];
     renderSecrets();
-    await loadDiagnostics();
     setStatus("API key removed");
   } catch (error) {
     showError(error.message);
@@ -2552,7 +2505,7 @@ function toggleSettings(event) {
 
 function closeSettingsOutside(event) {
   if (els.settingsMenu.hidden) return;
-  if (els.settingsMenu.contains(event.target) || els.settingsToggle.contains(event.target)) return;
+  if (event.composedPath().includes(els.settingsMenu) || event.composedPath().includes(els.settingsToggle)) return;
   els.settingsMenu.hidden = true;
   els.settingsToggle.setAttribute("aria-expanded", "false");
 }
@@ -2734,7 +2687,7 @@ function showImageViewerImage(index) {
   els.imageViewerImage.alt = image.alt || "Full-size image";
   els.imageViewerPrevious.disabled = state.imageViewerIndex === 0;
   els.imageViewerNext.disabled = state.imageViewerIndex === images.length - 1;
-  els.imageViewerPosition.textContent = images.length > 1 ? `${state.imageViewerIndex + 1} / ${images.length}` : "";
+  els.imageViewerPosition.textContent = `${state.imageViewerIndex + 1} / ${images.length}`;
 }
 
 function isImageAttachment(attachment) {
