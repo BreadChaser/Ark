@@ -519,7 +519,7 @@ body {
   background: #eaf4e5;
 }
 
-:root[data-theme="spreadsheet"] .chat-tool-call {
+:root[data-theme="spreadsheet"] .tool-call-group {
   border-radius: 0;
   border-left-color: #107c41;
   background: #edf6ea;
@@ -1929,12 +1929,8 @@ pre {
   opacity: 0.62;
 }
 
-.chat-tool-call {
+.tool-call-group {
   width: min(940px, 84%);
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 8px 10px;
   border: 1px solid var(--line);
   border-left: 3px solid var(--line-strong);
   border-radius: 10px;
@@ -1943,19 +1939,46 @@ pre {
   font: 11px/1.35 var(--mono);
 }
 
-.chat-tool-call.running {
+.tool-call-group > summary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 34px;
+  padding: 7px 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.tool-call-group > summary::-webkit-details-marker { display: none; }
+.tool-call-group > summary::marker { content: ""; }
+.tool-call-group > summary::before { content: "›"; color: var(--faint); font-size: 15px; transition: transform 120ms ease; }
+.tool-call-group[open] > summary::before { transform: rotate(90deg); }
+.tool-call-group.running {
   border-left-color: var(--accent);
   background: color-mix(in srgb, var(--accent-soft) 74%, var(--panel-soft));
 }
 
-.chat-tool-call.failed { border-left-color: var(--danger); }
+.tool-call-group.failed { border-left-color: var(--danger); }
+.tool-call-group.write { border-left-color: var(--warning); background: color-mix(in srgb, var(--warning) 9%, var(--panel-soft)); }
+.tool-call-group.danger { border-left-color: var(--danger); background: color-mix(in srgb, var(--danger) 9%, var(--panel-soft)); }
+.tool-call-group.danger .tool-call-icon, .tool-call-entry.danger .tool-call-icon, .tool-call-entry.danger em { color: var(--danger); }
+.tool-call-group.write .tool-call-icon, .tool-call-entry.write .tool-call-icon { color: var(--warning); }
 .tool-call-icon { display: grid; place-items: center; color: var(--accent); }
 .tool-call-icon .tool-icon { width: 14px; height: 14px; }
 .tool-call-copy { min-width: 0; display: flex; gap: 7px; align-items: baseline; overflow: hidden; }
 .tool-call-copy strong { flex: 0 0 auto; color: var(--text); }
 .tool-call-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chat-tool-call em { margin-left: auto; color: var(--faint); font-style: normal; white-space: nowrap; }
-.chat-tool-call.running em { color: var(--accent); }
+.tool-call-line { min-width: 0; display: flex; flex: 1; align-items: center; gap: 9px; }
+.tool-call-line em { margin-left: auto; color: var(--faint); font-style: normal; white-space: nowrap; }
+.tool-call-group.running .tool-call-line em { color: var(--accent); }
+.tool-call-group.write .tool-call-line em { color: var(--warning); }
+.tool-call-group.danger .tool-call-line em, .tool-call-group.failed .tool-call-line em { color: var(--danger); }
+.tool-call-count { color: var(--faint); font-weight: 700; }
+.tool-call-list { display: grid; gap: 6px; padding: 0 9px 9px; border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent); }
+.tool-call-entry { padding: 8px 9px; border-left: 2px solid var(--line-strong); background: color-mix(in srgb, var(--panel-raised) 64%, transparent); }
+.tool-call-entry.write { border-left-color: var(--warning); }
+.tool-call-entry.danger, .tool-call-entry.failed { border-left-color: var(--danger); }
+.tool-call-entry pre { margin: 7px 0 0; max-width: 100%; overflow: auto; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
 
 .message-images {
   display: flex;

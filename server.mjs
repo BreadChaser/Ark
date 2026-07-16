@@ -2083,6 +2083,7 @@ function normalizeMessage(message) {
     normalized.tool_name = String(message.tool_name || "tool");
     normalized.tool_call_id = String(message.tool_call_id || "");
     normalized.tool_status = String(message.tool_status || "completed");
+    normalized.tool_detail = String(message.tool_detail || normalized.text);
   }
   return normalized;
 }
@@ -2505,6 +2506,7 @@ function codexTranscriptMessage(row, sequence, cache = null) {
       created_at: String(row.timestamp || new Date().toISOString()),
       role: "tool",
       text: codexToolCallSummary(payload.name, payload.arguments ?? payload.input),
+      tool_detail: codexToolCallText(payload.name, payload.arguments ?? payload.input),
       attachments: [],
       source: "codex-rollout",
       phase: "tool",
@@ -2538,14 +2540,18 @@ function codexTranscriptMessage(row, sequence, cache = null) {
 }
 
 function codexToolCallSummary(name, input) {
+  return codexToolCallText(name, input).replace(/\s+/g, " ").trim().slice(0, 240) || String(name || "tool");
+}
+
+function codexToolCallText(name, input) {
   let value = input;
   if (typeof value === "string") {
     try { value = JSON.parse(value); } catch {}
   }
-  if (value && typeof value === "object") value = value.cmd ?? value.command ?? value.path ?? value.query ?? value.prompt ?? "";
+  if (value && typeof value === "object") value = value.cmd ?? value.command ?? value.path ?? value.query ?? value.prompt ?? JSON.stringify(value);
   return String(value || name || "tool")
     .replace(/((?:--(?:token|api-key|password)|\b(?:api[_-]?key|token|password|authorization))\s*(?:=|:|\s)\s*)(?:"[^"]*"|'[^']*'|\S+)/gi, "$1[redacted]")
-    .replace(/\s+/g, " ").trim().slice(0, 240) || String(name || "tool");
+    .replace(/\r\n?/g, "\n").trim() || String(name || "tool");
 }
 
 async function codexRolloutPath(session, device, rawText) {
@@ -3091,7 +3097,7 @@ function selfCheckCore() {
   const toolCache = { toolCalls: new Map() };
   const toolCall = codexTranscriptMessage({ type: "response_item", payload: { type: "function_call", call_id: "tool-1", name: "exec", arguments: '{"cmd":"npm run check"}' } }, 2, toolCache);
   codexTranscriptMessage({ type: "response_item", payload: { type: "function_call_output", call_id: "tool-1" } }, 3, toolCache);
-  if (toolCall?.role !== "tool" || toolCall.text !== "npm run check" || toolCall.tool_status !== "completed") throw new Error("Codex tool call was not tracked");
+  if (toolCall?.role !== "tool" || toolCall.text !== "npm run check" || toolCall.tool_detail !== "npm run check" || toolCall.tool_status !== "completed") throw new Error("Codex tool call was not tracked");
   const usage = codexUsage({ limit_id: "codex", plan_type: "pro", primary: { used_percent: 15, window_minutes: 10080, resets_at: 123 } });
   if (usage.primary.used_percent !== 15 || usage.secondary || usage.plan_type !== "pro") throw new Error("Codex usage limits were not normalized");
   const statusUsage = codexUsageFromScreen("│ >_ OpenAI Codex\n│ Model: gpt-5.6-sol\n│ Account: tony@example.com (Pro)\n│ Weekly limit: 39% left\n│   (resets 23:02 on 17 Jul)\n│ GPT-5.3-Codex-Spark weekly limit: 81% left", new Date(2026, 6, 12, 4, 0).getTime());

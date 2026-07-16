@@ -1583,7 +1583,7 @@ function renderChatCapture(data, session, keepBottom) {
   const start = Math.max(0, allMessages.length - limit);
   const messages = allMessages.slice(start);
   const hidden = Math.max(0, Number(state.chatHistoryStarts[session?.id] || 0)) + start;
-  const signature = `${hidden}\u0000${messages.map((message) => `${message.id || ""}\u0000${message.role}\u0000${message.pending ? "1" : ""}\u0000${message.tool_status || ""}\u0000${message.text}\u0000${JSON.stringify(message.attachments || [])}`).join("\u0001")}`;
+  const signature = `${hidden}\u0000${messages.map((message) => `${message.id || ""}\u0000${message.role}\u0000${message.pending ? "1" : ""}\u0000${message.tool_status || ""}\u0000${message.tool_detail || ""}\u0000${message.text}\u0000${JSON.stringify(message.attachments || [])}`).join("\u0001")}`;
   if (state.renderedChatSignatures[session?.id] === signature && els.parsed.querySelector(":scope > .chat-stream")) {
     if (keepBottom) scrollToBottom(els.parsed);
     updateMessageNav();
@@ -1601,6 +1601,13 @@ function renderChatCapture(data, session, keepBottom) {
   let previousRole = allMessages[start - 1]?.role || "";
   for (let index = 0; index < messages.length; index += 1) {
     const message = messages[index];
+    if (message.role === "tool") {
+      const calls = [message];
+      while (messages[index + 1]?.role === "tool") calls.push(messages[++index]);
+      stream.append(renderToolCallGroup(calls));
+      previousRole = "tool";
+      continue;
+    }
     if (isPlainAssistantUpdate(message, session) && isPlainAssistantUpdate(messages[index + 1], session)) {
       const updates = [message];
       while (isPlainAssistantUpdate(messages[index + 1], session)) updates.push(messages[++index]);
@@ -1625,7 +1632,7 @@ function renderChatCapture(data, session, keepBottom) {
 }
 
 function renderChatMessage(message, session, continued = false) {
-  if (message.role === "tool") return renderToolCall(message);
+  if (message.role === "tool") return renderToolCallGroup([message]);
   const rawText = String(message.text || "");
   const images = messageImages(message, session);
   const files = (message.attachments || []).filter((attachment) => !isImageAttachment(attachment));
@@ -1663,11 +1670,42 @@ function renderChatMessage(message, session, continued = false) {
   return card;
 }
 
-function renderToolCall(message) {
+function toolCallTone(message) {
+  const text = `${message.tool_name || ""} ${message.tool_detail || message.text || ""}`;
+  if (/(?:\brm\b|\bshred\b|\bmkfs\b|\bdd\b|\btruncate\b|\bkill(?:all)?\b|\bshutdown\b|\breboot\b|git\s+(?:reset\s+--hard|clean\b)|\bdrop\s+(?:table|database)\b)/i.test(text)) return "danger";
+  if (/(?:\bapply_patch\b|\bwriteFile\b|\bgit\s+(?:commit|push)\b|\b(?:mkdir|touch|cp|mv)\b|\bsed\s+-i\b|\bnpm\s+publish\b|\bsystemctl\s+(?:restart|stop)\b|[^<]>>?)/i.test(text)) return "write";
+  return "read";
+}
+
+function toolCallStatus(message) {
+  return ["running", "completed", "failed"].includes(message.tool_status) ? message.tool_status : "completed";
+}
+
+function renderToolCallGroup(calls) {
+  const newest = calls.at(-1);
+  const status = toolCallStatus(newest);
+  const group = document.createElement("details");
+  group.className = `tool-call-group ${toolCallTone(newest)} ${status}`;
+  group.setAttribute("aria-label", `${calls.length} tool call${calls.length === 1 ? "" : "s"}`);
+  const summary = document.createElement("summary");
+  summary.append(renderToolCallLine(newest));
+  if (calls.length > 1) {
+    const count = document.createElement("b");
+    count.className = "tool-call-count";
+    count.textContent = `+${calls.length - 1}`;
+    summary.append(count);
+  }
+  const list = document.createElement("div");
+  list.className = "tool-call-list";
+  for (const call of calls) list.append(renderToolCall(call));
+  group.append(summary, list);
+  return group;
+}
+
+function renderToolCallLine(message) {
   const status = ["running", "completed", "failed"].includes(message.tool_status) ? message.tool_status : "completed";
-  const card = document.createElement("article");
-  card.className = `chat-tool-call ${status}`;
-  card.setAttribute("aria-label", `${status === "running" ? "Running" : status === "failed" ? "Failed" : "Completed"} tool call`);
+  const line = document.createElement("span");
+  line.className = "tool-call-line";
   const icon = document.createElement("span");
   icon.className = "tool-call-icon";
   icon.innerHTML = toolIcon("terminal");
@@ -1680,7 +1718,17 @@ function renderToolCall(message) {
   copy.append(name, summary);
   const state = document.createElement("em");
   state.textContent = status === "running" ? "Running" : status === "failed" ? "Failed" : "Done";
-  card.append(icon, copy, state);
+  line.append(icon, copy, state);
+  return line;
+}
+
+function renderToolCall(message) {
+  const card = document.createElement("article");
+  card.className = `tool-call-entry ${toolCallTone(message)} ${toolCallStatus(message)}`;
+  card.append(renderToolCallLine(message));
+  const detail = document.createElement("pre");
+  detail.textContent = message.tool_detail || message.text || "";
+  card.append(detail);
   return card;
 }
 

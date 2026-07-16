@@ -1050,14 +1050,23 @@ async function testChatLayout() {
   const toolCall = await js(`
     renderChatCapture({ messages: [
       { role: "user", text: "Check the build." },
-      { role: "tool", tool_name: "exec", tool_status: "running", text: "npm run check" },
+      { role: "tool", tool_name: "exec", tool_status: "completed", text: "git status", tool_detail: "git status --short" },
+      { role: "tool", tool_name: "exec", tool_status: "running", text: "npm run check", tool_detail: "npm run check -- --full" },
       { role: "assistant", text: "I am checking it now." },
     ] }, { id: "tool-call-smoke", tool: "codex" }, false);
-    const row = document.querySelector(".chat-tool-call");
-    return { count: document.querySelectorAll(".chat-tool-call").length, text: row?.innerText || "", running: row?.classList.contains("running") };
+    const menu = document.querySelector(".tool-call-group");
+    return { count: document.querySelectorAll(".tool-call-entry").length, text: menu?.innerText || "", running: menu?.classList.contains("running"), open: menu?.open };
   `);
-  assert(toolCall.count === 1 && toolCall.running && toolCall.text.includes("npm run check") && toolCall.text.includes("Running"), `tool call was not rendered: ${JSON.stringify(toolCall)}`);
+  assert(toolCall.count === 2 && toolCall.running && !toolCall.open && toolCall.text.includes("npm run check") && toolCall.text.includes("Running"), `tool call summary was not rendered: ${JSON.stringify(toolCall)}`);
+  await js('document.querySelector(".tool-call-group summary").click(); return true;');
+  await wait('document.querySelector(".tool-call-group").open');
+  assert(await js('return document.querySelector(".tool-call-group").innerText.includes("npm run check -- --full");'), "tool call detail was not expandable");
   await shot("tool-call");
+  const destructiveTool = await js(`
+    renderChatCapture({ messages: [{ role: "tool", tool_name: "exec", tool_status: "completed", text: "rm -rf build", tool_detail: "rm -rf build" }] }, { id: "destructive-tool-smoke", tool: "codex" }, false);
+    return document.querySelector(".tool-call-group")?.classList.contains("danger");
+  `);
+  assert(destructiveTool, "destructive tool call was not marked dangerous");
   const proofRows = await js(`
     renderChatCapture({ messages: [
       { role: "assistant", text: "Merged the session header.\\n\\nCommit: 45d7122\\n\\nLive now: ARK VM" },
