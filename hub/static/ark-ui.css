@@ -1055,22 +1055,21 @@ pre {
 }
 
 .topbar {
-  height: 58px;
+  height: 46px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 4px 10px 9px 16px;
+  padding: 4px 10px 4px 16px;
 }
 
 .topbar > div:first-of-type {
   min-width: 0;
   flex: 1;
-  display: grid;
-  grid-template-columns: minmax(0, auto) auto;
-  grid-template-rows: auto auto;
-  justify-content: start;
-  column-gap: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
 }
 
 .sidebar-open {
@@ -1090,7 +1089,8 @@ pre {
 }
 
 .topbar h1 {
-  grid-column: 1 / -1;
+  flex: 0 1 auto;
+  min-width: 0;
   margin: 0;
   display: flex;
   align-items: center;
@@ -1108,8 +1108,9 @@ pre {
 }
 
 .topbar p {
-  max-width: 720px;
-  margin: 3px 0 0;
+  max-width: min(720px, 42vw);
+  min-width: 0;
+  margin: 0;
   overflow: hidden;
   color: var(--muted);
   text-overflow: ellipsis;
@@ -1294,7 +1295,7 @@ pre {
 
 .workspace {
   position: relative;
-  height: calc(100dvh - 70px);
+  height: calc(100dvh - 58px);
 }
 
 .error {
