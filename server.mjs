@@ -501,7 +501,6 @@ async function captureSession(id) {
     throw Object.assign(new Error("This tmux session is stopped. Use Resume or Restart."), { status: 410 });
   }
   if (result.code !== 0) throw Object.assign(new Error(result.output), { status: 502 });
-  const pipeSynced = await syncTmuxPipeLog(device, session).catch(() => false);
   const screen = session.tool === "codex" ? await captureTmuxScreen(device, session.tmux_name) : result;
   const controlText = screen.code === 0 ? screen.output : result.output;
   // Controls must reflect the visible pane, but `/status` is a short-lived Codex
@@ -525,7 +524,7 @@ async function captureSession(id) {
   payload.pending_control = session.pending_control || null;
   payload.usage_limited_until = session.usage_limited_until || 0;
   if (payload.pending_control && !payload.controls.some(actionableControl)) payload.controls.unshift(payload.pending_control);
-  await writeSessionCapture(session, result.output, payload, { forceTerminalLog: session.pipe_log && !device.local && !pipeSynced });
+  await writeSessionCapture(session, result.output, payload);
   return payload;
 }
 
