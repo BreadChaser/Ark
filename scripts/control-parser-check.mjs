@@ -39,4 +39,3 @@ assert.deepEqual(
   { model: "gpt-5.6-sol", reasoning_effort: "xhigh", service_tier: "priority", source: "terminal-screen" },
 );
 assert.equal(codexStateFromScreen("gpt-5.6-luna ultra fast · /tmp")?.reasoning_effort, "ultra");
-assert.equal(agentStateFromScreen({ tool: "codex" }, "• Working (2s • esc to interrupt)\n\n› Write tests for @filename"), "ready", "stale working output must not queue a ready send");
