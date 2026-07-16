@@ -2187,6 +2187,7 @@ async function readCodexTranscriptNow(session, device, rawText, storedMessages) 
     const resume = offset > 0 && offset <= info.size;
     const stored = (storedMessages || await readSessionMessages(session.id)).map(normalizeMessage);
     const messages = resume || stored.some((message) => message.source === "codex-rollout") ? stored.filter((message) => message.source !== "ark") : [];
+    const complete = Boolean(session.codex_transcript_complete) || codexTranscriptCompleted(stored);
     cache = {
       path: readablePath,
       offset: resume ? offset : 0,
@@ -2196,13 +2197,16 @@ async function readCodexTranscriptNow(session, device, rawText, storedMessages) 
       imageHashes: new Map(),
       settings: resume ? session.codex_state || null : null,
       usage: resume ? session.codex_usage || null : null,
-      taskState: resume && ["working", "ready"].includes(session.agent_state) ? session.agent_state : null,
-      complete: Boolean(session.codex_transcript_complete),
+      taskState: complete ? "ready" : resume && session.agent_state === "working" ? "working" : null,
+      complete,
       toolCalls: new Map(messages.filter((message) => message.role === "tool" && message.tool_call_id).map((message) => [message.tool_call_id, message])),
     };
     CODEX_TRANSCRIPTS.set(session.id, cache);
   }
-  if (info.size === cache.offset) return cache.messages.map(normalizeMessage);
+  if (info.size === cache.offset) {
+    await saveCodexTranscriptProgress(session, cache);
+    return cache.messages.map(normalizeMessage);
+  }
   let bytes = 0;
   let remainder = cache.remainder;
   let parsed = 0;
@@ -2253,6 +2257,11 @@ function codexTranscriptProgress(cache) {
     offset: Math.max(0, Number(cache.offset || 0) - Buffer.byteLength(cache.remainder || "")),
     sequence: Math.max(0, Number(cache.sequence || 0)),
   };
+}
+
+function codexTranscriptCompleted(messages) {
+  const last = messages.at(-1);
+  return last?.role === "assistant" && last.phase === "final_answer";
 }
 
 async function saveCodexTranscriptProgress(session, cache) {
@@ -3179,6 +3188,7 @@ function selfCheckCore() {
   const storedProbe = "core-stored-codex-messages";
   if (!canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "ready", codex_transcript_complete: true }, [{ text: "done" }])) throw new Error("completed Codex session did not reuse stored messages");
   if (canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "ready" }, [{ text: "done" }])) throw new Error("unfinished Codex transcript was treated as complete");
+  if (!codexTranscriptCompleted([{ role: "assistant", phase: "final_answer" }]) || codexTranscriptCompleted([{ role: "assistant", phase: "final_answer" }, { role: "user", phase: "" }])) throw new Error("stored Codex final state was not detected");
   if (canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "working" }, [{ text: "done" }])) throw new Error("working Codex session skipped transcript updates");
   if (storedCodexCapture({ tool: "codex", agent_state: "ready" }, [{ text: "done" }]).transcript_source !== "stored") throw new Error("completed Codex capture did not bypass tmux");
   const messagePageProbe = messagePage([0, 1, 2, 3, 4], 2, 4);
