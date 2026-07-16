@@ -1047,6 +1047,15 @@ async function testChatLayout() {
   `);
   assert(updateStack.groups === 1 && updateStack.updates === 3 && updateStack.roleIcons === 1 && updateStack.bubble !== "rgba(0, 0, 0, 0)", `assistant updates did not form a compact group: ${JSON.stringify(updateStack)}`);
   await shot("update-stack");
+  const finalAnswer = await js(`
+    renderChatCapture({ messages: [
+      { role: "assistant", phase: "commentary", text: "Still checking." },
+      { role: "assistant", phase: "final_answer", text: "Finished." },
+    ] }, { id: "final-answer-smoke", tool: "codex" }, false);
+    const card = document.querySelector(".chat-message.final-answer");
+    return { cards: document.querySelectorAll(".chat-message").length, final: Boolean(card), background: card && getComputedStyle(card).backgroundColor };
+  `);
+  assert(finalAnswer.cards === 2 && finalAnswer.final && finalAnswer.background !== "rgba(0, 0, 0, 0)", `final answer was not separated from progress updates: ${JSON.stringify(finalAnswer)}`);
   const toolCall = await js(`
     renderChatCapture({ messages: [
       { role: "user", text: "Check the build." },

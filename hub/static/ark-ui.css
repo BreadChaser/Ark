@@ -480,6 +480,11 @@ body {
   background: rgba(255, 255, 255, 0.96);
 }
 
+:root[data-theme="spreadsheet"] .chat-message.assistant.final-answer .message-text {
+  border: 0;
+  background: transparent;
+}
+
 :root[data-theme="spreadsheet"] .chat-message.assistant.update-group {
   width: min(1240px, 84%);
   max-width: min(1240px, 84%);
@@ -1856,6 +1861,27 @@ pre {
   padding: 13px 16px;
   border-bottom-left-radius: 6px;
   background: var(--panel-soft);
+}
+
+.chat-message.assistant.final-answer {
+  width: 100%;
+  max-width: 100%;
+  gap: 0;
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
+  border-left: 3px solid var(--accent);
+  border-radius: 18px 18px 18px 6px;
+  background: color-mix(in srgb, var(--panel-soft) 82%, var(--accent));
+}
+
+.chat-message.assistant.final-answer .message-role {
+  padding: 0 0 5px;
+  color: var(--accent);
+}
+
+.chat-message.assistant.final-answer .message-text {
+  padding: 0;
+  background: transparent;
 }
 
 .chat-message.assistant.update-group {

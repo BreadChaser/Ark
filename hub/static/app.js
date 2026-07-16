@@ -1580,7 +1580,7 @@ function renderChatCapture(data, session, keepBottom) {
   const start = Math.max(0, allMessages.length - limit);
   const messages = allMessages.slice(start);
   const hidden = Math.max(0, Number(state.chatHistoryStarts[session?.id] || 0)) + start;
-  const signature = `${hidden}\u0000${messages.map((message) => `${message.id || ""}\u0000${message.role}\u0000${message.pending ? "1" : ""}\u0000${message.tool_status || ""}\u0000${message.tool_detail || ""}\u0000${message.text}\u0000${JSON.stringify(message.attachments || [])}`).join("\u0001")}`;
+  const signature = `${hidden}\u0000${messages.map((message) => `${message.id || ""}\u0000${message.role}\u0000${message.phase || ""}\u0000${message.pending ? "1" : ""}\u0000${message.tool_status || ""}\u0000${message.tool_detail || ""}\u0000${message.text}\u0000${JSON.stringify(message.attachments || [])}`).join("\u0001")}`;
   if (state.renderedChatSignatures[session?.id] === signature && els.parsed.querySelector(":scope > .chat-stream")) {
     if (keepBottom) scrollToBottom(els.parsed);
     updateMessageNav();
@@ -1641,6 +1641,7 @@ function renderChatMessage(message, session, continued = false) {
   if (!rawText.trim() && !images.length && !files.length) return null;
   const card = document.createElement("article");
   card.className = `chat-message ${message.role || "assistant"}${message.pending ? " pending" : ""}`;
+  if (message.role === "assistant" && message.phase === "final_answer") card.classList.add("final-answer");
   if (continued) card.classList.add("continued");
   card.setAttribute("aria-label", message.role === "user" ? "You" : message.role === "system" ? "System" : toolLabel(session?.tool || "assistant"));
   card.append(renderMessageRole(message, session, continued));
@@ -1799,7 +1800,7 @@ function renderMessageText(value) {
 
 function isPlainAssistantUpdate(message, session) {
   const text = String(message?.text || "").trim();
-  if (message?.role !== "assistant" || !text || messageImages(message, session).length || (message.attachments || []).length) return false;
+  if (message?.role !== "assistant" || message.phase === "final_answer" || !text || messageImages(message, session).length || (message.attachments || []).length) return false;
   return !/^\s*(?:[-*+]\s+|•\s+|\d+[.)]\s+|#{1,6}\s+|```|>|\|)/m.test(text);
 }
 
