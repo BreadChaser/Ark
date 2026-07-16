@@ -75,6 +75,7 @@ const state = {
   drafts: {},
   attachmentQueues: {},
   attachmentUploads: {},
+  attachmentUploadItems: {},
   imageViewerImages: [],
   imageViewerIndex: -1,
   adding: false,
@@ -1953,22 +1954,29 @@ async function pasteImages(event) {
 
 async function attachImageFiles(files, session) {
   if (!session || !files.length) return;
+  const items = files.map((file) => ({ id: crypto.randomUUID(), name: file.name || "attachment" }));
+  (state.attachmentUploadItems[session.id] ||= []).push(...items);
+  if (activeSession()?.id === session.id) renderAttachmentQueue();
   const previous = state.attachmentUploads[session.id] || Promise.resolve();
   const upload = previous.then(async () => {
     clearError();
-    setStatus("Uploading");
+    setStatus(`Uploading ${items.length} attachment${items.length === 1 ? "" : "s"}`);
     try {
-      for (const file of files) {
+      for (let index = 0; index < files.length; index++) {
+        const file = files[index];
         const form = new FormData();
         form.append("file", file);
         const stored = await api(`/api/sessions/${session.id}/attachments`, { method: "POST", body: form });
         attachmentQueue(session.id).push(stored);
+        removeUploadingAttachment(session.id, items[index].id);
+        if (activeSession()?.id === session.id) renderAttachmentQueue();
       }
       if (activeSession()?.id === session.id) {
-        renderAttachmentQueue();
         setStatus(attachmentQueueStatus(session.id));
       }
     } catch (error) {
+      for (const item of items) removeUploadingAttachment(session.id, item.id);
+      if (activeSession()?.id === session.id) renderAttachmentQueue();
       setStatus("Disconnected");
       showError(error.message);
     }
@@ -2005,9 +2013,17 @@ function attachmentQueueStatus(sessionId = activeSession()?.id) {
   return `${count} attachment${count === 1 ? "" : "s"} queued`;
 }
 
+function removeUploadingAttachment(sessionId, id) {
+  const items = state.attachmentUploadItems[sessionId] || [];
+  state.attachmentUploadItems[sessionId] = items.filter((item) => item.id !== id);
+  if (!state.attachmentUploadItems[sessionId].length) delete state.attachmentUploadItems[sessionId];
+}
+
 function renderAttachmentQueue() {
-  const attachments = attachmentQueue();
-  if (!attachments.length) {
+  const sessionId = activeSession()?.id;
+  const attachments = attachmentQueue(sessionId);
+  const uploading = state.attachmentUploadItems[sessionId] || [];
+  if (!attachments.length && !uploading.length) {
     els.attachmentQueue.hidden = true;
     els.attachmentQueue.innerHTML = "";
     return;
@@ -2027,7 +2043,11 @@ function renderAttachmentQueue() {
         <span>${escapeHtml(name)}</span><small aria-hidden="true">×</small>
       </button>
     `;
-  }).join("");
+  }).join("") + uploading.map((item) => `
+    <div class="attachment-file attachment-uploading" role="status" title="Uploading ${escapeHtml(item.name)}">
+      <span>${escapeHtml(item.name)}</span><small>Uploading...</small>
+    </div>
+  `).join("") + (!uploading.length && attachments.length ? '<span class="attachment-send-note">Ready to send</span>' : "");
   for (const button of els.attachmentQueue.querySelectorAll("[data-remove-attachment]")) {
     button.onclick = () => {
       attachments.splice(Number(button.dataset.removeAttachment), 1);

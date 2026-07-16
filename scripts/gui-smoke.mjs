@@ -157,7 +157,8 @@ try {
   await js('document.querySelector("#send").click(); return true;');
   await waitForTerminalLogText(disposableSession.id, "notes");
   await shot("attachment-send");
-  await sendImmediatelyWithAttachment();
+  const pendingUpload = await sendImmediatelyWithAttachment();
+  assert(pendingUpload.includes("send-race.txt") && pendingUpload.includes("Uploading"), "in-progress attachment was not visible in the composer");
   await waitForTerminalLogText(disposableSession.id, "send-race");
   const pasted = await pasteImageInBrowser();
   assert(pasted.queue.includes("pasted.png"), "pasted file did not queue");
@@ -1426,7 +1427,7 @@ async function sendImmediatelyWithAttachment() {
       } finally {
         window.fetch = originalFetch;
       }
-      return true;
+      return document.querySelector(".attachment-uploading")?.textContent || "";
     })();
   `);
 }

@@ -1957,7 +1957,7 @@ pre {
   padding: 2px 4px;
 }
 
-.attachment-queue button,
+.attachment-queue :is(button, .attachment-uploading),
 .image-list button {
   min-height: 27px;
   display: flex;
@@ -1967,6 +1967,23 @@ pre {
   color: var(--muted);
   background: var(--panel-soft);
   font-size: 10px;
+}
+
+.attachment-uploading {
+  border: 1px solid color-mix(in srgb, var(--accent) 48%, var(--line));
+  color: var(--text);
+  cursor: wait;
+}
+
+.attachment-uploading small {
+  color: var(--accent);
+}
+
+.attachment-send-note {
+  align-self: center;
+  color: var(--accent);
+  font-size: 10px;
+  white-space: nowrap;
 }
 
 .attachment-preview {
