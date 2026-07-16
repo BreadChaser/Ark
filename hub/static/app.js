@@ -877,6 +877,7 @@ function renderMain() {
       stopPolling();
       stopTerminalStream();
       setStatus("Connected");
+      capture();
     } else {
       startPolling();
     }
@@ -1585,7 +1586,7 @@ function renderChatCapture(data, session, keepBottom) {
   const allMessages = mergeLocalChatMessages(state.chatMessages[session?.id] || data.messages || [], state.sentChat[session?.id] || [])
     .filter((message) => !isChatJunk(message));
   const limit = Math.max(CHAT_RENDER_LIMIT, Number(state.chatRenderLimits[session?.id]) || CHAT_RENDER_LIMIT);
-  const start = Math.max(0, allMessages.length - limit);
+  const start = chatRenderStart(allMessages, limit);
   const messages = allMessages.slice(start);
   const hidden = Math.max(0, Number(state.chatHistoryStarts[session?.id] || 0)) + start;
   const signature = `${hidden}\u0000${messages.map((message) => `${message.id || ""}\u0000${message.role}\u0000${message.phase || ""}\u0000${message.pending ? "1" : ""}\u0000${message.tool_status || ""}\u0000${message.tool_detail || ""}\u0000${message.text}\u0000${JSON.stringify(message.attachments || [])}`).join("\u0001")}`;
@@ -1641,6 +1642,15 @@ function renderChatCapture(data, session, keepBottom) {
     }, 150);
   }
   updateMessageNav();
+}
+
+function chatRenderStart(messages, limit) {
+  let conversation = 0;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index].role === "tool") continue;
+    if (++conversation > limit) return index + 1;
+  }
+  return 0;
 }
 
 function renderChatMessage(message, session, continued = false) {
@@ -2426,7 +2436,10 @@ function setView(view) {
     els.quickActions.hidden = true;
   }
   const session = activeSession();
-  if (changed && state.view === "parsed" && session?.tool !== "terminal") state.forceBottomSessionId = session.id;
+  if (changed && state.view === "parsed" && session?.tool !== "terminal") {
+    state.forceBottomSessionId = session.id;
+    capture();
+  }
   localStorage.setItem(VIEW_KEY, state.view);
   els.defaultView.value = state.view;
   els.viewParsed.classList.toggle("active", state.view === "parsed");

@@ -1010,6 +1010,14 @@ async function testChatLayout() {
     return { cards: document.querySelectorAll(".chat-message").length, more: document.querySelector("[data-show-earlier]")?.textContent || "" };
   `);
   assert(longChat.cards === 60 && longChat.more.includes("200 hidden"), `long chat was fully rendered: ${JSON.stringify(longChat)}`);
+  const toolBurst = await js(`
+    renderChatCapture({ messages: [
+      { role: "assistant", text: "assistant response before a tool burst" },
+      ...Array.from({ length: 80 }, (_, index) => ({ role: "tool", tool_name: "exec", tool_status: "completed", text: "tool call " + index })),
+    ] }, { id: "tool-burst-window-smoke", tool: "codex" }, false);
+    return document.querySelector("#parsed").innerText.includes("assistant response before a tool burst");
+  `);
+  assert(toolBurst, "tool calls pushed an assistant response out of the parsed chat window");
   const evidenceColumns = await js(`
     renderChatCapture({ messages: [{ role: "assistant", text: "- Validation is green:\\n    - synthetic tests\\n    - network tests\\n    - map probe\\n    - ASan run\\n    - Windows viewer\\n    - structure hygiene" }] }, { id: "evidence-grid-smoke", tool: "codex" }, false);
     return {
