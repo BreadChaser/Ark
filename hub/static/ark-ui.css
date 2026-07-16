@@ -21,14 +21,16 @@
   --shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
   --grid-line: rgba(121, 183, 193, 0.08);
   --background-ambient:
-    radial-gradient(ellipse at 12% -10%, rgba(49, 153, 180, 0.18), transparent 38rem),
-    radial-gradient(ellipse at 98% 110%, rgba(79, 126, 180, 0.11), transparent 36rem);
-  --background-primary-pattern: repeating-radial-gradient(ellipse at 14% 42%, transparent 0 42px, rgba(121, 183, 193, 0.075) 43px 44px);
-  --background-primary-size: auto;
-  --background-primary-motion: topography-drift 86s linear infinite;
-  --background-secondary-pattern: linear-gradient(120deg, transparent 49.75%, rgba(121, 183, 193, 0.075) 50%, transparent 50.25%);
-  --background-secondary-size: 240px 240px;
-  --background-secondary-motion: diagonal-drift 72s linear infinite;
+    radial-gradient(circle at 12% -10%, var(--bg-glow), transparent 38rem),
+    radial-gradient(circle at 98% 110%, rgba(79, 126, 180, 0.09), transparent 36rem);
+  --background-primary-pattern:
+    linear-gradient(90deg, var(--grid-line) 1.5px, transparent 1.5px),
+    linear-gradient(0deg, var(--grid-line) 1.5px, transparent 1.5px);
+  --background-primary-size: 32px 32px;
+  --background-primary-motion: grid-drift 60s linear infinite;
+  --background-secondary-pattern: linear-gradient(135deg, transparent 49.7%, color-mix(in srgb, var(--grid-line) 72%, transparent) 50%, transparent 50.3%);
+  --background-secondary-size: 280px 280px;
+  --background-secondary-motion: diagonal-drift 60s linear infinite;
   --scanline-a: transparent;
   --scanline-b: transparent;
   --scanline-opacity: 0;
@@ -74,51 +76,47 @@
   --shadow: 0 24px 70px rgba(29, 53, 65, 0.14);
   --grid-line: rgba(36, 75, 89, 0.065);
   --background-ambient:
-    radial-gradient(ellipse at 8% 0%, rgba(62, 172, 188, 0.17), transparent 34rem),
-    radial-gradient(ellipse at 94% 92%, rgba(79, 128, 204, 0.12), transparent 34rem);
-  --background-primary-pattern:
-    linear-gradient(90deg, rgba(45, 104, 132, 0.065) 1px, transparent 1px),
-    linear-gradient(0deg, rgba(45, 104, 132, 0.04) 1px, transparent 1px);
-  --background-primary-size: 96px 96px, 24px 24px;
-  --background-primary-motion: drafting-drift 96s linear infinite;
-  --background-secondary-pattern: linear-gradient(135deg, transparent 49.8%, rgba(45, 104, 132, 0.08) 50%, transparent 50.2%);
-  --background-secondary-size: 192px 192px;
-  --background-secondary-motion: diagonal-drift 88s linear infinite;
+    radial-gradient(circle at 8% 0%, rgba(75, 176, 188, 0.11), transparent 34rem),
+    radial-gradient(circle at 94% 92%, rgba(91, 135, 190, 0.075), transparent 34rem);
+  --background-primary-pattern: radial-gradient(circle, rgba(38, 92, 112, 0.12) 0 0.8px, transparent 1px);
+  --background-primary-size: 20px 20px;
+  --background-primary-motion: none;
+  --background-secondary-pattern: none;
+  --background-secondary-size: auto;
+  --background-secondary-motion: none;
   --vignette: rgba(35, 60, 72, 0.08);
 }
 
 :root[data-theme="soft"] {
   color-scheme: light;
-  --bg: #c6d0d5;
-  --bg-glow: rgba(74, 98, 111, 0.08);
-  --panel: rgba(228, 234, 236, 0.86);
-  --panel-solid: #e2e7e9;
-  --panel-soft: #b2bdc2;
-  --panel-raised: #a0aeb5;
-  --text: #1f2b31;
-  --muted: #3f5058;
-  --faint: #45565d;
-  --line: rgba(47, 65, 73, 0.2);
-  --line-strong: rgba(59, 102, 116, 0.32);
-  --accent: #3b6674;
-  --accent-strong: #2a505d;
-  --accent-soft: rgba(59, 102, 116, 0.14);
-  --blue: #4a7086;
-  --danger: #914954;
-  --warning: #755f2e;
-  --done: #3d7151;
-  --shadow: 0 24px 70px rgba(42, 52, 58, 0.19);
-  --grid-line: rgba(47, 65, 73, 0.09);
-  --background-ambient:
-    radial-gradient(ellipse at 15% 8%, rgba(132, 166, 179, 0.32), transparent 36rem),
-    radial-gradient(ellipse at 90% 88%, rgba(101, 128, 139, 0.22), transparent 38rem);
-  --background-primary-pattern: repeating-radial-gradient(ellipse at 72% 32%, transparent 0 58px, rgba(69, 94, 105, 0.095) 59px 60px);
+  --bg: #8f999b;
+  --bg-glow: rgba(51, 64, 68, 0.12);
+  --panel: rgba(176, 184, 185, 0.84);
+  --panel-solid: #b0b9ba;
+  --panel-soft: #a2adaf;
+  --panel-raised: #929d9f;
+  --text: #172024;
+  --muted: #39464b;
+  --faint: #536065;
+  --line: rgba(27, 38, 42, 0.28);
+  --line-strong: rgba(43, 67, 73, 0.42);
+  --accent: #315b63;
+  --accent-strong: #23464d;
+  --accent-soft: rgba(49, 91, 99, 0.18);
+  --blue: #466870;
+  --danger: #82464e;
+  --warning: #68592f;
+  --done: #315f45;
+  --shadow: 0 24px 70px rgba(25, 33, 35, 0.31);
+  --grid-line: rgba(49, 62, 66, 0.08);
+  --background-ambient: linear-gradient(145deg, rgba(217, 223, 221, 0.12), transparent 46%), linear-gradient(315deg, rgba(45, 58, 61, 0.16), transparent 58%);
+  --background-primary-pattern: repeating-linear-gradient(135deg, rgba(33, 45, 48, 0.065) 0 1px, transparent 1px 18px);
   --background-primary-size: auto;
-  --background-primary-motion: fog-drift 112s linear infinite;
-  --background-secondary-pattern: linear-gradient(150deg, transparent 49.8%, rgba(72, 98, 109, 0.055) 50%, transparent 50.2%);
-  --background-secondary-size: 360px 360px;
-  --background-secondary-motion: diagonal-drift 108s linear infinite;
-  --vignette: rgba(37, 48, 55, 0.11);
+  --background-primary-motion: none;
+  --background-secondary-pattern: none;
+  --background-secondary-size: auto;
+  --background-secondary-motion: none;
+  --vignette: rgba(37, 48, 50, 0.16);
 }
 
 :root[data-theme="midnight"] {
@@ -144,16 +142,16 @@
   --shadow: 0 24px 70px rgba(0, 0, 0, 0.72);
   --grid-line: rgba(127, 139, 205, 0.045);
   --background-ambient:
-    radial-gradient(ellipse at 18% 14%, rgba(71, 81, 159, 0.2), transparent 32rem),
-    radial-gradient(ellipse at 88% 88%, rgba(105, 51, 128, 0.13), transparent 42rem);
+    radial-gradient(ellipse at 18% 14%, rgba(71, 81, 159, 0.17), transparent 32rem),
+    radial-gradient(ellipse at 88% 88%, rgba(105, 51, 128, 0.1), transparent 42rem);
   --background-primary-pattern:
     radial-gradient(circle, rgba(180, 190, 255, 0.34) 0 1px, transparent 1.5px),
     radial-gradient(circle, rgba(154, 168, 255, 0.22) 0 1px, transparent 1.5px);
   --background-primary-size: 109px 109px, 173px 173px;
-  --background-primary-motion: star-drift 128s linear infinite;
-  --background-secondary-pattern: radial-gradient(ellipse at 50% 50%, transparent 0 58%, rgba(142, 154, 255, 0.12) 59% 59.4%, transparent 60%);
-  --background-secondary-size: 680px 680px;
-  --background-secondary-motion: orbit-drift 150s linear infinite;
+  --background-primary-motion: star-drift 180s linear infinite;
+  --background-secondary-pattern: none;
+  --background-secondary-size: auto;
+  --background-secondary-motion: none;
   --vignette: rgba(0, 0, 0, 0.7);
   --terminal-bg: #000000;
   --terminal-fg: #e1e5ff;
@@ -183,12 +181,14 @@
   --done: #8fd45d;
   --shadow: 0 0 0 1px rgba(255, 176, 47, 0.08), 0 18px 48px rgba(0, 0, 0, 0.72);
   --grid-line: rgba(255, 176, 47, 0.085);
-  --background-primary-pattern: repeating-radial-gradient(circle at 50% 54%, transparent 0 72px, rgba(255, 176, 47, 0.12) 73px 74px);
-  --background-primary-size: auto;
-  --background-primary-motion: radar-drift 94s linear infinite;
-  --background-secondary-pattern: linear-gradient(121deg, transparent 49.8%, rgba(255, 176, 47, 0.13) 50%, transparent 50.2%);
-  --background-secondary-size: 320px 320px;
-  --background-secondary-motion: diagonal-drift 70s linear infinite;
+  --background-primary-pattern:
+    linear-gradient(90deg, var(--grid-line) 1.5px, transparent 1.5px),
+    linear-gradient(0deg, var(--grid-line) 1.5px, transparent 1.5px);
+  --background-primary-size: 32px 32px;
+  --background-primary-motion: grid-drift 60s linear infinite;
+  --background-secondary-pattern: linear-gradient(135deg, transparent 49.7%, color-mix(in srgb, var(--grid-line) 72%, transparent) 50%, transparent 50.3%);
+  --background-secondary-size: 280px 280px;
+  --background-secondary-motion: diagonal-drift 60s linear infinite;
   --scanline-a: rgba(255, 232, 170, 0.09);
   --scanline-b: rgba(255, 176, 47, 0.05);
   --scanline-opacity: 0.58;
@@ -248,7 +248,7 @@
   }
 
   :root[data-theme="soft"] {
-    --panel: rgba(239, 242, 243, 0.7);
+    --panel: rgba(176, 184, 185, 0.74);
   }
 
   :root[data-theme="midnight"] {
@@ -647,34 +647,9 @@ body::after {
   to { transform: translate3d(0, 0, 0); }
 }
 
-@keyframes topography-drift {
-  from { transform: translate3d(-130px, -56px, 0) rotate(-1deg); }
-  to { transform: translate3d(34px, 58px, 0) rotate(-1deg); }
-}
-
-@keyframes drafting-drift {
-  from { transform: translate3d(-96px, -96px, 0); }
-  to { transform: translate3d(0, 0, 0); }
-}
-
-@keyframes fog-drift {
-  from { transform: translate3d(-112px, 48px, 0) scale(1.04); }
-  to { transform: translate3d(84px, -52px, 0) scale(1.04); }
-}
-
 @keyframes star-drift {
   from { transform: translate3d(-128px, 68px, 0); }
   to { transform: translate3d(92px, -44px, 0); }
-}
-
-@keyframes orbit-drift {
-  from { transform: translate3d(160px, -100px, 0) rotate(0deg); }
-  to { transform: translate3d(-120px, 90px, 0) rotate(8deg); }
-}
-
-@keyframes radar-drift {
-  from { transform: translate3d(-88px, 54px, 0) scale(1.04); }
-  to { transform: translate3d(76px, -64px, 0) scale(1.04); }
 }
 
 @keyframes diagonal-drift {
