@@ -282,7 +282,7 @@ async function route(req, res) {
     const image = await storeImageUpload(req);
     const targetPath = await makeImageAvailable(device, image);
     return json(res, 200, {
-      name: image.filename,
+      name: image.name,
       path: targetPath,
       text: `Use this image: ${targetPath}`,
     });
@@ -394,7 +394,7 @@ async function route(req, res) {
     const targetPath = await makeImageAvailable(device, image);
     await touchSession(session.id);
     return json(res, 200, {
-      name: image.filename,
+      name: image.name,
       path: targetPath,
       url: `/api/sessions/${encodeURIComponent(session.id)}/attachments/${encodeURIComponent(image.filename)}`,
       text: `Use this image: ${targetPath}`,
@@ -2911,7 +2911,7 @@ async function readFileUpload(req, dir) {
     if (!output || !complete) throw Object.assign(new Error("file is required"), { status: 400 });
     output.end();
     await finished(output);
-    return { filename, localPath, type: partType, size };
+    return { name: filename, filename: path.basename(localPath), localPath, type: partType, size };
   } catch (error) {
     output?.destroy();
     if (localPath) await rm(localPath, { force: true }).catch(() => {});

@@ -2034,7 +2034,7 @@ function renderAttachmentQueue() {
     const name = attachment.name || attachment.path || "attachment";
     if (isImageAttachment(attachment)) return `
       <div class="attachment-preview">
-        <img class="message-image" src="${escapeHtml(attachment.url || attachmentUrl(activeSession(), attachment))}" alt="${escapeHtml(name)}" />
+        <img class="message-image" src="${escapeHtml(attachmentUrl(activeSession(), attachment) || attachment.url)}" alt="${escapeHtml(name)}" />
         <span>${escapeHtml(name)}</span>
         <button type="button" data-remove-attachment="${index}" aria-label="Remove ${escapeHtml(name)}">×</button>
       </div>
@@ -2444,7 +2444,7 @@ function messageImages(message, session) {
   }
   return attachments.filter(isImageAttachment).map((attachment) => ({
     name: attachment.name || attachmentFilename(attachment) || "Attached image",
-    url: attachment.url || attachmentUrl(session, attachment),
+    url: attachmentUrl(session, attachment) || attachment.url,
   })).filter((attachment) => attachment.url);
 }
 
