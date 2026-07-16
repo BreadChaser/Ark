@@ -2208,7 +2208,16 @@ async function readCodexTranscriptNow(session, device, rawText, storedMessages) 
     try {
       readablePath = await mirrorRemoteTranscript(session, device, filePath);
     } catch {
-      return null;
+      // A remembered rollout can disappear after a CLI restart or account
+      // change. Fall back to the slower process discovery once in that case.
+      CODEX_ROLLOUTS.delete(session.id);
+      const discovered = await codexRolloutPath(session, device, rawText, true);
+      if (!discovered || discovered === filePath) return null;
+      try {
+        readablePath = await mirrorRemoteTranscript(session, device, discovered);
+      } catch {
+        return null;
+      }
     }
   }
   let info;
@@ -2644,9 +2653,10 @@ function codexToolCallText(name, input) {
     .replace(/\r\n?/g, "\n").trim() || String(name || "tool");
 }
 
-async function codexRolloutPath(session, device, rawText) {
+async function codexRolloutPath(session, device, rawText, skipRemembered = false) {
   const cached = CODEX_ROLLOUTS.get(session.id);
   if (cached) return cached;
+  if (!skipRemembered && session.codex_rollout_path) return rememberCodexRollout(session, session.codex_rollout_path);
   const home = session.runner_account_home || profileEnv(session.runner_env).CODEX_HOME || path.join(os.homedir(), ".codex");
   const script = `root=$(tmux display-message -p -t ${q(session.tmux_name)} '#{pane_pid}'); pids="$root"; frontier="$root"; while [ -n "$frontier" ]; do next=""; for p in $frontier; do kids=$(pgrep -P "$p" 2>/dev/null || true); pids="$pids $kids"; next="$next $kids"; done; frontier="$next"; done; for p in $pids; do for fd in /proc/$p/fd/*; do readlink "$fd" 2>/dev/null || true; done; done | grep '/rollout-.*[.]jsonl$' | sort -u`;
   const open = await runOnDevice(device, script, 5000);
@@ -2695,19 +2705,27 @@ function isPrimaryCodexRollout(meta) {
 async function rememberCodexRollout(session, filePath) {
   CODEX_ROLLOUTS.set(session.id, filePath);
   const codexSessionId = codexRolloutId(filePath);
-  if (!codexSessionId || session.codex_session_id === codexSessionId) return filePath;
+  const sessionChanged = session.codex_session_id !== codexSessionId;
+  const pathChanged = session.codex_rollout_path !== filePath;
+  if (!codexSessionId || (!sessionChanged && !pathChanged)) return filePath;
   session.codex_session_id = codexSessionId;
-  session.codex_transcript_offset = 0;
-  session.codex_transcript_sequence = 0;
-  session.codex_transcript_complete = false;
+  session.codex_rollout_path = filePath;
+  if (sessionChanged) {
+    session.codex_transcript_offset = 0;
+    session.codex_transcript_sequence = 0;
+    session.codex_transcript_complete = false;
+  }
   const stored = await withMutation("store", async () => {
     const data = await readStore();
     const found = data.sessions.find((item) => item.id === session.id);
     if (!found) return null;
     found.codex_session_id = codexSessionId;
-    found.codex_transcript_offset = 0;
-    found.codex_transcript_sequence = 0;
-    delete found.codex_transcript_complete;
+    found.codex_rollout_path = filePath;
+    if (sessionChanged) {
+      found.codex_transcript_offset = 0;
+      found.codex_transcript_sequence = 0;
+      delete found.codex_transcript_complete;
+    }
     await writeStore(data);
     return found;
   });
