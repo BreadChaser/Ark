@@ -174,6 +174,7 @@ const els = {
   viewParsed: document.querySelector("#view-parsed"),
   viewRaw: document.querySelector("#view-raw"),
   theme: document.querySelector("#theme"),
+  chillMode: document.querySelector("#chill-mode"),
   settingsToggle: document.querySelector("#settings-toggle"),
   settingsMenu: document.querySelector("#settings-menu"),
   settingsRefresh: document.querySelector("#settings-refresh"),
@@ -229,6 +230,12 @@ async function init() {
   setTheme(els.theme.value);
   applySidebarCollapsed();
   els.theme.addEventListener("change", () => setTheme(els.theme.value));
+  els.chillMode.addEventListener("click", () => setChillMode(!document.body.classList.contains("chill-mode")));
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !document.body.classList.contains("chill-mode")) return;
+    event.preventDefault();
+    setChillMode(false);
+  });
   document.addEventListener("pointerdown", armSounds, { once: true, capture: true });
   document.addEventListener("keydown", armSounds, { once: true, capture: true });
   els.defaultTool.addEventListener("change", () => {
@@ -2524,6 +2531,16 @@ function setTheme(theme) {
   localStorage.setItem(THEME_KEY, theme);
   if (state.terminal) state.terminal.options.theme = terminalTheme();
   window.dispatchEvent(new Event("ark-theme"));
+}
+
+function setChillMode(enabled) {
+  document.body.classList.toggle("chill-mode", enabled);
+  els.chillMode.setAttribute("aria-pressed", String(enabled));
+  els.chillMode.textContent = enabled ? "Return to Ark" : "Chill mode";
+  if (enabled) {
+    els.settingsMenu.hidden = true;
+    els.settingsToggle.setAttribute("aria-expanded", "false");
+  }
 }
 
 function toggleSettings(event) {

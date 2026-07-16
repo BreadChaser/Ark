@@ -69,6 +69,13 @@ try {
   await assertProfileYamlConfig();
   await assertToolDisableState();
   await shot("settings");
+  assert(await js('return Boolean(document.querySelector("#chill-mode"));'), "chill mode toggle is missing from Appearance");
+  await js('document.querySelector("#chill-mode").click(); return true;');
+  await wait('document.body.classList.contains("chill-mode") && getComputedStyle(document.querySelector("main")).display === "none"');
+  await shot("chill-mode");
+  await js('document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); return true;');
+  await wait('!document.body.classList.contains("chill-mode") && getComputedStyle(document.querySelector("main")).display !== "none"');
+  await js('document.querySelector("#settings-toggle").click(); return true;');
 
   for (const theme of ["light", "soft", "dark", "midnight", "ark", "spreadsheet"]) {
     await setTheme(theme);

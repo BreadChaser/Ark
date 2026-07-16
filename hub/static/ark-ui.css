@@ -254,6 +254,14 @@
   --done: #137333;
   --shadow: 0 2px 8px rgba(60, 64, 67, 0.14);
   --grid-line: rgba(60, 64, 67, 0.075);
+  --background-primary-pattern:
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(0deg, var(--grid-line) 1px, transparent 1px);
+  --background-primary-size: 24px 24px;
+  --background-primary-motion: none;
+  --background-secondary-pattern: none;
+  --background-secondary-size: auto;
+  --background-secondary-motion: none;
   --vignette: rgba(60, 64, 67, 0.05);
   --terminal-bg: #202124;
   --terminal-fg: #e8eaed;
@@ -301,6 +309,10 @@ body {
   background: var(--background-ambient), var(--bg);
   font: 500 14px/1.45 var(--font);
   text-shadow: var(--text-glow);
+}
+
+body.chill-mode > :not(.background-flow, .background-grid) {
+  display: none !important;
 }
 
 .background-flow,
