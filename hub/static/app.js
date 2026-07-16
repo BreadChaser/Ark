@@ -1574,9 +1574,6 @@ function renderTerminalCapture(data, keepBottom) {
 }
 
 function renderChatCapture(data, session, keepBottom) {
-  els.parsed.innerHTML = "";
-  const stream = document.createElement("div");
-  stream.className = "chat-stream";
   const allMessages = mergeLocalChatMessages(state.chatMessages[session?.id] || data.messages || [], state.sentChat[session?.id] || [])
     .filter((message) => !isChatJunk(message));
   const limit = Math.max(CHAT_RENDER_LIMIT, Number(state.chatRenderLimits[session?.id]) || CHAT_RENDER_LIMIT);
@@ -1590,6 +1587,11 @@ function renderChatCapture(data, session, keepBottom) {
     return;
   }
   state.renderedChatSignatures[session?.id] = signature;
+  const openToolGroups = new Set([...els.parsed.querySelectorAll(".tool-call-group[open]")].map((group) => group.dataset.toolGroup));
+  const openToolCalls = new Set([...els.parsed.querySelectorAll(".tool-call-entry[open]")].map((call) => call.dataset.toolCall));
+  els.parsed.innerHTML = "";
+  const stream = document.createElement("div");
+  stream.className = "chat-stream";
   if (hidden) {
     const earlier = document.createElement("button");
     earlier.type = "button";
@@ -1604,7 +1606,7 @@ function renderChatCapture(data, session, keepBottom) {
     if (message.role === "tool") {
       const calls = [message];
       while (messages[index + 1]?.role === "tool") calls.push(messages[++index]);
-      stream.append(renderToolCallGroup(calls));
+      stream.append(renderToolCallGroup(calls, openToolGroups, openToolCalls));
       previousRole = "tool";
       continue;
     }
@@ -1681,11 +1683,14 @@ function toolCallStatus(message) {
   return ["running", "completed", "failed"].includes(message.tool_status) ? message.tool_status : "completed";
 }
 
-function renderToolCallGroup(calls) {
+function renderToolCallGroup(calls, openGroups = new Set(), openCalls = new Set()) {
   const newest = calls.at(-1);
   const status = toolCallStatus(newest);
   const group = document.createElement("details");
+  const groupId = String(calls[0]?.id || calls[0]?.tool_call_id || calls[0]?.text || "tool-call");
   group.className = `tool-call-group ${toolCallTone(newest)} ${status}`;
+  group.dataset.toolGroup = groupId;
+  group.open = openGroups.has(groupId);
   group.setAttribute("aria-label", `${calls.length} tool call${calls.length === 1 ? "" : "s"}`);
   const summary = document.createElement("summary");
   summary.append(renderToolCallLine(newest));
@@ -1697,7 +1702,7 @@ function renderToolCallGroup(calls) {
   }
   const list = document.createElement("div");
   list.className = "tool-call-list";
-  for (const call of calls) list.append(renderToolCall(call));
+  for (const call of calls) list.append(renderToolCall(call, openCalls.has(String(call.id || call.tool_call_id || call.text || "tool-call"))));
   group.append(summary, list);
   return group;
 }
@@ -1722,13 +1727,16 @@ function renderToolCallLine(message) {
   return line;
 }
 
-function renderToolCall(message) {
-  const card = document.createElement("article");
+function renderToolCall(message, open = false) {
+  const card = document.createElement("details");
   card.className = `tool-call-entry ${toolCallTone(message)} ${toolCallStatus(message)}`;
-  card.append(renderToolCallLine(message));
+  card.dataset.toolCall = String(message.id || message.tool_call_id || message.text || "tool-call");
+  card.open = open;
+  const summary = document.createElement("summary");
+  summary.append(renderToolCallLine(message));
   const detail = document.createElement("pre");
   detail.textContent = message.tool_detail || message.text || "";
-  card.append(detail);
+  card.append(summary, detail);
   return card;
 }
 

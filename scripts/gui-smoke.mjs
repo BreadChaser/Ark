@@ -1060,7 +1060,20 @@ async function testChatLayout() {
   assert(toolCall.count === 2 && toolCall.running && !toolCall.open && toolCall.text.includes("npm run check") && toolCall.text.includes("Running"), `tool call summary was not rendered: ${JSON.stringify(toolCall)}`);
   await js('document.querySelector(".tool-call-group summary").click(); return true;');
   await wait('document.querySelector(".tool-call-group").open');
+  await js('document.querySelectorAll(".tool-call-entry summary")[1].click(); return true;');
+  await wait('document.querySelectorAll(".tool-call-entry")[1].open');
   assert(await js('return document.querySelector(".tool-call-group").innerText.includes("npm run check -- --full");'), "tool call detail was not expandable");
+  const preservedToolMenu = await js(`
+    renderChatCapture({ messages: [
+      { role: "user", text: "Check the build." },
+      { role: "tool", tool_name: "exec", tool_status: "completed", text: "git status", tool_detail: "git status --short" },
+      { role: "tool", tool_name: "exec", tool_status: "completed", text: "npm run check", tool_detail: "npm run check -- --full" },
+      { role: "tool", tool_name: "exec", tool_status: "running", text: "ls", tool_detail: "ls -la" },
+      { role: "assistant", text: "I am checking it now." },
+    ] }, { id: "tool-call-smoke", tool: "codex" }, false);
+    return { group: document.querySelector(".tool-call-group").open, call: document.querySelectorAll(".tool-call-entry")[1].open };
+  `);
+  assert(preservedToolMenu.group && preservedToolMenu.call, `tool call menu closed during a live update: ${JSON.stringify(preservedToolMenu)}`);
   await shot("tool-call");
   const destructiveTool = await js(`
     renderChatCapture({ messages: [{ role: "tool", tool_name: "exec", tool_status: "completed", text: "rm -rf build", tool_detail: "rm -rf build" }] }, { id: "destructive-tool-smoke", tool: "codex" }, false);

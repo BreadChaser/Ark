@@ -1975,10 +1975,15 @@ pre {
 .tool-call-group.danger .tool-call-line em, .tool-call-group.failed .tool-call-line em { color: var(--danger); }
 .tool-call-count { color: var(--faint); font-weight: 700; }
 .tool-call-list { display: grid; gap: 6px; padding: 0 9px 9px; border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent); }
-.tool-call-entry { padding: 8px 9px; border-left: 2px solid var(--line-strong); background: color-mix(in srgb, var(--panel-raised) 64%, transparent); }
+.tool-call-entry { border-left: 2px solid var(--line-strong); background: color-mix(in srgb, var(--panel-raised) 64%, transparent); }
+.tool-call-entry > summary { display: flex; align-items: center; min-height: 31px; padding: 6px 8px; cursor: pointer; list-style: none; }
+.tool-call-entry > summary::-webkit-details-marker { display: none; }
+.tool-call-entry > summary::marker { content: ""; }
+.tool-call-entry > summary::before { content: "+"; width: 12px; color: var(--faint); font-weight: 700; }
+.tool-call-entry[open] > summary::before { content: "−"; }
 .tool-call-entry.write { border-left-color: var(--warning); }
 .tool-call-entry.danger, .tool-call-entry.failed { border-left-color: var(--danger); }
-.tool-call-entry pre { margin: 7px 0 0; max-width: 100%; overflow: auto; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.tool-call-entry pre { margin: 0; padding: 0 8px 8px 20px; max-width: 100%; overflow: auto; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
 
 .message-images {
   display: flex;
