@@ -12,6 +12,7 @@ const SOUND_CHOICE_KEYS = { done: "ark-done-sound", input: "ark-input-sound" };
 const SOUND_VERSION = "7";
 const PASTE_ATTACHMENT_THRESHOLD = 50_000;
 const CHAT_RENDER_LIMIT = 120;
+let attachmentUploadSequence = 0;
 const SOUND_CHOICES = {
   done: [
     { id: "complete", label: "Complete", file: "sounds/yaru-complete.mp3" },
@@ -1954,7 +1955,7 @@ async function pasteImages(event) {
 
 async function attachImageFiles(files, session) {
   if (!session || !files.length) return;
-  const items = files.map((file) => ({ id: crypto.randomUUID(), name: file.name || "attachment" }));
+  const items = files.map((file) => ({ id: ++attachmentUploadSequence, name: file.name || "attachment" }));
   (state.attachmentUploadItems[session.id] ||= []).push(...items);
   if (activeSession()?.id === session.id) renderAttachmentQueue();
   const previous = state.attachmentUploads[session.id] || Promise.resolve();
