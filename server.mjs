@@ -2179,6 +2179,7 @@ async function readCodexTranscript(session, device, rawText, storedMessages = nu
 
 async function readCodexTranscriptNow(session, device, rawText, storedMessages) {
   if (session.tool !== "codex") return null;
+  const previousSessionId = session.codex_session_id;
   const filePath = await codexRolloutPath(session, device, rawText);
   if (!filePath) return null;
   let readablePath = filePath;
@@ -2198,10 +2199,9 @@ async function readCodexTranscriptNow(session, device, rawText, storedMessages) 
   }
   let cache = CODEX_TRANSCRIPTS.get(session.id);
   if (!cache || cache.path !== readablePath || info.size < cache.offset) {
-    const offset = Number(session.codex_transcript_offset || 0);
-    const resume = offset > 0 && offset <= info.size;
+    const resume = codexTranscriptCanResume(previousSessionId, filePath, session.codex_transcript_offset, info.size);
     const stored = (storedMessages || await readSessionMessages(session.id)).map(normalizeMessage);
-    const messages = resume || stored.some((message) => message.source === "codex-rollout") ? stored.filter((message) => message.source !== "ark") : [];
+    const messages = resume ? stored.filter((message) => message.source !== "ark") : [];
     const complete = Boolean(session.codex_transcript_complete) || codexTranscriptCompleted(stored);
     cache = {
       path: readablePath,
@@ -2272,6 +2272,13 @@ function codexTranscriptProgress(cache) {
     offset: Math.max(0, Number(cache.offset || 0) - Buffer.byteLength(cache.remainder || "")),
     sequence: Math.max(0, Number(cache.sequence || 0)),
   };
+}
+
+function codexTranscriptCanResume(sessionId, filePath, offset, size) {
+  const selectedSessionId = codexRolloutId(filePath);
+  return Number(offset) > 0
+    && Number(offset) <= Number(size)
+    && (!sessionId || !selectedSessionId || sessionId === selectedSessionId);
 }
 
 function codexTranscriptCompleted(messages) {
@@ -2614,15 +2621,16 @@ async function codexRolloutPath(session, device, rawText) {
   const cached = CODEX_ROLLOUTS.get(session.id);
   if (cached) return cached;
   const home = session.runner_account_home || profileEnv(session.runner_env).CODEX_HOME || path.join(os.homedir(), ".codex");
-  const script = `root=$(tmux display-message -p -t ${q(session.tmux_name)} '#{pane_pid}'); pids="$root"; frontier="$root"; while [ -n "$frontier" ]; do next=""; for p in $frontier; do kids=$(pgrep -P "$p" 2>/dev/null || true); pids="$pids $kids"; next="$next $kids"; done; frontier="$next"; done; for p in $pids; do for fd in /proc/$p/fd/*; do readlink "$fd" 2>/dev/null || true; done; done | grep -m1 '/rollout-.*[.]jsonl$'`;
+  const script = `root=$(tmux display-message -p -t ${q(session.tmux_name)} '#{pane_pid}'); pids="$root"; frontier="$root"; while [ -n "$frontier" ]; do next=""; for p in $frontier; do kids=$(pgrep -P "$p" 2>/dev/null || true); pids="$pids $kids"; next="$next $kids"; done; frontier="$next"; done; for p in $pids; do for fd in /proc/$p/fd/*; do readlink "$fd" 2>/dev/null || true; done; done | grep '/rollout-.*[.]jsonl$' | sort -u`;
   const open = await runOnDevice(device, script, 5000);
   if (open.code === 0 && open.output.trim()) {
-    return rememberCodexRollout(session, open.output.trim());
+    const primary = await primaryCodexRolloutPath(session, device, open.output);
+    if (primary) return rememberCodexRollout(session, primary);
   }
   const sessionId = session.codex_session_id || (stripAnsi(String(rawText || "")).match(/Session:\s*([0-9a-f-]{36})/i) || [])[1];
   if (sessionId) {
     const exact = await runOnDevice(device, `find ${q(path.join(home, "sessions"))} -type f -name ${q(`*${sessionId}*.jsonl`)} -print -quit`, 5000);
-    if (exact.code === 0 && exact.output.trim()) {
+    if (exact.code === 0 && exact.output.trim() && isPrimaryCodexRollout(await readCodexSessionMeta(device, exact.output.trim()))) {
       return rememberCodexRollout(session, exact.output.trim());
     }
   }
@@ -2632,8 +2640,8 @@ async function codexRolloutPath(session, device, rawText) {
   for (const line of recent.output.split(/\r?\n/)) {
     const match = line.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
     if (!match) continue;
-    const meta = await readCodexSessionMeta(match[2]);
-    if (!meta) continue;
+    const meta = await readCodexSessionMeta(device, match[2]);
+    if (!isPrimaryCodexRollout(meta)) continue;
     const started = Date.parse(meta.timestamp || "") / 1000;
     const distance = Number.isFinite(started) ? Math.abs(started - Number(session.created_at || 0)) : Infinity;
     const cwdMatch = Boolean(meta.cwd && expectedCwd && path.resolve(meta.cwd) === path.resolve(expectedCwd));
@@ -2644,9 +2652,22 @@ async function codexRolloutPath(session, device, rawText) {
   return nearest ? rememberCodexRollout(session, nearest.path) : "";
 }
 
+async function primaryCodexRolloutPath(session, device, output) {
+  const candidates = [];
+  for (const filePath of new Set(String(output || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean))) {
+    const meta = await readCodexSessionMeta(device, filePath);
+    if (isPrimaryCodexRollout(meta)) candidates.push({ filePath, meta });
+  }
+  return candidates.find(({ meta }) => meta.id === session.codex_session_id)?.filePath || candidates[0]?.filePath || "";
+}
+
+function isPrimaryCodexRollout(meta) {
+  return Boolean(meta) && !meta.source?.subagent;
+}
+
 async function rememberCodexRollout(session, filePath) {
   CODEX_ROLLOUTS.set(session.id, filePath);
-  const codexSessionId = (path.basename(filePath).match(/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\.jsonl$/i) || [])[1];
+  const codexSessionId = codexRolloutId(filePath);
   if (!codexSessionId || session.codex_session_id === codexSessionId) return filePath;
   session.codex_session_id = codexSessionId;
   session.codex_transcript_offset = 0;
@@ -2667,12 +2688,22 @@ async function rememberCodexRollout(session, filePath) {
   return filePath;
 }
 
-async function readCodexSessionMeta(filePath) {
+function codexRolloutId(filePath) {
+  return (path.basename(String(filePath || "")).match(/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\.jsonl$/i) || [])[1] || "";
+}
+
+async function readCodexSessionMeta(device, filePath) {
   let text = "";
   try {
-    for await (const chunk of createReadStream(filePath, { highWaterMark: 8192 })) {
-      text += chunk.toString("utf8");
-      if (text.includes("\n") || text.length >= 65536) break;
+    if (!device.local) {
+      const result = await runOnDevice(device, `head -n 1 ${q(filePath)}`, 5000);
+      if (result.code !== 0) return null;
+      text = result.output;
+    } else {
+      for await (const chunk of createReadStream(filePath, { highWaterMark: 8192 })) {
+        text += chunk.toString("utf8");
+        if (text.includes("\n") || text.length >= 65536) break;
+      }
     }
     const row = JSON.parse(text.split(/\r?\n/, 1)[0]);
     return row?.type === "session_meta" ? row.payload || null : null;
@@ -3149,6 +3180,9 @@ function selfCheckCore() {
     payload: { type: "agent_message", phase: "final_answer", message: "Clean answer" },
   }, 1);
   if (transcript?.text !== "Clean answer" || transcript.role !== "assistant") throw new Error("structured Codex transcript parsing failed");
+  if (!isPrimaryCodexRollout({ source: "cli" }) || isPrimaryCodexRollout({ source: { subagent: {} } })) throw new Error("subagent rollout was selected as the terminal transcript");
+  if (!codexTranscriptCanResume("019f5ae3-5527-7ed2-88a8-e386d98d985f", "/tmp/rollout-2026-07-13T09-51-15-019f5ae3-5527-7ed2-88a8-e386d98d985f.jsonl", 12, 20)
+    || codexTranscriptCanResume("019f6020-d10a-7701-87dd-35fdc2c4c1df", "/tmp/rollout-2026-07-13T09-51-15-019f5ae3-5527-7ed2-88a8-e386d98d985f.jsonl", 12, 20)) throw new Error("stale Codex rollout resumed into the active transcript");
   const generatedImage = codexTranscriptImages({ type: "event_msg", payload: { type: "image_generation_end", status: "completed", result: Buffer.from("image").toString("base64") } });
   if (generatedImage.length !== 1 || generatedImage[0].type !== "image/png") throw new Error("Codex generated image was not parsed");
   const toolImage = codexTranscriptImages({ type: "response_item", payload: { type: "function_call_output", output: [{ type: "input_image", image_url: `data:image/webp;base64,${Buffer.from("image").toString("base64")}` }] } });
