@@ -2452,7 +2452,7 @@ function openImageViewer(event) {
   const image = event.target.closest("img.message-image") || event.target.closest("[data-image-viewer]")?.querySelector("img");
   if (!image) return;
   event.preventDefault();
-  state.imageViewerImages = [...els.parsed.querySelectorAll("img.message-image")];
+  state.imageViewerImages = event.currentTarget === els.attachmentQueue ? [image] : [...els.parsed.querySelectorAll("img.message-image")];
   if (!state.imageViewerImages.length) state.imageViewerImages = [image];
   showImageViewerImage(Math.max(0, state.imageViewerImages.indexOf(image)));
   if (!els.imageViewer.open) els.imageViewer.showModal();

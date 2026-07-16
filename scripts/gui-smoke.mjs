@@ -149,6 +149,9 @@ try {
   await wait('document.querySelector("#attachment-queue img")?.complete && document.querySelector("#attachment-queue img").naturalWidth > 0');
   const queuedPreview = await js('return { name: document.querySelector("#attachment-queue .attachment-preview span")?.textContent, close: document.querySelector("#attachment-queue .attachment-preview button")?.textContent, text: document.querySelector("#attachment-queue .attachment-preview")?.innerText };');
   assert(queuedPreview.name === "gui-smoke.svg" && queuedPreview.close === "×" && !queuedPreview.text.includes("remove"), "image preview still uses the old remove label");
+  const queuedImageViewer = await js('document.querySelector("#attachment-queue img").click(); return { open: document.querySelector("#image-viewer").open, count: state.imageViewerImages.length, previous: document.querySelector("#image-viewer-previous").disabled, next: document.querySelector("#image-viewer-next").disabled };');
+  assert(queuedImageViewer.open && queuedImageViewer.count === 1 && queuedImageViewer.previous && queuedImageViewer.next, "queued attachment opened the chat image gallery");
+  await js('document.querySelector("#image-viewer-close").click(); return true;');
   await assertSessionFiles(disposableSession.id, { attachment: true });
   await shot("attachment-queued");
   const dropped = await dropFileInBrowser();
