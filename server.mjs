@@ -326,7 +326,10 @@ async function route(req, res) {
     const stream = await terminalStreamOrError(session, device);
     const input = String(body.data || "");
     stream.pty.write(input);
-    if (/[\r\n]/.test(input)) await clearPendingControl(session.id);
+    if (/[\r\n]/.test(input)) {
+      await clearPendingControl(session.id);
+      await markCodexTranscriptActive(session);
+    }
     await touchSession(session.id);
     return json(res, 200, { ok: true });
   }
@@ -367,6 +370,7 @@ async function route(req, res) {
     }
     if (result.code !== 0) return json(res, 502, { detail: result.output });
     await clearPendingControl(session.id);
+    if (!suppressMessage && session.tool === "codex" && text.trim()) await markCodexTranscriptActive(session);
     let message = null;
     if (!suppressMessage && session.tool !== "terminal" && text.trim()) {
       message = await writeSessionEvent(session, {
@@ -424,6 +428,7 @@ async function route(req, res) {
     }
     closeTerminalStream(session.id);
     CODEX_ROLLOUTS.delete(session.id);
+    await markCodexTranscriptActive(session);
     const toolCommands = (await readSettings()).tool_commands;
     const command = commandForRestart(session, Boolean(body.resume), toolCommands);
     const resolved = await resolveToolCommand(device, session.tool, command);
@@ -1856,6 +1861,20 @@ async function touchSession(id) {
   if (session) await writeSessionFiles(session);
 }
 
+async function markCodexTranscriptActive(session) {
+  if (session?.tool !== "codex" || !session.codex_transcript_complete) return;
+  session.codex_transcript_complete = false;
+  const stored = await withMutation("store", async () => {
+    const data = await readStore();
+    const found = data.sessions.find((item) => item.id === session.id);
+    if (!found) return null;
+    delete found.codex_transcript_complete;
+    await writeStore(data);
+    return found;
+  });
+  if (stored) await writeSessionFiles(stored);
+}
+
 async function deleteSession(id) {
   await withMutation("store", async () => {
     const data = await readStore();
@@ -2178,6 +2197,7 @@ async function readCodexTranscriptNow(session, device, rawText, storedMessages) 
       settings: resume ? session.codex_state || null : null,
       usage: resume ? session.codex_usage || null : null,
       taskState: resume && ["working", "ready"].includes(session.agent_state) ? session.agent_state : null,
+      complete: Boolean(session.codex_transcript_complete),
       toolCalls: new Map(messages.filter((message) => message.role === "tool" && message.tool_call_id).map((message) => [message.tool_call_id, message])),
     };
     CODEX_TRANSCRIPTS.set(session.id, cache);
@@ -2237,15 +2257,21 @@ function codexTranscriptProgress(cache) {
 
 async function saveCodexTranscriptProgress(session, cache) {
   const progress = codexTranscriptProgress(cache);
-  if (Number(session.codex_transcript_offset || 0) === progress.offset && Number(session.codex_transcript_sequence || 0) === progress.sequence) return;
+  const complete = Boolean(cache.complete);
+  if (Number(session.codex_transcript_offset || 0) === progress.offset
+    && Number(session.codex_transcript_sequence || 0) === progress.sequence
+    && Boolean(session.codex_transcript_complete) === complete) return;
   session.codex_transcript_offset = progress.offset;
   session.codex_transcript_sequence = progress.sequence;
+  session.codex_transcript_complete = complete;
   const stored = await withMutation("store", async () => {
     const data = await readStore();
     const found = data.sessions.find((item) => item.id === session.id);
     if (!found) return null;
     found.codex_transcript_offset = progress.offset;
     found.codex_transcript_sequence = progress.sequence;
+    if (complete) found.codex_transcript_complete = true;
+    else delete found.codex_transcript_complete;
     await writeStore(data);
     return found;
   });
@@ -2359,8 +2385,14 @@ async function mirrorRemoteTranscript(session, device, remotePath) {
 }
 
 function updateCodexSettings(cache, row) {
-  if (row?.type === "event_msg" && row.payload?.type === "task_started") cache.taskState = "working";
-  if (row?.type === "event_msg" && row.payload?.type === "task_complete") cache.taskState = "ready";
+  if (row?.type === "event_msg" && row.payload?.type === "task_started") {
+    cache.taskState = "working";
+    cache.complete = false;
+  }
+  if (row?.type === "event_msg" && row.payload?.type === "task_complete") {
+    cache.taskState = "ready";
+    cache.complete = true;
+  }
   const limits = row?.type === "event_msg" && row.payload?.type === "token_count" ? row.payload.rate_limits : null;
   if (limits?.limit_id?.startsWith("codex") && (limits.primary || limits.secondary)) cache.usage = mergeCodexUsage([cache.usage, codexUsage(limits, Date.parse(row.timestamp || "") / 1000)]);
   const settings = row?.type === "turn_context"
@@ -2595,6 +2627,7 @@ async function rememberCodexRollout(session, filePath) {
   session.codex_session_id = codexSessionId;
   session.codex_transcript_offset = 0;
   session.codex_transcript_sequence = 0;
+  session.codex_transcript_complete = false;
   const stored = await withMutation("store", async () => {
     const data = await readStore();
     const found = data.sessions.find((item) => item.id === session.id);
@@ -2602,6 +2635,7 @@ async function rememberCodexRollout(session, filePath) {
     found.codex_session_id = codexSessionId;
     found.codex_transcript_offset = 0;
     found.codex_transcript_sequence = 0;
+    delete found.codex_transcript_complete;
     await writeStore(data);
     return found;
   });
@@ -3123,7 +3157,7 @@ function selfCheckCore() {
   updateCodexSettings(taskCache, { type: "event_msg", payload: { type: "task_started" } });
   if (taskCache.taskState !== "working") throw new Error("Codex task start was not detected");
   updateCodexSettings(taskCache, { type: "event_msg", payload: { type: "task_complete" } });
-  if (taskCache.taskState !== "ready") throw new Error("Codex task completion was not detected");
+  if (taskCache.taskState !== "ready" || !taskCache.complete) throw new Error("Codex task completion was not detected");
   const resetNow = new Date(2026, 6, 11, 4, 10).getTime();
   const resetAt = codexUsageResetAt("You've hit your usage limit. Try again at 4:05 AM.", resetNow);
   if (resetAt !== new Date(2026, 6, 11, 4, 5).getTime()) throw new Error("Codex usage reset time was not detected");
@@ -3143,7 +3177,8 @@ function selfCheckCore() {
   if (mergedDrift.length !== 2 || mergedDrift.at(-1)?.text !== "live update") throw new Error("live commentary was hidden behind a pending user message");
   if (agentStateFromScreen({ tool: "codex" }, "• Working (2s • esc to interrupt)") !== "working") throw new Error("working Codex state was not detected");
   const storedProbe = "core-stored-codex-messages";
-  if (!canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "ready" }, [{ text: "done" }])) throw new Error("completed Codex session did not reuse stored messages");
+  if (!canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "ready", codex_transcript_complete: true }, [{ text: "done" }])) throw new Error("completed Codex session did not reuse stored messages");
+  if (canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "ready" }, [{ text: "done" }])) throw new Error("unfinished Codex transcript was treated as complete");
   if (canUseStoredCodexMessages({ id: storedProbe, tool: "codex", agent_state: "working" }, [{ text: "done" }])) throw new Error("working Codex session skipped transcript updates");
   if (storedCodexCapture({ tool: "codex", agent_state: "ready" }, [{ text: "done" }]).transcript_source !== "stored") throw new Error("completed Codex capture did not bypass tmux");
   const messagePageProbe = messagePage([0, 1, 2, 3, 4], 2, 4);
@@ -3188,6 +3223,7 @@ function capturePayload(text, session, storedMessages = [], controlText = text, 
 function canUseStoredCodexMessages(session, storedMessages) {
   return session?.tool === "codex"
     && session.agent_state === "ready"
+    && session.codex_transcript_complete === true
     && !session.pending_control
     && storedMessages.length > 0;
 }
