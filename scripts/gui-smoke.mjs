@@ -1102,6 +1102,24 @@ async function testChatLayout() {
     return { group: document.querySelector(".tool-call-group").open, call: document.querySelectorAll(".tool-call-entry")[1].open };
   `);
   assert(preservedToolMenu.group && preservedToolMenu.call, `tool call menu closed during a live update: ${JSON.stringify(preservedToolMenu)}`);
+  const toolCallLayout = await js(`
+    renderChatCapture({ messages: Array.from({ length: 9 }, (_, index) => ({
+      id: "long-tool-" + index,
+      role: "tool",
+      tool_name: index % 2 ? "wait_agent" : "exec",
+      tool_status: index === 8 ? "running" : "completed",
+      text: "const r = await tools.exec_command({ cmd: \\\"ssh tony@100.114.148.108 'cd /home/tony/Development/halo_ce_decomp-object-header-selector2 && git status --short'\\\" })",
+      tool_detail: "long tool detail " + index,
+    })) }, { id: "tool-call-layout-smoke", tool: "codex" }, false);
+    const group = document.querySelector(".tool-call-group");
+    group.open = true;
+    const right = group.getBoundingClientRect().right;
+    return {
+      label: group.querySelector(".tool-call-open-label")?.textContent,
+      overflow: [...group.querySelectorAll(".tool-call-entry")].some((entry) => entry.getBoundingClientRect().right > right + 1),
+    };
+  `);
+  assert(toolCallLayout.label === "9 tool calls" && !toolCallLayout.overflow, `expanded tool calls overflow their container: ${JSON.stringify(toolCallLayout)}`);
   await shot("tool-call");
   const destructiveTool = await js(`
     renderChatCapture({ messages: [{ role: "tool", tool_name: "exec", tool_status: "completed", text: "rm -rf build", tool_detail: "rm -rf build" }] }, { id: "destructive-tool-smoke", tool: "codex" }, false);

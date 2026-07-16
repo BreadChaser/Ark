@@ -1957,6 +1957,8 @@ pre {
 
 .tool-call-group {
   width: min(940px, 84%);
+  min-width: 0;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-left: 3px solid var(--line-strong);
   border-radius: 10px;
@@ -1979,6 +1981,9 @@ pre {
 .tool-call-group > summary::marker { content: ""; }
 .tool-call-group > summary::before { content: "›"; color: var(--faint); font-size: 15px; transition: transform 120ms ease; }
 .tool-call-group[open] > summary::before { transform: rotate(90deg); }
+.tool-call-open-label { display: none; color: var(--text); font-weight: 700; }
+.tool-call-group[open] > summary .tool-call-line, .tool-call-group[open] > summary .tool-call-count { display: none; }
+.tool-call-group[open] > summary .tool-call-open-label { display: inline; }
 .tool-call-group.running {
   border-left-color: var(--accent);
   background: color-mix(in srgb, var(--accent-soft) 74%, var(--panel-soft));
@@ -2000,9 +2005,9 @@ pre {
 .tool-call-group.write .tool-call-line em { color: var(--warning); }
 .tool-call-group.danger .tool-call-line em, .tool-call-group.failed .tool-call-line em { color: var(--danger); }
 .tool-call-count { color: var(--faint); font-weight: 700; }
-.tool-call-list { display: grid; gap: 6px; padding: 0 9px 9px; border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent); }
-.tool-call-entry { border-left: 2px solid var(--line-strong); background: color-mix(in srgb, var(--panel-raised) 64%, transparent); }
-.tool-call-entry > summary { display: flex; align-items: center; min-height: 31px; padding: 6px 8px; cursor: pointer; list-style: none; }
+.tool-call-list { display: grid; width: 100%; min-width: 0; gap: 6px; padding: 0 9px 9px; box-sizing: border-box; border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent); }
+.tool-call-entry { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; border-left: 2px solid var(--line-strong); background: color-mix(in srgb, var(--panel-raised) 64%, transparent); }
+.tool-call-entry > summary { display: flex; min-width: 0; align-items: center; min-height: 31px; padding: 6px 8px; cursor: pointer; list-style: none; }
 .tool-call-entry > summary::-webkit-details-marker { display: none; }
 .tool-call-entry > summary::marker { content: ""; }
 .tool-call-entry > summary::before { content: "+"; width: 12px; color: var(--faint); font-weight: 700; }

@@ -1721,6 +1721,10 @@ function renderToolCallGroup(calls, openGroups = new Set(), openCalls = new Set(
     count.textContent = `+${calls.length - 1}`;
     summary.append(count);
   }
+  const openLabel = document.createElement("span");
+  openLabel.className = "tool-call-open-label";
+  openLabel.textContent = `${calls.length} tool call${calls.length === 1 ? "" : "s"}`;
+  summary.append(openLabel);
   const list = document.createElement("div");
   list.className = "tool-call-list";
   for (const call of calls) list.append(renderToolCall(call, openCalls.has(String(call.id || call.tool_call_id || call.text || "tool-call"))));
