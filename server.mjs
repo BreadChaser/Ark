@@ -2200,10 +2200,10 @@ async function readCodexTranscriptNow(session, device, rawText, storedMessages) 
   let cache = CODEX_TRANSCRIPTS.get(session.id);
   if (!cache || cache.path !== readablePath || info.size < cache.offset) {
     const offset = Number(session.codex_transcript_offset || 0);
-    const resume = codexTranscriptCanResume(previousSessionId, filePath, offset, info.size);
     const stored = (storedMessages || await readSessionMessages(session.id)).map(normalizeMessage);
-    const messages = resume ? stored.filter((message) => message.source !== "ark") : [];
     const complete = codexTranscriptCompleted(stored);
+    const resume = canResumeCodexTranscript(stored, previousSessionId, filePath, offset, info.size);
+    const messages = resume ? stored.filter((message) => message.source !== "ark") : [];
     cache = {
       path: readablePath,
       offset: resume ? offset : 0,
@@ -2280,6 +2280,10 @@ function codexTranscriptCanResume(sessionId, filePath, offset, size) {
   return Number(offset) > 0
     && Number(offset) <= Number(size)
     && (!sessionId || !selectedSessionId || sessionId === selectedSessionId);
+}
+
+function canResumeCodexTranscript(messages, sessionId, filePath, offset, size) {
+  return codexTranscriptCompleted(messages) && codexTranscriptCanResume(sessionId, filePath, offset, size);
 }
 
 function codexTranscriptCompleted(messages) {
@@ -3184,6 +3188,8 @@ function selfCheckCore() {
   if (!isPrimaryCodexRollout({ source: "cli" }) || isPrimaryCodexRollout({ source: { subagent: {} } })) throw new Error("subagent rollout was selected as the terminal transcript");
   if (!codexTranscriptCanResume("019f5ae3-5527-7ed2-88a8-e386d98d985f", "/tmp/rollout-2026-07-13T09-51-15-019f5ae3-5527-7ed2-88a8-e386d98d985f.jsonl", 12, 20)
     || codexTranscriptCanResume("019f6020-d10a-7701-87dd-35fdc2c4c1df", "/tmp/rollout-2026-07-13T09-51-15-019f5ae3-5527-7ed2-88a8-e386d98d985f.jsonl", 12, 20)) throw new Error("stale Codex rollout resumed into the active transcript");
+  if (!canResumeCodexTranscript([{ role: "assistant", phase: "final_answer" }], "019f5ae3-5527-7ed2-88a8-e386d98d985f", "/tmp/rollout-2026-07-13T09-51-15-019f5ae3-5527-7ed2-88a8-e386d98d985f.jsonl", 12, 20)
+    || canResumeCodexTranscript([{ role: "assistant", phase: "final_answer" }, { role: "user" }], "019f5ae3-5527-7ed2-88a8-e386d98d985f", "/tmp/rollout-2026-07-13T09-51-15-019f5ae3-5527-7ed2-88a8-e386d98d985f.jsonl", 12, 20)) throw new Error("incomplete Codex transcript reused its old offset");
   const generatedImage = codexTranscriptImages({ type: "event_msg", payload: { type: "image_generation_end", status: "completed", result: Buffer.from("image").toString("base64") } });
   if (generatedImage.length !== 1 || generatedImage[0].type !== "image/png") throw new Error("Codex generated image was not parsed");
   const toolImage = codexTranscriptImages({ type: "response_item", payload: { type: "function_call_output", output: [{ type: "input_image", image_url: `data:image/webp;base64,${Buffer.from("image").toString("base64")}` }] } });
