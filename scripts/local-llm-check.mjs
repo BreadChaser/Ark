@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import net from "node:net";
 import os from "node:os";
@@ -34,6 +34,10 @@ const controller = http.createServer(async (req, res) => {
 });
 
 const data = await mkdtemp(path.join(os.tmpdir(), "ark-local-llm-check-"));
+const benchmarks = path.join(data, "benchmarks");
+await mkdir(path.join(benchmarks, "sample"), { recursive: true });
+await writeFile(path.join(benchmarks, "sample", "results.json"), JSON.stringify({ model: "Test Model", created: "now", results: [{ passed: true }] }));
+await writeFile(path.join(benchmarks, "sample", "report.html"), "<!doctype html><title>Test report</title>");
 const controllerPort = await listen(controller);
 const arkPort = await freePort();
 const ark = spawn(process.execPath, ["server.mjs"], {
@@ -42,6 +46,7 @@ const ark = spawn(process.execPath, ["server.mjs"], {
     ...process.env,
     ARK_DATA: data,
     ARK_LOCAL_LLM_URL: `http://127.0.0.1:${controllerPort}`,
+    ARK_LOCAL_LLM_BENCHMARKS: benchmarks,
     HOST: "127.0.0.1",
     PORT: String(arkPort),
   },
@@ -64,6 +69,10 @@ try {
   const toggled = await request(arkPort, "/api/local-llm/toggle", { method: "POST" });
   assert.equal(toggled.running, false);
   assert.equal(toggled.loaded, null);
+  const benchmarkIndex = await fetch(`http://127.0.0.1:${arkPort}/local-llm/benchmarks`).then((response) => response.text());
+  assert.match(benchmarkIndex, /Test Model/);
+  const benchmarkReport = await fetch(`http://127.0.0.1:${arkPort}/local-llm/benchmarks/sample/report.html`).then((response) => response.text());
+  assert.match(benchmarkReport, /Test report/);
   console.log("ok");
 } finally {
   ark.kill("SIGTERM");

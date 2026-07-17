@@ -1460,6 +1460,19 @@ pre {
   gap: 8px;
 }
 
+.local-llm-benchmarks {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  text-decoration: none;
+  background: var(--panel-soft);
+}
+
 .local-llm-server-toggle[data-running="true"] {
   color: var(--danger);
 }
@@ -3097,7 +3110,7 @@ body.sidebar-collapsed #sidebar-toggle::after {
 
   .local-llm-actions {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, 1fr);
   }
 
   .settings-menu {

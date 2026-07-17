@@ -7,7 +7,7 @@
     <link rel="icon" href="/static/ark-logo.svg?v=3" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
-    <link rel="stylesheet" href="/static/ark-ui.css?v=56" />
+    <link rel="stylesheet" href="/static/ark-ui.css?v=57" />
   </head>
   <body>
     <canvas class="background-flow" aria-hidden="true"></canvas>
@@ -338,6 +338,7 @@
         <footer>
           <small>Applying restarts llama.cpp with the selected model.</small>
           <div class="local-llm-actions">
+            <a class="local-llm-benchmarks" href="/local-llm/benchmarks" target="_blank" rel="noopener">Benchmarks</a>
             <button id="local-llm-server-toggle" type="button">Stop server</button>
             <button id="local-llm-apply" class="primary" type="submit">Apply &amp; load</button>
           </div>
@@ -360,6 +361,6 @@
     <script src="/vendor/marked/marked.js"></script>
     <script src="/vendor/dompurify/purify.js"></script>
     <script src="/static/flow-background.js?v=10"></script>
-    <script src="/static/app.js?v=56"></script>
+    <script src="/static/app.js?v=57"></script>
   </body>
 </html>

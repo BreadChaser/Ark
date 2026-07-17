@@ -36,6 +36,7 @@ const CODEX_IMAGE_DATA_LIMIT = Math.ceil(CODEX_IMAGE_LIMIT * 4 / 3) + 128;
 const PORT = Number(process.env.PORT || 4873);
 const HOST = process.env.HOST || "0.0.0.0";
 const LOCAL_LLM_URL = String(process.env.ARK_LOCAL_LLM_URL || "http://100.114.148.108:8090").replace(/\/$/, "");
+const LOCAL_LLM_BENCHMARKS = process.env.ARK_LOCAL_LLM_BENCHMARKS || path.join(DATA, "workspaces", "ts-tony-gaming", "home-tony-development-local_llm", "benchmark-results");
 const TERMINAL_STREAMS = new Map();
 const CAPTURE_STREAMS = new Map();
 const STATE_STREAM = { clients: new Set(), timer: null, busy: false, last: "" };
@@ -139,6 +140,15 @@ async function route(req, res) {
   }
   if (req.method === "GET" && pathname === "/api/local-llm") {
     return json(res, 200, await localLlmConfig());
+  }
+  if (req.method === "GET" && pathname === "/local-llm/benchmarks") {
+    return localLlmBenchmarkIndex(res);
+  }
+  const benchmarkMatch = pathname.match(/^\/local-llm\/benchmarks\/([^/]+)\/report\.html$/);
+  if (req.method === "GET" && benchmarkMatch) {
+    const target = path.resolve(LOCAL_LLM_BENCHMARKS, benchmarkMatch[1], "report.html");
+    if (!target.startsWith(path.resolve(LOCAL_LLM_BENCHMARKS) + path.sep)) return json(res, 403, { detail: "forbidden" });
+    return file(res, target);
   }
   if (req.method === "POST" && pathname === "/api/local-llm") {
     return json(res, 200, await applyLocalLlm(await readJson(req)));
@@ -3071,6 +3081,35 @@ async function localLlmConfig() {
   }
 }
 
+async function localLlmBenchmarkIndex(res) {
+  let entries = [];
+  try {
+    const dirs = await readdir(LOCAL_LLM_BENCHMARKS, { withFileTypes: true });
+    entries = await Promise.all(dirs.filter((entry) => entry.isDirectory()).map(async (entry) => {
+      try {
+        const data = JSON.parse(await readFile(path.join(LOCAL_LLM_BENCHMARKS, entry.name, "results.json"), "utf8"));
+        const passed = (data.results || []).filter((result) => result.passed).length;
+        return {
+          dir: entry.name,
+          model: data.model || entry.name,
+          passed,
+          attempted: (data.results || []).length,
+          passedPoints: data.passed_points ?? passed,
+          suitePoints: data.suite_points ?? (data.results || []).length,
+          created: data.created || "",
+        };
+      } catch { return null; }
+    }));
+  } catch {}
+  entries = entries.filter(Boolean).sort((a, b) => b.dir.localeCompare(a.dir));
+  const cards = entries.length ? entries.map((entry) => `
+    <a href="/local-llm/benchmarks/${encodeURIComponent(entry.dir)}/report.html">
+      <strong>${escapeHtml(entry.model)}</strong><span>${entry.passedPoints}/${entry.suitePoints} suite points · ${entry.passed}/${entry.attempted} attempted tasks passed</span><small>${escapeHtml(entry.created)}</small>
+    </a>`).join("") : "<p>No benchmark reports yet.</p>";
+  res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+  res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Local Agent Benchmarks</title><style>body{font:16px system-ui;max-width:900px;margin:auto;padding:28px;background:#0b1118;color:#e8f0f2}a{display:grid;gap:5px;margin:12px 0;padding:18px;border:1px solid #334155;border-radius:12px;color:inherit;text-decoration:none;background:#111827}a:hover{border-color:#5ed0c5}span,small{color:#94a3b8}</style></head><body><h1>Local Agent Benchmarks</h1><p>Sandboxed tasks modeled on Tony's production work.</p>${cards}</body></html>`);
+}
+
 async function applyLocalLlm(body) {
   const form = new URLSearchParams({
     model: String(body.model || ""),
@@ -3218,6 +3257,12 @@ async function file(res, target) {
 function json(res, status, body) {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(body));
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[character]);
 }
 
 function isTrustedRemote(address) {
