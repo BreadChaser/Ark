@@ -451,7 +451,7 @@ body.chill-mode > :not(.background-flow, .background-grid) {
   white-space: pre;
 }
 
-:root[data-theme="spreadsheet"] .topbar :is(.status-pill, .settings-toggle) {
+:root[data-theme="spreadsheet"] .topbar :is(.status-pill, .settings-toggle, .local-llm-toggle) {
   border-color: rgba(255, 255, 255, 0.38);
   color: #ffffff;
   background: transparent;
@@ -1417,10 +1417,94 @@ pre {
 }
 
 .settings-toggle,
+.local-llm-toggle,
 .chill-toggle {
   border-color: transparent;
   color: var(--muted);
   background: transparent;
+}
+
+.local-llm-dialog {
+  width: min(620px, calc(100vw - 28px));
+  max-width: none;
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-xl);
+  color: var(--text);
+  background: var(--panel-solid);
+  box-shadow: var(--shadow);
+}
+
+.local-llm-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.68);
+  backdrop-filter: blur(5px);
+}
+
+.local-llm-dialog form {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+}
+
+.local-llm-dialog header,
+.local-llm-dialog footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.local-llm-dialog header span,
+.local-llm-dialog footer small {
+  color: var(--muted);
+  font: 700 10px/1.5 var(--mono);
+}
+
+.local-llm-dialog h2 {
+  margin: 2px 0 0;
+}
+
+.local-llm-dialog label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.local-llm-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.local-llm-status,
+.local-llm-preset {
+  margin: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  background: var(--panel-soft);
+  font: 700 11px/1.5 var(--mono);
+}
+
+.local-llm-status[data-state="running"] {
+  color: var(--done);
+}
+
+.local-llm-status[data-state="error"] {
+  color: var(--danger);
+}
+
+.local-llm-preset:empty {
+  display: none;
+}
+
+.local-llm-dialog .local-llm-check {
+  display: flex;
+  align-items: center;
 }
 
 .settings-menu {
@@ -2967,10 +3051,16 @@ body.sidebar-collapsed #sidebar-toggle::after {
   }
 
   .settings-toggle,
+  .local-llm-toggle,
   .chill-toggle {
     min-width: 36px;
     padding: 0;
     font-size: 0;
+  }
+
+  .local-llm-toggle::before {
+    content: "◉";
+    font-size: 18px;
   }
 
   .settings-toggle::before {
@@ -2981,6 +3071,19 @@ body.sidebar-collapsed #sidebar-toggle::after {
   .chill-toggle::before {
     content: "◌";
     font-size: 22px;
+  }
+
+  .local-llm-dialog form {
+    padding: 16px;
+  }
+
+  .local-llm-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .local-llm-dialog footer {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .settings-menu {

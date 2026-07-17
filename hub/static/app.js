@@ -173,6 +173,19 @@ const els = {
   viewRaw: document.querySelector("#view-raw"),
   theme: document.querySelector("#theme"),
   chillMode: document.querySelector("#chill-mode"),
+  localLlmToggle: document.querySelector("#local-llm-toggle"),
+  localLlmDialog: document.querySelector("#local-llm-dialog"),
+  localLlmForm: document.querySelector("#local-llm-form"),
+  localLlmClose: document.querySelector("#local-llm-close"),
+  localLlmStatus: document.querySelector("#local-llm-status"),
+  localLlmModel: document.querySelector("#local-llm-model"),
+  localLlmPreset: document.querySelector("#local-llm-preset"),
+  localLlmContext: document.querySelector("#local-llm-context"),
+  localLlmKv: document.querySelector("#local-llm-kv"),
+  localLlmNgl: document.querySelector("#local-llm-ngl"),
+  localLlmReasoning: document.querySelector("#local-llm-reasoning"),
+  localLlmMlock: document.querySelector("#local-llm-mlock"),
+  localLlmApply: document.querySelector("#local-llm-apply"),
   settingsToggle: document.querySelector("#settings-toggle"),
   settingsMenu: document.querySelector("#settings-menu"),
   defaultTool: document.querySelector("#default-tool"),
@@ -247,6 +260,13 @@ async function init() {
     localStorage.setItem(SOUND_VOLUME_KEY, els.soundVolume.value);
   });
   renderSoundChoices();
+  els.localLlmToggle.addEventListener("click", openLocalLlm);
+  els.localLlmClose.addEventListener("click", () => els.localLlmDialog.close());
+  els.localLlmForm.addEventListener("submit", applyLocalLlm);
+  els.localLlmModel.addEventListener("change", selectLocalLlmPreset);
+  els.localLlmDialog.addEventListener("click", (event) => {
+    if (event.target === els.localLlmDialog) els.localLlmDialog.close();
+  });
   els.settingsToggle.addEventListener("click", toggleSettings);
   els.saveToolCommands.addEventListener("click", () => saveToolCommands(false));
   els.resetToolCommands.addEventListener("click", () => saveToolCommands(true));
@@ -2493,6 +2513,93 @@ function setChillMode(enabled) {
   if (enabled) {
     els.settingsMenu.hidden = true;
     els.settingsToggle.setAttribute("aria-expanded", "false");
+  }
+}
+
+async function openLocalLlm() {
+  els.settingsMenu.hidden = true;
+  els.settingsToggle.setAttribute("aria-expanded", "false");
+  els.localLlmStatus.textContent = "Connecting to tony-gaming…";
+  els.localLlmStatus.dataset.state = "loading";
+  els.localLlmApply.disabled = true;
+  els.localLlmDialog.showModal();
+  try {
+    renderLocalLlm(await api("/api/local-llm"));
+  } catch (error) {
+    els.localLlmStatus.textContent = error.message;
+    els.localLlmStatus.dataset.state = "error";
+  }
+}
+
+function renderLocalLlm(config) {
+  els.localLlmForm.modelCatalog = config.models || [];
+  els.localLlmModel.innerHTML = (config.models || []).map((model) =>
+    `<option value="${escapeHtml(model.key)}">${escapeHtml(model.name)} · ${escapeHtml(model.size)}</option>`,
+  ).join("");
+  els.localLlmModel.value = config.selected || "";
+  setSelectValue(els.localLlmContext, config.settings?.context);
+  els.localLlmKv.value = config.settings?.kv || "q4_0";
+  els.localLlmNgl.value = String(config.settings?.ngl ?? 99);
+  els.localLlmReasoning.value = config.settings?.reasoning || "off";
+  els.localLlmMlock.checked = config.settings?.mlock === true;
+  const loaded = config.loaded;
+  els.localLlmStatus.textContent = config.running
+    ? `Running · ${loaded?.name || "model loading"}${loaded?.ctx ? ` · ${Number(loaded.ctx).toLocaleString()} ctx` : ""}`
+    : "llama.cpp is stopped";
+  els.localLlmStatus.dataset.state = config.running ? "running" : "stopped";
+  renderLocalLlmPreset();
+  els.localLlmApply.disabled = !(config.models || []).length;
+}
+
+function setSelectValue(select, value) {
+  const stringValue = String(value ?? "");
+  if (stringValue && ![...select.options].some((option) => option.value === stringValue)) {
+    select.add(new Option(Number(stringValue).toLocaleString(), stringValue));
+  }
+  select.value = stringValue;
+}
+
+function selectedLocalLlmModel() {
+  return (els.localLlmForm.modelCatalog || []).find((model) => model.key === els.localLlmModel.value);
+}
+
+function renderLocalLlmPreset() {
+  const preset = selectedLocalLlmModel()?.preset || {};
+  els.localLlmPreset.textContent = [preset.label, preset.note].filter(Boolean).join(" · ");
+}
+
+function selectLocalLlmPreset() {
+  const preset = selectedLocalLlmModel()?.preset;
+  if (!preset) return;
+  setSelectValue(els.localLlmContext, preset.ctx);
+  els.localLlmKv.value = preset.kv || "q4_0";
+  els.localLlmNgl.value = String(preset.ngl ?? 99);
+  els.localLlmReasoning.value = preset.reasoning || "off";
+  renderLocalLlmPreset();
+}
+
+async function applyLocalLlm(event) {
+  event.preventDefault();
+  els.localLlmApply.disabled = true;
+  els.localLlmStatus.textContent = "Restarting llama.cpp…";
+  els.localLlmStatus.dataset.state = "loading";
+  try {
+    const config = await api("/api/local-llm", {
+      method: "POST",
+      body: JSON.stringify({
+        model: els.localLlmModel.value,
+        context: Number(els.localLlmContext.value),
+        kv: els.localLlmKv.value,
+        ngl: Number(els.localLlmNgl.value),
+        reasoning: els.localLlmReasoning.value,
+        mlock: els.localLlmMlock.checked,
+      }),
+    });
+    renderLocalLlm(config);
+  } catch (error) {
+    els.localLlmStatus.textContent = error.message;
+    els.localLlmStatus.dataset.state = "error";
+    els.localLlmApply.disabled = false;
   }
 }
 

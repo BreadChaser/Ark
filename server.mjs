@@ -35,6 +35,7 @@ const CODEX_IMAGE_LIMIT = 64 * 1024 * 1024;
 const CODEX_IMAGE_DATA_LIMIT = Math.ceil(CODEX_IMAGE_LIMIT * 4 / 3) + 128;
 const PORT = Number(process.env.PORT || 4873);
 const HOST = process.env.HOST || "0.0.0.0";
+const LOCAL_LLM_URL = String(process.env.ARK_LOCAL_LLM_URL || "http://100.114.148.108:8090").replace(/\/$/, "");
 const TERMINAL_STREAMS = new Map();
 const CAPTURE_STREAMS = new Map();
 const STATE_STREAM = { clients: new Set(), timer: null, busy: false, last: "" };
@@ -135,6 +136,12 @@ async function route(req, res) {
   }
   if (req.method === "GET" && pathname === "/api/settings") {
     return json(res, 200, await readSettings());
+  }
+  if (req.method === "GET" && pathname === "/api/local-llm") {
+    return json(res, 200, await localLlmConfig());
+  }
+  if (req.method === "POST" && pathname === "/api/local-llm") {
+    return json(res, 200, await applyLocalLlm(await readJson(req)));
   }
   if (req.method === "PUT" && pathname === "/api/settings") {
     return json(res, 200, await writeSettings(await readJson(req)));
@@ -3033,6 +3040,50 @@ async function readJson(req) {
   for await (const chunk of req) chunks.push(chunk);
   const text = Buffer.concat(chunks).toString("utf8");
   return text ? JSON.parse(text) : {};
+}
+
+async function localLlmFetch(pathname, options = {}) {
+  let response;
+  try {
+    response = await fetch(`${LOCAL_LLM_URL}${pathname}`, {
+      signal: AbortSignal.timeout(options.method === "POST" ? 120_000 : 8_000),
+      ...options,
+    });
+  } catch (error) {
+    throw Object.assign(new Error(`Local LLM controller is unavailable: ${error.message}`), { status: 502 });
+  }
+  if (!response.ok && response.status !== 303) {
+    const detail = (await response.text()).trim();
+    throw Object.assign(new Error(detail || `Local LLM controller returned ${response.status}`), { status: 502 });
+  }
+  return response;
+}
+
+async function localLlmConfig() {
+  const response = await localLlmFetch("/config");
+  try {
+    return await response.json();
+  } catch {
+    throw Object.assign(new Error("Local LLM controller returned invalid JSON"), { status: 502 });
+  }
+}
+
+async function applyLocalLlm(body) {
+  const form = new URLSearchParams({
+    model: String(body.model || ""),
+    context: String(body.context || ""),
+    kv: String(body.kv || ""),
+    ngl: String(body.ngl ?? ""),
+    reasoning: String(body.reasoning || "off"),
+    mlock: body.mlock === true ? "on" : "off",
+  });
+  await localLlmFetch("/apply", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: form,
+    redirect: "manual",
+  });
+  return localLlmConfig();
 }
 
 async function readFileUpload(req, dir) {

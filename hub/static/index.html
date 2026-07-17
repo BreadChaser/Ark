@@ -7,7 +7,7 @@
     <link rel="icon" href="/static/ark-logo.svg?v=3" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
-    <link rel="stylesheet" href="/static/ark-ui.css?v=54" />
+    <link rel="stylesheet" href="/static/ark-ui.css?v=55" />
   </head>
   <body>
     <canvas class="background-flow" aria-hidden="true"></canvas>
@@ -76,6 +76,7 @@
         <div class="top-actions">
           <span id="status" class="status-pill">Idle</span>
           <button id="chill-mode" class="chill-toggle" type="button" aria-pressed="false" title="Show only the theme background">Chill</button>
+          <button id="local-llm-toggle" class="local-llm-toggle" type="button">Models</button>
           <button id="settings-toggle" class="settings-toggle" aria-expanded="false">Settings</button>
           <div id="settings-menu" class="settings-menu" hidden>
             <div class="settings-head">
@@ -282,6 +283,65 @@
       </div>
     </main>
 
+    <dialog id="local-llm-dialog" class="local-llm-dialog" aria-labelledby="local-llm-title">
+      <form id="local-llm-form">
+        <header>
+          <div>
+            <span>tony-gaming · RTX 4060</span>
+            <h2 id="local-llm-title">Local LLM</h2>
+          </div>
+          <button id="local-llm-close" type="button" aria-label="Close local model controls">Close</button>
+        </header>
+        <output id="local-llm-status" class="local-llm-status">Connecting…</output>
+        <label>
+          Model
+          <select id="local-llm-model" name="model" required></select>
+        </label>
+        <p id="local-llm-preset" class="local-llm-preset"></p>
+        <div class="local-llm-grid">
+          <label>
+            Context
+            <select id="local-llm-context" name="context">
+              <option value="4096">4,096</option>
+              <option value="8192">8,192</option>
+              <option value="16384">16,384</option>
+              <option value="32768">32,768</option>
+              <option value="65536">65,536</option>
+              <option value="131072">131,072</option>
+              <option value="262144">262,144</option>
+            </select>
+          </label>
+          <label>
+            KV cache
+            <select id="local-llm-kv" name="kv">
+              <option value="q4_0">q4_0</option>
+              <option value="q8_0">q8_0</option>
+              <option value="f16">f16</option>
+            </select>
+          </label>
+          <label>
+            GPU layers
+            <input id="local-llm-ngl" name="ngl" type="number" min="0" max="999" required />
+          </label>
+          <label>
+            Reasoning
+            <select id="local-llm-reasoning" name="reasoning">
+              <option value="off">Off</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="max">Max</option>
+            </select>
+          </label>
+        </div>
+        <label class="local-llm-check"><input id="local-llm-mlock" name="mlock" type="checkbox" /> Pin model in RAM</label>
+        <footer>
+          <small>Applying restarts llama.cpp with the selected model.</small>
+          <button id="local-llm-apply" class="primary" type="submit">Apply &amp; load</button>
+        </footer>
+      </form>
+    </dialog>
+
     <dialog id="image-viewer" class="image-viewer" aria-label="Image preview">
       <button id="image-viewer-close" class="image-viewer-close" type="button">Close</button>
       <img id="image-viewer-image" alt="" />
@@ -297,6 +357,6 @@
     <script src="/vendor/marked/marked.js"></script>
     <script src="/vendor/dompurify/purify.js"></script>
     <script src="/static/flow-background.js?v=10"></script>
-    <script src="/static/app.js?v=54"></script>
+    <script src="/static/app.js?v=55"></script>
   </body>
 </html>
