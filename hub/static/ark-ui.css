@@ -1455,6 +1455,15 @@ pre {
   gap: 14px;
 }
 
+.local-llm-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.local-llm-server-toggle[data-running="true"] {
+  color: var(--danger);
+}
+
 .local-llm-dialog header span,
 .local-llm-dialog footer small {
   color: var(--muted);
@@ -3084,6 +3093,11 @@ body.sidebar-collapsed #sidebar-toggle::after {
   .local-llm-dialog footer {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .local-llm-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 
   .settings-menu {

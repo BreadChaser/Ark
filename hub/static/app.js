@@ -185,6 +185,7 @@ const els = {
   localLlmNgl: document.querySelector("#local-llm-ngl"),
   localLlmReasoning: document.querySelector("#local-llm-reasoning"),
   localLlmMlock: document.querySelector("#local-llm-mlock"),
+  localLlmServerToggle: document.querySelector("#local-llm-server-toggle"),
   localLlmApply: document.querySelector("#local-llm-apply"),
   settingsToggle: document.querySelector("#settings-toggle"),
   settingsMenu: document.querySelector("#settings-menu"),
@@ -263,6 +264,7 @@ async function init() {
   els.localLlmToggle.addEventListener("click", openLocalLlm);
   els.localLlmClose.addEventListener("click", () => els.localLlmDialog.close());
   els.localLlmForm.addEventListener("submit", applyLocalLlm);
+  els.localLlmServerToggle.addEventListener("click", toggleLocalLlmServer);
   els.localLlmModel.addEventListener("change", selectLocalLlmPreset);
   els.localLlmDialog.addEventListener("click", (event) => {
     if (event.target === els.localLlmDialog) els.localLlmDialog.close();
@@ -2522,6 +2524,7 @@ async function openLocalLlm() {
   els.localLlmStatus.textContent = "Connecting to tony-gaming…";
   els.localLlmStatus.dataset.state = "loading";
   els.localLlmApply.disabled = true;
+  els.localLlmServerToggle.disabled = true;
   els.localLlmDialog.showModal();
   try {
     renderLocalLlm(await api("/api/local-llm"));
@@ -2547,6 +2550,9 @@ function renderLocalLlm(config) {
     ? `Running · ${loaded?.name || "model loading"}${loaded?.ctx ? ` · ${Number(loaded.ctx).toLocaleString()} ctx` : ""}`
     : "llama.cpp is stopped";
   els.localLlmStatus.dataset.state = config.running ? "running" : "stopped";
+  els.localLlmServerToggle.textContent = config.running ? "Stop server" : "Start server";
+  els.localLlmServerToggle.dataset.running = String(config.running === true);
+  els.localLlmServerToggle.disabled = false;
   renderLocalLlmPreset();
   els.localLlmApply.disabled = !(config.models || []).length;
 }
@@ -2599,6 +2605,23 @@ async function applyLocalLlm(event) {
   } catch (error) {
     els.localLlmStatus.textContent = error.message;
     els.localLlmStatus.dataset.state = "error";
+    els.localLlmApply.disabled = false;
+  }
+}
+
+async function toggleLocalLlmServer() {
+  els.localLlmServerToggle.disabled = true;
+  els.localLlmApply.disabled = true;
+  els.localLlmStatus.textContent = els.localLlmServerToggle.dataset.running === "true"
+    ? "Stopping llama.cpp…"
+    : "Starting llama.cpp…";
+  els.localLlmStatus.dataset.state = "loading";
+  try {
+    renderLocalLlm(await api("/api/local-llm/toggle", { method: "POST" }));
+  } catch (error) {
+    els.localLlmStatus.textContent = error.message;
+    els.localLlmStatus.dataset.state = "error";
+    els.localLlmServerToggle.disabled = false;
     els.localLlmApply.disabled = false;
   }
 }

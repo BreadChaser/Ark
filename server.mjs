@@ -143,6 +143,9 @@ async function route(req, res) {
   if (req.method === "POST" && pathname === "/api/local-llm") {
     return json(res, 200, await applyLocalLlm(await readJson(req)));
   }
+  if (req.method === "POST" && pathname === "/api/local-llm/toggle") {
+    return json(res, 200, await toggleLocalLlm());
+  }
   if (req.method === "PUT" && pathname === "/api/settings") {
     return json(res, 200, await writeSettings(await readJson(req)));
   }
@@ -3083,6 +3086,11 @@ async function applyLocalLlm(body) {
     body: form,
     redirect: "manual",
   });
+  return localLlmConfig();
+}
+
+async function toggleLocalLlm() {
+  await localLlmFetch("/toggle", { method: "POST" });
   return localLlmConfig();
 }
 

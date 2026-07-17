@@ -7,7 +7,7 @@
     <link rel="icon" href="/static/ark-logo.svg?v=3" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
-    <link rel="stylesheet" href="/static/ark-ui.css?v=55" />
+    <link rel="stylesheet" href="/static/ark-ui.css?v=56" />
   </head>
   <body>
     <canvas class="background-flow" aria-hidden="true"></canvas>
@@ -337,7 +337,10 @@
         <label class="local-llm-check"><input id="local-llm-mlock" name="mlock" type="checkbox" /> Pin model in RAM</label>
         <footer>
           <small>Applying restarts llama.cpp with the selected model.</small>
-          <button id="local-llm-apply" class="primary" type="submit">Apply &amp; load</button>
+          <div class="local-llm-actions">
+            <button id="local-llm-server-toggle" type="button">Stop server</button>
+            <button id="local-llm-apply" class="primary" type="submit">Apply &amp; load</button>
+          </div>
         </footer>
       </form>
     </dialog>
@@ -357,6 +360,6 @@
     <script src="/vendor/marked/marked.js"></script>
     <script src="/vendor/dompurify/purify.js"></script>
     <script src="/static/flow-background.js?v=10"></script>
-    <script src="/static/app.js?v=55"></script>
+    <script src="/static/app.js?v=56"></script>
   </body>
 </html>

@@ -24,6 +24,12 @@ const controller = http.createServer(async (req, res) => {
     res.writeHead(303, { location: "/" });
     return res.end();
   }
+  if (req.method === "POST" && req.url === "/toggle") {
+    config.running = !config.running;
+    config.loaded = config.running ? { name: "Bonsai-27B-Q1_0.gguf", ctx: "65536" } : null;
+    res.writeHead(200, { "content-type": "application/json" });
+    return res.end("{}");
+  }
   res.writeHead(404).end();
 });
 
@@ -55,6 +61,9 @@ try {
   assert.equal(form.get("model"), config.selected);
   assert.equal(form.get("context"), "65536");
   assert.equal(form.get("mlock"), "off");
+  const toggled = await request(arkPort, "/api/local-llm/toggle", { method: "POST" });
+  assert.equal(toggled.running, false);
+  assert.equal(toggled.loaded, null);
   console.log("ok");
 } finally {
   ark.kill("SIGTERM");
