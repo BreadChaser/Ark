@@ -11,6 +11,7 @@ const cases = {
   "approval-command-numbers.txt": { kind: "approval", state: "needs_input", choices: 3, labels: ["Yes, proceed", "Yes, remember", "No"] },
   "stale-status-approval.txt": { kind: "approval", state: "needs_input", choices: 3 },
   "hook-update.txt": { kind: "input", state: "needs_input", choices: 2 },
+  "safety-checks.txt": { kind: "input", state: "needs_input", choices: 2, labels: ["Keep waiting", "Learn more"] },
   "codex-update.txt": { kind: "input", state: "needs_input", choices: 3, labels: ["Update now (runs the official installer)", "Skip", "Skip until next version"] },
   "ordinary.txt": { kind: null, state: "ready" },
   "diff-control.txt": { kind: null, state: "ready" },
