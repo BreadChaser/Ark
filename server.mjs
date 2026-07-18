@@ -3045,7 +3045,7 @@ function networkSiteLinks(url, text) {
     .filter((target) => target && target.origin === origin && networkSiteUrlAllowed(target.toString()))
     .map((target) => target.toString())
     .filter((target, index, all) => target !== url && all.indexOf(target) === index)
-    .filter((target) => /(?:\.html?$|\/(?:benchmarks?|reports?|status|clean_room|docs?|dashboard)(?:\/|$))/i.test(new URL(target).pathname))
+    .filter((target) => /(?:\.html?$|\/(?:benchmarks?|status|docs?|dashboard)(?:\/|$))/i.test(new URL(target).pathname))
     .slice(0, 8);
 }
 
@@ -3644,8 +3644,8 @@ function selfCheckCore() {
   if (!privateNetworkSiteHost("100.64.0.8") || privateNetworkSiteHost("example.com")) throw new Error("network site discovery accepted a public target");
   const arkSite = networkSiteDetails("http://192.168.7.4:4873/", 200, "<title>Ark</title>", {});
   const dedupedSites = dedupeNetworkSites([{ url: "http://192.168.7.1/", name: "Network gateway", kind: "Router / network management" }, { url: "https://192.168.7.1/", name: "Network gateway", kind: "Router / network management" }]);
-  const reportLinks = networkSiteLinks("http://192.168.7.4:8765/", '<a href="/reports/clean_room/haven-decomp-bridge.html">Bridge</a><a href="https://example.com/ignore.html">Ignore</a>');
-  if (arkSite.name !== "Ark" || arkSite.kind !== "Ark hub" || reportLinks[0] !== "http://192.168.7.4:8765/reports/clean_room/haven-decomp-bridge.html" || networkSiteBookmarkName("http://100.94.206.66:8787/picard-cleanup-status.html") !== "Picard Cleanup Status" || networkSiteDetails("http://192.168.7.1/", 200, "", {}).name !== "Network gateway" || dedupedSites.length !== 1 || !dedupedSites[0].url.startsWith("https:") || networkSiteUrlAllowed("https://example.com/")) throw new Error("network site identity was not classified safely");
+  const reportLinks = networkSiteLinks("http://192.168.7.4:8765/", '<a href="/reports/clean_room/haven-decomp-bridge.html">Bridge</a><a href="/reports/reverse_engineering/noise.md">Ignore</a><a href="https://example.com/ignore.html">Ignore</a>');
+  if (arkSite.name !== "Ark" || arkSite.kind !== "Ark hub" || reportLinks.length !== 1 || reportLinks[0] !== "http://192.168.7.4:8765/reports/clean_room/haven-decomp-bridge.html" || networkSiteBookmarkName("http://100.94.206.66:8787/picard-cleanup-status.html") !== "Picard Cleanup Status" || networkSiteDetails("http://192.168.7.1/", 200, "", {}).name !== "Network gateway" || dedupedSites.length !== 1 || !dedupedSites[0].url.startsWith("https:") || networkSiteUrlAllowed("https://example.com/")) throw new Error("network site identity was not classified safely");
   const uploadHeader = multipartUploadHeader(Buffer.from("--Ark\r\nContent-Disposition: form-data; name=\"file\"; filename=\"large.iso\"\r\nContent-Type: application/octet-stream\r\n\r\npayload"), "Ark");
   if (uploadHeader?.filename !== "large.iso" || uploadHeader.type !== "application/octet-stream" || uploadHeader.dataStart < 1) throw new Error("multipart upload header was not parsed");
   if (folderName("Ark project") !== "Ark project") throw new Error("folder name was not preserved");
