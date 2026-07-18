@@ -48,7 +48,7 @@ const CODEX_TRANSCRIPTS = new Map();
 const CONTROL_MISSES = new Map();
 let DEVICE_ALIAS_SIGNATURE = "";
 const CONTROL_KEYS = new Set(["Enter", "Escape"]);
-const NETWORK_SITE_PORTS = [80, 443, 3000, 3001, 5000, 5173, 8000, 8080, 8081, 8096, 8123, 8443, 9000, 4873];
+const NETWORK_SITE_PORTS = [80, 81, 88, 443, 2283, 3000, 3001, 3333, 4000, 5000, 5055, 5173, 5601, 5678, 6000, 7000, 7080, 7120, 7331, 7575, 7860, 7878, 8000, 8001, 8006, 8080, 8081, 8090, 8091, 8096, 8123, 8181, 8443, 8581, 8888, 8989, 9000, 9001, 9090, 9091, 9443, 9696, 10000, 10200, 11434, 19999, 32400];
 const NETWORK_SITE_IDENTITIES = new Map([
   [4873, { name: "Ark", kind: "Ark hub" }],
   [8096, { name: "Jellyfin", kind: "Media server" }],
@@ -56,12 +56,29 @@ const NETWORK_SITE_IDENTITIES = new Map([
   [3000, { name: "Grafana", kind: "Monitoring dashboard" }],
   [3001, { name: "Web application", kind: "Development server" }],
   [5000, { name: "Web application", kind: "Development server" }],
+  [5055, { name: "Jellyseerr", kind: "Media requests" }],
+  [5601, { name: "Kibana", kind: "Log dashboard" }],
+  [5678, { name: "n8n", kind: "Automation" }],
+  [7860, { name: "AI web app", kind: "AI dashboard" }],
+  [7878, { name: "Radarr", kind: "Movie automation" }],
   [8000, { name: "Web application", kind: "Development server" }],
+  [8006, { name: "Proxmox VE", kind: "Virtualization dashboard" }],
   [8080, { name: "Web dashboard", kind: "Web application" }],
   [8081, { name: "Web dashboard", kind: "Web application" }],
+  [8090, { name: "Local LLM", kind: "AI dashboard" }],
   [9000, { name: "Portainer", kind: "Container dashboard" }],
+  [8989, { name: "Sonarr", kind: "TV automation" }],
+  [9090, { name: "Prometheus", kind: "Metrics dashboard" }],
+  [9091, { name: "Transmission", kind: "Downloads" }],
+  [9443, { name: "Portainer", kind: "Container dashboard" }],
+  [9696, { name: "Prowlarr", kind: "Indexer automation" }],
+  [10000, { name: "Webmin", kind: "Server management" }],
+  [11434, { name: "Ollama", kind: "AI API" }],
+  [19999, { name: "Netdata", kind: "System monitoring" }],
+  [32400, { name: "Plex", kind: "Media server" }],
 ]);
 const NETWORK_SITE_TIMEOUT = 600;
+const NETWORK_SITE_CONCURRENCY = 256;
 let NETWORK_SITE_SCAN = null;
 
 const DEFAULT_TOOL_COMMANDS = {
@@ -3018,8 +3035,8 @@ async function scanNetworkSites() {
     }
     const targets = [...hosts].flatMap((host) => NETWORK_SITE_PORTS.map((port) => [host, port]));
     const sites = [];
-    for (let index = 0; index < targets.length; index += 64) {
-      const batch = await Promise.all(targets.slice(index, index + 64).map(([host, port]) => probeNetworkSite(host, port)));
+    for (let index = 0; index < targets.length; index += NETWORK_SITE_CONCURRENCY) {
+      const batch = await Promise.all(targets.slice(index, index + NETWORK_SITE_CONCURRENCY).map(([host, port]) => probeNetworkSite(host, port)));
       sites.push(...batch.filter(Boolean).map((site) => ({ ...site, device: deviceNames.get(networkSiteHost(new URL(site.url).hostname)) || "" })));
     }
     const deduped = dedupeNetworkSites(sites)
@@ -3517,7 +3534,7 @@ function selfCheckCore() {
   if (contentType("ark-logo.svg") !== "image/svg+xml") throw new Error("SVG content type is not renderable");
   if (contentType("done.mp3") !== "audio/mpeg") throw new Error("MP3 sound effect content type is not playable");
   const lanHosts = privateNetworkHosts({ lan: [{ family: "IPv4", internal: false, address: "192.168.7.42" }] });
-  if (lanHosts.length !== 254 || !lanHosts.includes("192.168.7.1") || !lanHosts.includes("192.168.7.254") || networkSiteUrl("192.168.7.4", 8443) !== "https://192.168.7.4:8443/") throw new Error("network site discovery targets were not normalized");
+  if (lanHosts.length !== 254 || !lanHosts.includes("192.168.7.1") || !lanHosts.includes("192.168.7.254") || !NETWORK_SITE_PORTS.includes(8006) || !NETWORK_SITE_PORTS.includes(8090) || networkSiteUrl("192.168.7.4", 8443) !== "https://192.168.7.4:8443/") throw new Error("network site discovery targets were not normalized");
   if (!privateNetworkSiteHost("100.64.0.8") || privateNetworkSiteHost("example.com")) throw new Error("network site discovery accepted a public target");
   const arkSite = networkSiteDetails("http://192.168.7.4:4873/", 200, "<title>Ark</title>", {});
   const dedupedSites = dedupeNetworkSites([{ url: "http://192.168.7.1/", name: "Network gateway", kind: "Router / network management" }, { url: "https://192.168.7.1/", name: "Network gateway", kind: "Router / network management" }]);
