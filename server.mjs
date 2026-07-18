@@ -54,6 +54,11 @@ const NETWORK_SITE_IDENTITIES = new Map([
   [8096, { name: "Jellyfin", kind: "Media server" }],
   [8123, { name: "Home Assistant", kind: "Home automation" }],
   [3000, { name: "Grafana", kind: "Monitoring dashboard" }],
+  [3001, { name: "Web application", kind: "Development server" }],
+  [5000, { name: "Web application", kind: "Development server" }],
+  [8000, { name: "Web application", kind: "Development server" }],
+  [8080, { name: "Web dashboard", kind: "Web application" }],
+  [8081, { name: "Web dashboard", kind: "Web application" }],
   [9000, { name: "Portainer", kind: "Container dashboard" }],
 ]);
 const NETWORK_SITE_TIMEOUT = 600;
@@ -2906,9 +2911,15 @@ function networkSitePort(url) {
   return Number(target.port || (target.protocol === "https:" ? 443 : 80));
 }
 
+function probableNetworkGateway(url) {
+  // ponytail: .1 is the practical LAN convention; use route-table detection if it proves wrong.
+  return /^\d+\.\d+\.\d+\.1$/.test(new URL(url).hostname);
+}
+
 function networkSiteDetails(url, status, text, headers) {
   const title = pageTitle(text);
   const known = NETWORK_SITE_IDENTITIES.get(networkSitePort(url));
+  const gateway = probableNetworkGateway(url) ? { name: "Network gateway", kind: "Router / network management" } : null;
   const fingerprint = [headers.server, headers["x-powered-by"], headers["x-emby-server"]].flat().filter(Boolean).join(" ").toLowerCase();
   const platform = /jellyfin|emby/.test(fingerprint) ? { name: "Jellyfin", kind: "Media server" }
     : /home assistant/.test(fingerprint) ? { name: "Home Assistant", kind: "Home automation" }
@@ -2920,7 +2931,19 @@ function networkSiteDetails(url, status, text, headers) {
                 : /express/.test(fingerprint) ? { name: "Node web app", kind: "Express" }
                   : null;
   const usefulTitle = title && !/^(?:\d{3}\s+(?:found|error)|found|redirect|untitled)$/i.test(title) && !/^https?:\/\//i.test(title);
-  return { url, status, title, name: usefulTitle ? title : platform?.name || known?.name || "Web site", kind: platform?.kind || known?.kind || "Unidentified web site" };
+  return { url, status, title, name: usefulTitle ? title : platform?.name || gateway?.name || known?.name || "Web site", kind: platform?.kind || gateway?.kind || known?.kind || "Unidentified web site" };
+}
+
+function dedupeNetworkSites(sites) {
+  const unique = new Map();
+  for (const site of sites) {
+    const target = new URL(site.url);
+    const endpoint = [80, 443].includes(networkSitePort(site.url)) ? "web" : String(networkSitePort(site.url));
+    const key = `${target.hostname}\0${endpoint}\0${site.name}\0${site.kind}`;
+    const current = unique.get(key);
+    if (!current || target.protocol === "https:") unique.set(key, site);
+  }
+  return [...unique.values()];
 }
 
 function probeNetworkSite(host, port) {
@@ -2999,7 +3022,7 @@ async function scanNetworkSites() {
       const batch = await Promise.all(targets.slice(index, index + 64).map(([host, port]) => probeNetworkSite(host, port)));
       sites.push(...batch.filter(Boolean).map((site) => ({ ...site, device: deviceNames.get(networkSiteHost(new URL(site.url).hostname)) || "" })));
     }
-    const deduped = [...new Map(sites.map((site) => [site.url, site])).values()]
+    const deduped = dedupeNetworkSites(sites)
       .sort((a, b) => String(a.name || a.title || a.url).localeCompare(String(b.name || b.title || b.url)));
     return writeNetworkSites({ scanned_at: new Date().toISOString(), hosts: hosts.size, sites: deduped });
   })();
@@ -3497,7 +3520,8 @@ function selfCheckCore() {
   if (lanHosts.length !== 254 || !lanHosts.includes("192.168.7.1") || !lanHosts.includes("192.168.7.254") || networkSiteUrl("192.168.7.4", 8443) !== "https://192.168.7.4:8443/") throw new Error("network site discovery targets were not normalized");
   if (!privateNetworkSiteHost("100.64.0.8") || privateNetworkSiteHost("example.com")) throw new Error("network site discovery accepted a public target");
   const arkSite = networkSiteDetails("http://192.168.7.4:4873/", 200, "<title>Ark</title>", {});
-  if (arkSite.name !== "Ark" || arkSite.kind !== "Ark hub" || networkSiteUrlAllowed("https://example.com/")) throw new Error("network site identity was not classified safely");
+  const dedupedSites = dedupeNetworkSites([{ url: "http://192.168.7.1/", name: "Network gateway", kind: "Router / network management" }, { url: "https://192.168.7.1/", name: "Network gateway", kind: "Router / network management" }]);
+  if (arkSite.name !== "Ark" || arkSite.kind !== "Ark hub" || networkSiteDetails("http://192.168.7.1/", 200, "", {}).name !== "Network gateway" || dedupedSites.length !== 1 || !dedupedSites[0].url.startsWith("https:") || networkSiteUrlAllowed("https://example.com/")) throw new Error("network site identity was not classified safely");
   const uploadHeader = multipartUploadHeader(Buffer.from("--Ark\r\nContent-Disposition: form-data; name=\"file\"; filename=\"large.iso\"\r\nContent-Type: application/octet-stream\r\n\r\npayload"), "Ark");
   if (uploadHeader?.filename !== "large.iso" || uploadHeader.type !== "application/octet-stream" || uploadHeader.dataStart < 1) throw new Error("multipart upload header was not parsed");
   if (folderName("Ark project") !== "Ark project") throw new Error("folder name was not preserved");
