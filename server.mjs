@@ -516,7 +516,7 @@ async function captureSession(id) {
     payload.transcript_source = "codex-rollout";
     const settings = cachedCodexSettings(session);
     if (settings) payload.codex_state = { ...(payload.codex_state || {}), ...settings, source: "codex-rollout" };
-    payload.codex_usage = cachedCodexUsage(session) || payload.codex_usage || session.codex_usage || null;
+    payload.codex_usage = mergeCodexUsage([cachedCodexUsage(session), payload.codex_usage, session.codex_usage]);
     if (payload.agent_state !== "needs_input") payload.agent_state = cachedCodexTaskState(session) || payload.agent_state;
   } else if (payload.mode === "chat") {
     payload.messages = await writeMessagesSnapshot(session, payload.messages);
@@ -1657,7 +1657,7 @@ async function listAgentStates() {
     try {
       const live = CAPTURE_STREAMS.get(session.id)?.payload;
       if (live && live.transcript_source !== "stored") {
-        const usageUntil = Number(live.usage_limited_until || session.usage_limited_until || 0);
+        const usageUntil = activeCodexUsageLimitUntil(live.codex_usage || session.codex_usage, live.usage_limited_until || session.usage_limited_until);
         const state = usageUntil > Math.floor(Date.now() / 1000) ? "usage" : live.pending_control ? "needs_input" : live.agent_state;
         return { id: session.id, state, pending_control: live.pending_control || null, ready_at: session.ready_at || 0, viewed_at: session.viewed_at || 0, usage_limited_until: usageUntil };
       }
@@ -1665,7 +1665,7 @@ async function listAgentStates() {
       // Probing every old tmux pane every three seconds adds latency without
       // producing new state; GUI and terminal sends clear this completion flag.
       if (session.tool === "codex" && session.agent_state === "ready" && session.codex_transcript_complete && !session.pending_control) {
-        const usageUntil = Number(session.usage_limited_until || 0);
+        const usageUntil = activeCodexUsageLimitUntil(session.codex_usage, session.usage_limited_until);
         const state = usageUntil > Math.floor(Date.now() / 1000) ? "usage" : "ready";
         return { id: session.id, state, pending_control: null, ready_at: session.ready_at || 0, viewed_at: session.viewed_at || 0, usage_limited_until: usageUntil };
       }
@@ -1679,7 +1679,7 @@ async function listAgentStates() {
         if (state !== "needs_input") state = cachedCodexTaskState(session) || state;
       }
       const current = await syncPendingControl(session.id, controls, state);
-      const usageUntil = Number(current.usage_limited_until || 0);
+      const usageUntil = activeCodexUsageLimitUntil(current.codex_usage, current.usage_limited_until);
       const effectiveState = usageUntil > Math.floor(Date.now() / 1000) ? "usage" : current.pending_control ? "needs_input" : state;
       return { id: session.id, state: effectiveState, pending_control: current.pending_control || null, ready_at: current.ready_at || 0, viewed_at: current.viewed_at || 0, usage_limited_until: usageUntil };
     } catch {
@@ -1702,12 +1702,23 @@ function codexUsageResetAt(text, now = Date.now()) {
 }
 
 function codexUsageLimitUntil(text, usage, now = Date.now()) {
+  if (codexUsageHasCapacity(usage)) return 0;
   const screenReset = codexUsageResetAt(text, now);
   if (screenReset) return Math.floor(screenReset / 1000);
   const resets = [usage?.primary, usage?.secondary]
     .filter((limit) => Number(limit?.used_percent) >= 100 && Number(limit?.resets_at) * 1000 > now)
     .map((limit) => Number(limit.resets_at));
   return resets.length ? Math.min(...resets) : 0;
+}
+
+function codexUsageHasCapacity(usage) {
+  const limits = [usage?.primary, usage?.secondary].filter(Boolean);
+  return limits.length > 0 && limits.every((limit) => Number(limit.used_percent) < 100);
+}
+
+function activeCodexUsageLimitUntil(usage, until, now = Math.floor(Date.now() / 1000)) {
+  const value = Number(until || 0);
+  return value > now && !codexUsageHasCapacity(usage) ? value : 0;
 }
 
 function actionableControl(control) {
@@ -1748,7 +1759,9 @@ async function syncPendingControl(id, controls, state, codexState = null, codexU
     } : session.codex_state || null;
     const usage = codexUsage?.primary || codexUsage?.secondary ? codexUsage : session.codex_usage || null;
     const now = Math.floor(Date.now() / 1000);
-    const nextUsageLimitedUntil = Number(usageLimitedUntil || 0) > now ? Number(usageLimitedUntil) : Number(session.usage_limited_until || 0) > now ? Number(session.usage_limited_until) : 0;
+    const nextUsageLimitedUntil = codexUsageHasCapacity(usage)
+      ? 0
+      : Number(usageLimitedUntil || 0) > now ? Number(usageLimitedUntil) : Number(session.usage_limited_until || 0) > now ? Number(session.usage_limited_until) : 0;
     const stateChanged = state !== session.agent_state;
     const unchanged = next?.id === session.pending_control?.id
       && Boolean(next) === Boolean(session.pending_control)
@@ -1786,7 +1799,8 @@ async function clearPendingControl(id) {
 }
 
 function publicSession(session) {
-  return { ...session, codex_usage: mergeCodexUsage([session.codex_usage]) || null, storage_path: sessionDir(session.id) };
+  const codex_usage = mergeCodexUsage([session.codex_usage]) || null;
+  return { ...session, codex_usage, usage_limited_until: activeCodexUsageLimitUntil(codex_usage, session.usage_limited_until), storage_path: sessionDir(session.id) };
 }
 
 function httpError(status, message) {
@@ -3271,6 +3285,11 @@ function selfCheckCore() {
   const resetAt = codexUsageResetAt("You've hit your usage limit. Try again at 4:05 AM.", resetNow);
   if (resetAt !== new Date(2026, 6, 11, 4, 5).getTime()) throw new Error("Codex usage reset time was not detected");
   if (codexUsageLimitUntil("You've hit your usage limit. Try again at 4:05 AM.", null, resetNow) !== Math.floor(resetAt / 1000)) throw new Error("Codex usage reset was not classified outside goal mode");
+  const resetUsage = codexUsage({ limit_id: "codex", primary: { used_percent: 5, window_minutes: 10080 } }, resetNow / 1000);
+  if (codexUsageLimitUntil("You've hit your usage limit. Try again at 4:05 AM.", resetUsage, resetNow) !== 0 || activeCodexUsageLimitUntil(resetUsage, Math.floor(resetNow / 1000) + 3600, Math.floor(resetNow / 1000)) !== 0) throw new Error("fresh Codex usage did not clear a stale usage lock");
+  const cachedLimitedUsage = codexUsage({ limit_id: "codex", primary: { used_percent: 100, window_minutes: 10080 } }, 100);
+  const freshUsage = codexUsage({ limit_id: "codex", primary: { used_percent: 5, window_minutes: 10080 } }, 200);
+  if (mergeCodexUsage([cachedLimitedUsage, freshUsage])?.primary?.used_percent !== 5) throw new Error("fresh Codex screen usage did not replace cached usage");
   const exactResume = commandForRestart({ tool: "codex", runner_command: "codex --no-alt-screen", codex_session_id: "019f491a-b738-7462-8a3a-418e4532df67" }, true, {});
   if (exactResume !== "codex --no-alt-screen resume '019f491a-b738-7462-8a3a-418e4532df67'") throw new Error("Codex resume lost the exact session id");
   if (commandForSession("codex", "codex --no-alt-screen", [], true) !== "codex --no-alt-screen --yolo") throw new Error("Codex YOLO flag was not added to new sessions");
