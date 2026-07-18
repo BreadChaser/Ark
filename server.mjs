@@ -49,6 +49,7 @@ const CONTROL_MISSES = new Map();
 let DEVICE_ALIAS_SIGNATURE = "";
 const CONTROL_KEYS = new Set(["Enter", "Escape"]);
 const NETWORK_SITE_PORTS = [80, 443, 3000, 3001, 5000, 5173, 8000, 8080, 8081, 8096, 8123, 8443, 9000, 4873];
+const NETWORK_SITE_TIMEOUT = 600;
 let NETWORK_SITE_SCAN = null;
 
 const DEFAULT_TOOL_COMMANDS = {
@@ -2881,9 +2882,14 @@ function probeNetworkSite(host, port) {
     const url = networkSiteUrl(host, port);
     const client = url.startsWith("https:") ? https : http;
     let settled = false;
+    const timer = setTimeout(() => {
+      done(null);
+      request.destroy();
+    }, NETWORK_SITE_TIMEOUT);
     const done = (value) => {
       if (settled) return;
       settled = true;
+      clearTimeout(timer);
       resolve(value);
     };
     const request = client.request(url, {
@@ -2903,7 +2909,7 @@ function probeNetworkSite(host, port) {
       response.on("end", () => done({ url, status: Number(response.statusCode) || 0, title: pageTitle(text) }));
       response.on("error", () => done(null));
     });
-    request.setTimeout(450, () => request.destroy());
+    request.setTimeout(NETWORK_SITE_TIMEOUT, () => request.destroy());
     request.on("error", () => done(null));
     request.end();
   });
