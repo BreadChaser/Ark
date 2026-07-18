@@ -77,6 +77,16 @@ try {
   await wait('!document.body.classList.contains("chill-mode") && getComputedStyle(document.querySelector("main")).display !== "none"');
   await js('document.querySelector("#settings-toggle").click(); return true;');
 
+  await js(`
+    renderNetworkSites({ scanned_at: "2026-07-18T12:00:00.000Z", hosts: 254, sites: [{ url: "http://192.168.1.50:8096/", title: "Jellyfin", status: 200 }] });
+    document.querySelector("#network-sites-dialog").showModal();
+    return true;
+  `);
+  await wait('document.querySelector("#network-sites-dialog").open');
+  assert(await js('const link = document.querySelector("#network-sites-list a"); return Boolean(document.querySelector("#network-sites-toggle")) && link?.href.includes("192.168.1.50:8096") && link.target === "_blank" && link.rel.includes("noopener");'), "network sites do not provide a safe separate-tab opener");
+  await shot("network-sites");
+  await js('document.querySelector("#network-sites-dialog").close(); return true;');
+
   for (const theme of ["light", "soft", "dark", "midnight", "ark", "spreadsheet"]) {
     await setTheme(theme);
     if (theme !== "spreadsheet") await sleep(450);

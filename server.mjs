@@ -4,6 +4,7 @@ import { appendFile, copyFile, mkdir, readFile, readdir, rename, rm, stat, write
 import { once } from "node:events";
 import { finished } from "node:stream/promises";
 import http from "node:http";
+import https from "node:https";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,6 +31,7 @@ const SECRETS = path.join(DATA, "secrets.yml");
 const DEVICES = path.join(DATA, "devices.yml");
 const SESSIONS_DIR = path.join(DATA, "sessions");
 const UPLOADS = path.join(DATA, "uploads");
+const NETWORK_SITES = path.join(DATA, "network-sites.json");
 const UPLOAD_LIMIT = 32 * 1024 ** 3;
 const CODEX_IMAGE_LIMIT = 64 * 1024 * 1024;
 const CODEX_IMAGE_DATA_LIMIT = Math.ceil(CODEX_IMAGE_LIMIT * 4 / 3) + 128;
@@ -46,6 +48,8 @@ const CODEX_TRANSCRIPTS = new Map();
 const CONTROL_MISSES = new Map();
 let DEVICE_ALIAS_SIGNATURE = "";
 const CONTROL_KEYS = new Set(["Enter", "Escape"]);
+const NETWORK_SITE_PORTS = [80, 443, 3000, 3001, 5000, 5173, 8000, 8080, 8081, 8096, 8123, 8443, 9000, 4873];
+let NETWORK_SITE_SCAN = null;
 
 const DEFAULT_TOOL_COMMANDS = {
   terminal: "",
@@ -109,6 +113,12 @@ async function route(req, res) {
   }
   if (req.method === "GET" && pathname === "/health") {
     return json(res, 200, { ok: true });
+  }
+  if (req.method === "GET" && pathname === "/api/network-sites") {
+    return json(res, 200, await readNetworkSites());
+  }
+  if (req.method === "POST" && pathname === "/api/network-sites/scan") {
+    return json(res, 200, await scanNetworkSites());
   }
   if (req.method === "GET" && pathname === "/api/devices") {
     return json(res, 200, { devices: await loadDevices() });
@@ -2821,6 +2831,115 @@ async function writeSettings(data) {
   return settings;
 }
 
+async function readNetworkSites() {
+  try {
+    const data = JSON.parse(await readFile(NETWORK_SITES, "utf8"));
+    return {
+      scanned_at: String(data.scanned_at || ""),
+      hosts: Number(data.hosts) || 0,
+      sites: Array.isArray(data.sites) ? data.sites : [],
+    };
+  } catch (error) {
+    if (error?.code === "ENOENT") return { scanned_at: "", hosts: 0, sites: [] };
+    throw dataReadError("network-sites.json", error);
+  }
+}
+
+async function writeNetworkSites(data) {
+  await mkdir(DATA, { recursive: true });
+  const tmp = `${NETWORK_SITES}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  await writeFile(tmp, JSON.stringify(data, null, 2) + "\n");
+  await rename(tmp, NETWORK_SITES);
+  return data;
+}
+
+function privateNetworkHosts(interfaces = os.networkInterfaces()) {
+  const hosts = new Set();
+  for (const records of Object.values(interfaces)) for (const record of records || []) {
+    const octets = String(record.address || "").split(".").map(Number);
+    if (record.family !== "IPv4" || record.internal || octets.length !== 4 || !octets.every(Number.isInteger)) continue;
+    const privateNetwork = octets[0] === 10 || (octets[0] === 192 && octets[1] === 168) || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31);
+    if (!privateNetwork) continue;
+    for (let last = 1; last < 255; last += 1) hosts.add(`${octets[0]}.${octets[1]}.${octets[2]}.${last}`);
+  }
+  return [...hosts].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
+
+function networkSiteHost(value) {
+  const host = String(value || "").trim().replace(/^\[|\]$/g, "");
+  return host && host !== "localhost" && /^[a-z0-9.-]+$/i.test(host) ? host : "";
+}
+
+function networkSiteUrl(host, port) {
+  const secure = port === 443 || port === 8443;
+  const defaultPort = secure ? 443 : 80;
+  return `${secure ? "https" : "http"}://${host}${port === defaultPort ? "" : `:${port}`}/`;
+}
+
+function probeNetworkSite(host, port) {
+  return new Promise((resolve) => {
+    const url = networkSiteUrl(host, port);
+    const client = url.startsWith("https:") ? https : http;
+    let settled = false;
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const request = client.request(url, {
+      method: "GET",
+      rejectUnauthorized: false,
+      headers: { Range: "bytes=0-8191", "Accept-Encoding": "identity", "User-Agent": "Ark network sites" },
+    }, (response) => {
+      let text = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => {
+        text += chunk;
+        if (text.length >= 8192) {
+          response.destroy();
+          done({ url, status: Number(response.statusCode) || 0, title: pageTitle(text) });
+        }
+      });
+      response.on("end", () => done({ url, status: Number(response.statusCode) || 0, title: pageTitle(text) }));
+      response.on("error", () => done(null));
+    });
+    request.setTimeout(450, () => request.destroy());
+    request.on("error", () => done(null));
+    request.end();
+  });
+}
+
+function pageTitle(text) {
+  return String(text || "").match(/<title[^>]*>\s*([^<]{1,120})/i)?.[1].replace(/\s+/g, " ").trim() || "";
+}
+
+async function scanNetworkSites() {
+  if (NETWORK_SITE_SCAN) return NETWORK_SITE_SCAN;
+  const scan = (async () => {
+    const devices = await loadDevices();
+    const hosts = new Set(privateNetworkHosts());
+    for (const device of devices) {
+      const host = networkSiteHost(device.host);
+      if (host) hosts.add(host);
+    }
+    const targets = [...hosts].flatMap((host) => NETWORK_SITE_PORTS.map((port) => [host, port]));
+    const sites = [];
+    for (let index = 0; index < targets.length; index += 64) {
+      const batch = await Promise.all(targets.slice(index, index + 64).map(([host, port]) => probeNetworkSite(host, port)));
+      sites.push(...batch.filter(Boolean));
+    }
+    const deduped = [...new Map(sites.map((site) => [site.url, site])).values()]
+      .sort((a, b) => String(a.title || a.url).localeCompare(String(b.title || b.url)));
+    return writeNetworkSites({ scanned_at: new Date().toISOString(), hosts: hosts.size, sites: deduped });
+  })();
+  NETWORK_SITE_SCAN = scan;
+  try {
+    return await scan;
+  } finally {
+    if (NETWORK_SITE_SCAN === scan) NETWORK_SITE_SCAN = null;
+  }
+}
+
 function normalizeSettings(data) {
   const incoming = data?.tool_commands || {};
   const tool_commands = {};
@@ -3303,6 +3422,8 @@ function selfCheckTrustedRemote() {
 function selfCheckCore() {
   if (contentType("ark-logo.svg") !== "image/svg+xml") throw new Error("SVG content type is not renderable");
   if (contentType("done.mp3") !== "audio/mpeg") throw new Error("MP3 sound effect content type is not playable");
+  const lanHosts = privateNetworkHosts({ lan: [{ family: "IPv4", internal: false, address: "192.168.7.42" }] });
+  if (lanHosts.length !== 254 || !lanHosts.includes("192.168.7.1") || !lanHosts.includes("192.168.7.254") || networkSiteUrl("192.168.7.4", 8443) !== "https://192.168.7.4:8443/") throw new Error("network site discovery targets were not normalized");
   const uploadHeader = multipartUploadHeader(Buffer.from("--Ark\r\nContent-Disposition: form-data; name=\"file\"; filename=\"large.iso\"\r\nContent-Type: application/octet-stream\r\n\r\npayload"), "Ark");
   if (uploadHeader?.filename !== "large.iso" || uploadHeader.type !== "application/octet-stream" || uploadHeader.dataStart < 1) throw new Error("multipart upload header was not parsed");
   if (folderName("Ark project") !== "Ark project") throw new Error("folder name was not preserved");

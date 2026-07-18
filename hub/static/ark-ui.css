@@ -451,7 +451,7 @@ body.chill-mode > :not(.background-flow, .background-grid) {
   white-space: pre;
 }
 
-:root[data-theme="spreadsheet"] .topbar :is(.status-pill, .settings-toggle, .local-llm-toggle) {
+:root[data-theme="spreadsheet"] .topbar :is(.status-pill, .settings-toggle, .local-llm-toggle, .network-sites-toggle) {
   border-color: rgba(255, 255, 255, 0.38);
   color: #ffffff;
   background: transparent;
@@ -1418,6 +1418,7 @@ pre {
 
 .settings-toggle,
 .local-llm-toggle,
+.network-sites-toggle,
 .chill-toggle {
   border-color: transparent;
   color: var(--muted);
@@ -1442,6 +1443,12 @@ pre {
 }
 
 .local-llm-dialog form {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+}
+
+.network-sites-panel {
   display: grid;
   gap: 16px;
   padding: 20px;
@@ -1527,6 +1534,65 @@ pre {
 .local-llm-dialog .local-llm-check {
   display: flex;
   align-items: center;
+}
+
+.network-sites-list {
+  display: grid;
+  max-height: min(46dvh, 430px);
+  gap: 8px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.network-site {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+}
+
+.network-site div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.network-site strong,
+.network-site small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.network-site small,
+.network-sites-empty {
+  color: var(--muted);
+  font: 700 10px/1.5 var(--mono);
+}
+
+.network-site a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  text-decoration: none;
+  background: var(--panel-solid);
+}
+
+.network-sites-empty {
+  margin: 0;
+  padding: 18px 12px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-md);
+  text-align: center;
 }
 
 .settings-menu {
@@ -3074,6 +3140,7 @@ body.sidebar-collapsed #sidebar-toggle::after {
 
   .settings-toggle,
   .local-llm-toggle,
+  .network-sites-toggle,
   .chill-toggle {
     min-width: 36px;
     padding: 0;
@@ -3083,6 +3150,11 @@ body.sidebar-collapsed #sidebar-toggle::after {
   .local-llm-toggle::before {
     content: "◉";
     font-size: 18px;
+  }
+
+  .network-sites-toggle::before {
+    content: "⌁";
+    font-size: 20px;
   }
 
   .settings-toggle::before {
@@ -3096,6 +3168,10 @@ body.sidebar-collapsed #sidebar-toggle::after {
   }
 
   .local-llm-dialog form {
+    padding: 16px;
+  }
+
+  .network-sites-panel {
     padding: 16px;
   }
 

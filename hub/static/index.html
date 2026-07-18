@@ -7,7 +7,7 @@
     <link rel="icon" href="/static/ark-logo.svg?v=3" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
-    <link rel="stylesheet" href="/static/ark-ui.css?v=57" />
+    <link rel="stylesheet" href="/static/ark-ui.css?v=58" />
   </head>
   <body>
     <canvas class="background-flow" aria-hidden="true"></canvas>
@@ -77,6 +77,7 @@
           <span id="status" class="status-pill">Idle</span>
           <button id="chill-mode" class="chill-toggle" type="button" aria-pressed="false" title="Show only the theme background">Chill</button>
           <button id="local-llm-toggle" class="local-llm-toggle" type="button">Models</button>
+          <button id="network-sites-toggle" class="network-sites-toggle" type="button">Sites</button>
           <button id="settings-toggle" class="settings-toggle" aria-expanded="false">Settings</button>
           <div id="settings-menu" class="settings-menu" hidden>
             <div class="settings-head">
@@ -346,6 +347,24 @@
       </form>
     </dialog>
 
+    <dialog id="network-sites-dialog" class="local-llm-dialog network-sites-dialog" aria-labelledby="network-sites-title">
+      <section class="network-sites-panel">
+        <header>
+          <div>
+            <span>Private LAN · common web ports</span>
+            <h2 id="network-sites-title">Network sites</h2>
+          </div>
+          <button id="network-sites-close" type="button" aria-label="Close network sites">Close</button>
+        </header>
+        <output id="network-sites-status" class="local-llm-status">Loading saved sites…</output>
+        <div id="network-sites-list" class="network-sites-list"></div>
+        <footer>
+          <small>Results stay in Ark. A scan checks your private LAN ranges and configured devices.</small>
+          <button id="network-sites-scan" class="primary" type="button">Scan network</button>
+        </footer>
+      </section>
+    </dialog>
+
     <dialog id="image-viewer" class="image-viewer" aria-label="Image preview">
       <button id="image-viewer-close" class="image-viewer-close" type="button">Close</button>
       <img id="image-viewer-image" alt="" />
@@ -361,6 +380,6 @@
     <script src="/vendor/marked/marked.js"></script>
     <script src="/vendor/dompurify/purify.js"></script>
     <script src="/static/flow-background.js?v=10"></script>
-    <script src="/static/app.js?v=57"></script>
+    <script src="/static/app.js?v=58"></script>
   </body>
 </html>

@@ -187,6 +187,12 @@ const els = {
   localLlmMlock: document.querySelector("#local-llm-mlock"),
   localLlmServerToggle: document.querySelector("#local-llm-server-toggle"),
   localLlmApply: document.querySelector("#local-llm-apply"),
+  networkSitesToggle: document.querySelector("#network-sites-toggle"),
+  networkSitesDialog: document.querySelector("#network-sites-dialog"),
+  networkSitesClose: document.querySelector("#network-sites-close"),
+  networkSitesStatus: document.querySelector("#network-sites-status"),
+  networkSitesList: document.querySelector("#network-sites-list"),
+  networkSitesScan: document.querySelector("#network-sites-scan"),
   settingsToggle: document.querySelector("#settings-toggle"),
   settingsMenu: document.querySelector("#settings-menu"),
   defaultTool: document.querySelector("#default-tool"),
@@ -268,6 +274,12 @@ async function init() {
   els.localLlmModel.addEventListener("change", selectLocalLlmPreset);
   els.localLlmDialog.addEventListener("click", (event) => {
     if (event.target === els.localLlmDialog) els.localLlmDialog.close();
+  });
+  els.networkSitesToggle.addEventListener("click", openNetworkSites);
+  els.networkSitesClose.addEventListener("click", () => els.networkSitesDialog.close());
+  els.networkSitesScan.addEventListener("click", scanNetworkSites);
+  els.networkSitesDialog.addEventListener("click", (event) => {
+    if (event.target === els.networkSitesDialog) els.networkSitesDialog.close();
   });
   els.settingsToggle.addEventListener("click", toggleSettings);
   els.saveToolCommands.addEventListener("click", () => saveToolCommands(false));
@@ -2531,6 +2543,53 @@ async function openLocalLlm() {
   } catch (error) {
     els.localLlmStatus.textContent = error.message;
     els.localLlmStatus.dataset.state = "error";
+  }
+}
+
+async function openNetworkSites() {
+  els.settingsMenu.hidden = true;
+  els.settingsToggle.setAttribute("aria-expanded", "false");
+  els.networkSitesStatus.textContent = "Loading saved sites…";
+  els.networkSitesStatus.dataset.state = "loading";
+  els.networkSitesScan.disabled = true;
+  els.networkSitesDialog.showModal();
+  try {
+    renderNetworkSites(await api("/api/network-sites"));
+  } catch (error) {
+    els.networkSitesStatus.textContent = error.message;
+    els.networkSitesStatus.dataset.state = "error";
+    els.networkSitesScan.disabled = false;
+  }
+}
+
+function renderNetworkSites(data) {
+  const sites = data.sites || [];
+  const scanned = data.scanned_at
+    ? `Last scan ${new Date(data.scanned_at).toLocaleString()} · ${Number(data.hosts || 0)} hosts`
+    : "No network scan saved yet.";
+  els.networkSitesStatus.textContent = sites.length
+    ? `${sites.length} site${sites.length === 1 ? "" : "s"} · ${scanned}`
+    : scanned;
+  els.networkSitesStatus.dataset.state = sites.length ? "running" : "stopped";
+  els.networkSitesScan.disabled = false;
+  els.networkSitesList.innerHTML = sites.length ? sites.map((site) => `
+    <article class="network-site">
+      <div><strong>${escapeHtml(site.title || site.url)}</strong><small>${escapeHtml(site.url)}${site.status ? ` · HTTP ${escapeHtml(String(site.status))}` : ""}</small></div>
+      <a href="${escapeHtml(site.url)}" target="_blank" rel="noopener noreferrer">Open</a>
+    </article>
+  `).join("") : '<p class="network-sites-empty">Scan the network to save its web dashboards here.</p>';
+}
+
+async function scanNetworkSites() {
+  els.networkSitesScan.disabled = true;
+  els.networkSitesStatus.textContent = "Scanning private LAN and configured devices…";
+  els.networkSitesStatus.dataset.state = "loading";
+  try {
+    renderNetworkSites(await api("/api/network-sites/scan", { method: "POST" }));
+  } catch (error) {
+    els.networkSitesStatus.textContent = error.message;
+    els.networkSitesStatus.dataset.state = "error";
+    els.networkSitesScan.disabled = false;
   }
 }
 
