@@ -48,7 +48,7 @@ const CODEX_TRANSCRIPTS = new Map();
 const CONTROL_MISSES = new Map();
 let DEVICE_ALIAS_SIGNATURE = "";
 const CONTROL_KEYS = new Set(["Enter", "Escape"]);
-const NETWORK_SITE_PORTS = [80, 81, 88, 443, 2283, 3000, 3001, 3333, 4000, 5000, 5055, 5173, 5601, 5678, 6000, 7000, 7080, 7120, 7331, 7575, 7860, 7878, 8000, 8001, 8006, 8080, 8081, 8090, 8091, 8096, 8123, 8181, 8443, 8581, 8888, 8989, 9000, 9001, 9090, 9091, 9443, 9696, 10000, 10200, 11434, 19999, 32400];
+const NETWORK_SITE_PORTS = [80, 81, 88, 443, 2283, 3000, 3001, 3333, 4000, 5000, 5055, 5173, 5601, 5678, 6000, 7000, 7080, 7120, 7331, 7575, 7860, 7878, 8000, 8001, 8006, 8080, 8081, 8090, 8091, 8096, 8123, 8181, 8443, 8581, 8765, 8787, 8888, 8989, 9000, 9001, 9090, 9091, 9443, 9696, 10000, 10200, 11434, 19999, 32400];
 const NETWORK_SITE_IDENTITIES = new Map([
   [4873, { name: "Ark", kind: "Ark hub" }],
   [8096, { name: "Jellyfin", kind: "Media server" }],
@@ -66,6 +66,8 @@ const NETWORK_SITE_IDENTITIES = new Map([
   [8080, { name: "Web dashboard", kind: "Web application" }],
   [8081, { name: "Web dashboard", kind: "Web application" }],
   [8090, { name: "Local LLM", kind: "AI dashboard" }],
+  [8765, { name: "Web report", kind: "Report server" }],
+  [8787, { name: "Web status", kind: "Status page" }],
   [9000, { name: "Portainer", kind: "Container dashboard" }],
   [8989, { name: "Sonarr", kind: "TV automation" }],
   [9090, { name: "Prometheus", kind: "Metrics dashboard" }],
@@ -79,6 +81,7 @@ const NETWORK_SITE_IDENTITIES = new Map([
 ]);
 const NETWORK_SITE_TIMEOUT = 600;
 const NETWORK_SITE_CONCURRENCY = 256;
+const NETWORK_SITE_BYTES = 32 * 1024;
 let NETWORK_SITE_SCAN = null;
 
 const DEFAULT_TOOL_COMMANDS = {
@@ -155,6 +158,9 @@ async function route(req, res) {
   }
   if (req.method === "DELETE" && pathname === "/api/network-sites/pin") {
     return json(res, 200, await unpinNetworkSite(await readJson(req)));
+  }
+  if (req.method === "PATCH" && pathname === "/api/network-sites/site") {
+    return json(res, 200, await updateNetworkSite(await readJson(req)));
   }
   if (req.method === "GET" && pathname === "/api/devices") {
     return json(res, 200, { devices: await loadDevices() });
@@ -2870,14 +2876,19 @@ async function writeSettings(data) {
 async function readNetworkSites() {
   try {
     const data = JSON.parse(await readFile(NETWORK_SITES, "utf8"));
+    const overrides = Object.fromEntries(Object.entries(data.overrides || {}).filter(([url, value]) => networkSiteUrlAllowed(url) && value && typeof value === "object"));
+    const allSites = (Array.isArray(data.sites) ? data.sites : []).filter((site) => !isArkNetworkSite(site));
+    const site = (entry) => overrides[entry?.url]?.name ? { ...entry, name: overrides[entry.url].name } : entry;
     return {
       scanned_at: String(data.scanned_at || ""),
       hosts: Number(data.hosts) || 0,
-      sites: (Array.isArray(data.sites) ? data.sites : []).filter((site) => !isArkNetworkSite(site)),
+      sites: allSites.filter((entry) => !overrides[entry?.url]?.hidden).map(site),
+      hidden: allSites.filter((entry) => overrides[entry?.url]?.hidden).map(site),
       pinned: (Array.isArray(data.pinned) ? data.pinned : []).filter((site) => networkSiteUrlAllowed(site?.url)),
+      overrides,
     };
   } catch (error) {
-    if (error?.code === "ENOENT") return { scanned_at: "", hosts: 0, sites: [], pinned: [] };
+    if (error?.code === "ENOENT") return { scanned_at: "", hosts: 0, sites: [], hidden: [], pinned: [], overrides: {} };
     throw dataReadError("network-sites.json", error);
   }
 }
@@ -2929,6 +2940,32 @@ async function unpinNetworkSite(data) {
   const url = String(data?.url || "");
   const stored = await readNetworkSites();
   return writeNetworkSites({ ...stored, pinned: stored.pinned.filter((site) => site.url !== url) });
+}
+
+async function updateNetworkSite(data) {
+  let url;
+  try {
+    url = new URL(String(data?.url || "")).toString();
+  } catch {
+    throw Object.assign(new Error("That site URL is not valid."), { status: 400 });
+  }
+  if (!networkSiteUrlAllowed(url)) throw Object.assign(new Error("That site is not on your private network."), { status: 400 });
+  const stored = await readNetworkSites();
+  const overrides = { ...stored.overrides };
+  if (data?.hidden === true) overrides[url] = { ...overrides[url], hidden: true };
+  else if (data?.hidden === false) {
+    const value = { ...overrides[url] };
+    delete value.hidden;
+    if (Object.keys(value).length) overrides[url] = value;
+    else delete overrides[url];
+  }
+  else {
+    const name = String(data?.name || "").trim().slice(0, 120);
+    if (!name) throw Object.assign(new Error("Give the site a name."), { status: 400 });
+    overrides[url] = { ...overrides[url], name };
+  }
+  await writeNetworkSites({ ...stored, overrides });
+  return readNetworkSites();
 }
 
 function privateNetworkHosts(interfaces = os.networkInterfaces()) {
@@ -2996,7 +3033,20 @@ function networkSiteDetails(url, status, text, headers) {
                 : /express/.test(fingerprint) ? { name: "Node web app", kind: "Express" }
                   : null;
   const usefulTitle = title && !/^(?:\d{3}\s+(?:found|error)|found|redirect|untitled)$/i.test(title) && !/^https?:\/\//i.test(title);
-  return { url, status, title, name: usefulTitle ? title : platform?.name || gateway?.name || known?.name || "Web site", kind: platform?.kind || gateway?.kind || known?.kind || "Unidentified web site" };
+  return { url, status, title, name: usefulTitle ? title : platform?.name || gateway?.name || known?.name || "Web site", kind: platform?.kind || gateway?.kind || known?.kind || "Unidentified web site", links: networkSiteLinks(url, text) };
+}
+
+function networkSiteLinks(url, text) {
+  const origin = new URL(url).origin;
+  return [...String(text || "").matchAll(/\bhref\s*=\s*["']([^"'#][^"']*)["']/gi)]
+    .map((match) => {
+      try { return new URL(match[1], url); } catch { return null; }
+    })
+    .filter((target) => target && target.origin === origin && networkSiteUrlAllowed(target.toString()))
+    .map((target) => target.toString())
+    .filter((target, index, all) => target !== url && all.indexOf(target) === index)
+    .filter((target) => /(?:\.html?$|\/(?:benchmarks?|reports?|status|clean_room|docs?|dashboard)(?:\/|$))/i.test(new URL(target).pathname))
+    .slice(0, 8);
 }
 
 function dedupeNetworkSites(sites) {
@@ -3004,7 +3054,8 @@ function dedupeNetworkSites(sites) {
   for (const site of sites) {
     const target = new URL(site.url);
     const endpoint = [80, 443].includes(networkSitePort(site.url)) ? "web" : String(networkSitePort(site.url));
-    const key = `${target.hostname}\0${endpoint}\0${site.name}\0${site.kind}`;
+    const page = target.pathname === "/" ? "root" : `${target.pathname}${target.search}`;
+    const key = `${target.hostname}\0${endpoint}\0${page}\0${site.name}\0${site.kind}`;
     const current = unique.get(key);
     if (!current || target.protocol === "https:") unique.set(key, site);
   }
@@ -3032,7 +3083,7 @@ function probeNetworkSiteUrl(url, redirects = 0) {
     const request = client.request(url, {
       method: "GET",
       rejectUnauthorized: false,
-      headers: { Range: "bytes=0-8191", "Accept-Encoding": "identity", "User-Agent": "Ark network sites" },
+      headers: { Range: `bytes=0-${NETWORK_SITE_BYTES - 1}`, "Accept-Encoding": "identity", "User-Agent": "Ark network sites" },
     }, (response) => {
       const status = Number(response.statusCode) || 0;
       if (redirects < 2 && status >= 300 && status < 400 && response.headers.location) {
@@ -3051,7 +3102,7 @@ function probeNetworkSiteUrl(url, redirects = 0) {
       response.setEncoding("utf8");
       response.on("data", (chunk) => {
         text += chunk;
-        if (text.length >= 8192) {
+        if (text.length >= NETWORK_SITE_BYTES) {
           response.destroy();
           done(networkSiteDetails(url, status, text, response.headers));
         }
@@ -3086,11 +3137,17 @@ async function scanNetworkSites() {
     const sites = [];
     for (let index = 0; index < targets.length; index += NETWORK_SITE_CONCURRENCY) {
       const batch = await Promise.all(targets.slice(index, index + NETWORK_SITE_CONCURRENCY).map(([host, port]) => probeNetworkSite(host, port)));
-      sites.push(...batch.filter(Boolean).filter((site) => !isArkNetworkSite(site)).map((site) => ({ ...site, device: deviceNames.get(networkSiteHost(new URL(site.url).hostname)) || "" })));
+      sites.push(...batch.filter(Boolean).filter((site) => !isArkNetworkSite(site)));
     }
-    const deduped = dedupeNetworkSites(sites)
+    const links = [...new Set(sites.flatMap((site) => site.links || []))];
+    for (let index = 0; index < links.length; index += NETWORK_SITE_CONCURRENCY) {
+      const batch = await Promise.all(links.slice(index, index + NETWORK_SITE_CONCURRENCY).map((url) => probeNetworkSiteUrl(url)));
+      sites.push(...batch.filter(Boolean).filter((site) => !isArkNetworkSite(site)));
+    }
+    const deduped = dedupeNetworkSites(sites.map(({ links, ...site }) => ({ ...site, device: deviceNames.get(networkSiteHost(new URL(site.url).hostname)) || "" })))
       .sort((a, b) => String(a.name || a.title || a.url).localeCompare(String(b.name || b.title || b.url)));
-    return writeNetworkSites({ scanned_at: new Date().toISOString(), hosts: hosts.size, sites: deduped, pinned: stored.pinned });
+    await writeNetworkSites({ scanned_at: new Date().toISOString(), hosts: hosts.size, sites: deduped, pinned: stored.pinned, overrides: stored.overrides });
+    return readNetworkSites();
   })();
   NETWORK_SITE_SCAN = scan;
   try {
@@ -3583,11 +3640,12 @@ function selfCheckCore() {
   if (contentType("ark-logo.svg") !== "image/svg+xml") throw new Error("SVG content type is not renderable");
   if (contentType("done.mp3") !== "audio/mpeg") throw new Error("MP3 sound effect content type is not playable");
   const lanHosts = privateNetworkHosts({ lan: [{ family: "IPv4", internal: false, address: "192.168.7.42" }] });
-  if (lanHosts.length !== 254 || !lanHosts.includes("192.168.7.1") || !lanHosts.includes("192.168.7.254") || !NETWORK_SITE_PORTS.includes(8006) || !NETWORK_SITE_PORTS.includes(8090) || networkSiteUrl("192.168.7.4", 8443) !== "https://192.168.7.4:8443/") throw new Error("network site discovery targets were not normalized");
+  if (lanHosts.length !== 254 || !lanHosts.includes("192.168.7.1") || !lanHosts.includes("192.168.7.254") || !NETWORK_SITE_PORTS.includes(8006) || !NETWORK_SITE_PORTS.includes(8090) || !NETWORK_SITE_PORTS.includes(8765) || !NETWORK_SITE_PORTS.includes(8787) || networkSiteUrl("192.168.7.4", 8443) !== "https://192.168.7.4:8443/") throw new Error("network site discovery targets were not normalized");
   if (!privateNetworkSiteHost("100.64.0.8") || privateNetworkSiteHost("example.com")) throw new Error("network site discovery accepted a public target");
   const arkSite = networkSiteDetails("http://192.168.7.4:4873/", 200, "<title>Ark</title>", {});
   const dedupedSites = dedupeNetworkSites([{ url: "http://192.168.7.1/", name: "Network gateway", kind: "Router / network management" }, { url: "https://192.168.7.1/", name: "Network gateway", kind: "Router / network management" }]);
-  if (arkSite.name !== "Ark" || arkSite.kind !== "Ark hub" || networkSiteBookmarkName("http://100.94.206.66:8787/picard-cleanup-status.html") !== "Picard Cleanup Status" || networkSiteDetails("http://192.168.7.1/", 200, "", {}).name !== "Network gateway" || dedupedSites.length !== 1 || !dedupedSites[0].url.startsWith("https:") || networkSiteUrlAllowed("https://example.com/")) throw new Error("network site identity was not classified safely");
+  const reportLinks = networkSiteLinks("http://192.168.7.4:8765/", '<a href="/reports/clean_room/haven-decomp-bridge.html">Bridge</a><a href="https://example.com/ignore.html">Ignore</a>');
+  if (arkSite.name !== "Ark" || arkSite.kind !== "Ark hub" || reportLinks[0] !== "http://192.168.7.4:8765/reports/clean_room/haven-decomp-bridge.html" || networkSiteBookmarkName("http://100.94.206.66:8787/picard-cleanup-status.html") !== "Picard Cleanup Status" || networkSiteDetails("http://192.168.7.1/", 200, "", {}).name !== "Network gateway" || dedupedSites.length !== 1 || !dedupedSites[0].url.startsWith("https:") || networkSiteUrlAllowed("https://example.com/")) throw new Error("network site identity was not classified safely");
   const uploadHeader = multipartUploadHeader(Buffer.from("--Ark\r\nContent-Disposition: form-data; name=\"file\"; filename=\"large.iso\"\r\nContent-Type: application/octet-stream\r\n\r\npayload"), "Ark");
   if (uploadHeader?.filename !== "large.iso" || uploadHeader.type !== "application/octet-stream" || uploadHeader.dataStart < 1) throw new Error("multipart upload header was not parsed");
   if (folderName("Ark project") !== "Ark project") throw new Error("folder name was not preserved");

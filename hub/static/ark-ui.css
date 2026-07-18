@@ -1557,6 +1557,18 @@ pre {
   text-transform: uppercase;
 }
 
+.network-sites-hidden {
+  display: grid;
+  gap: 8px;
+}
+
+.network-sites-hidden > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font: 700 10px/1.5 var(--mono);
+  text-transform: uppercase;
+}
+
 .network-site {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

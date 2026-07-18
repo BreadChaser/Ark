@@ -282,7 +282,7 @@ async function init() {
   els.networkSitesClose.addEventListener("click", () => els.networkSitesDialog.close());
   els.networkSitesScan.addEventListener("click", scanNetworkSites);
   els.networkSitesPinForm.addEventListener("submit", pinNetworkSite);
-  els.networkSitesList.addEventListener("click", unpinNetworkSite);
+  els.networkSitesList.addEventListener("click", manageNetworkSite);
   els.networkSitesDialog.addEventListener("click", (event) => {
     if (event.target === els.networkSitesDialog) els.networkSitesDialog.close();
   });
@@ -2569,26 +2569,26 @@ async function openNetworkSites() {
 
 function renderNetworkSites(data) {
   const sites = data.sites || [];
+  const hidden = data.hidden || [];
   const pinned = data.pinned || [];
   const scanned = data.scanned_at
     ? `Last scan ${new Date(data.scanned_at).toLocaleString()} · ${Number(data.hosts || 0)} hosts`
     : "No network scan saved yet.";
-  els.networkSitesStatus.textContent = sites.length
-    ? `${pinned.length ? `${pinned.length} pinned · ` : ""}${sites.length} discovered · ${scanned}`
-    : pinned.length ? `${pinned.length} pinned · ${scanned}` : scanned;
-  els.networkSitesStatus.dataset.state = sites.length || pinned.length ? "running" : "stopped";
+  const counts = [pinned.length && `${pinned.length} pinned`, sites.length && `${sites.length} discovered`, hidden.length && `${hidden.length} hidden`].filter(Boolean).join(" · ");
+  els.networkSitesStatus.textContent = counts ? `${counts} · ${scanned}` : scanned;
+  els.networkSitesStatus.dataset.state = sites.length || pinned.length || hidden.length ? "running" : "stopped";
   els.networkSitesScan.disabled = false;
-  const card = (site, isPinned = false) => `
+  const card = (site, isPinned = false, isHidden = false) => `
     <article class="network-site">
       <div class="network-site-copy">
         <strong>${escapeHtml(networkSiteName(site))}</strong>
         <small><span>${escapeHtml(site.kind || "Web site")}</span>${site.device ? `<span>${escapeHtml(site.device)}</span>` : ""}<code>${escapeHtml(networkSiteAddress(site.url))}</code></small>
       </div>
-      <div class="network-site-actions"><small>${isPinned ? "Pinned" : `HTTP ${escapeHtml(String(site.status || "?"))}`}</small><div>${isPinned ? `<button type="button" class="network-site-unpin" data-network-site-unpin="${escapeHtml(site.url)}" aria-label="Unpin ${escapeHtml(networkSiteName(site))}">×</button>` : ""}<a href="${escapeHtml(site.url)}" target="_blank" rel="noopener noreferrer">Open ↗</a></div></div>
+      <div class="network-site-actions"><small>${isPinned ? "Pinned" : isHidden ? "Hidden" : `HTTP ${escapeHtml(String(site.status || "?"))}`}</small><div>${isPinned ? `<button type="button" class="network-site-unpin" data-network-site-unpin="${escapeHtml(site.url)}" aria-label="Unpin ${escapeHtml(networkSiteName(site))}">×</button>` : isHidden ? `<button type="button" class="network-site-unpin" data-network-site-show="${escapeHtml(site.url)}" aria-label="Show ${escapeHtml(networkSiteName(site))}">↶</button>` : `<button type="button" class="network-site-unpin" data-network-site-rename="${escapeHtml(site.url)}" data-network-site-name="${escapeHtml(networkSiteName(site))}" aria-label="Rename ${escapeHtml(networkSiteName(site))}">✎</button><button type="button" class="network-site-unpin" data-network-site-hide="${escapeHtml(site.url)}" aria-label="Hide ${escapeHtml(networkSiteName(site))}">×</button>`}<a href="${escapeHtml(site.url)}" target="_blank" rel="noopener noreferrer">Open ↗</a></div></div>
     </article>
   `;
-  els.networkSitesList.innerHTML = pinned.length || sites.length
-    ? `${pinned.length ? `<p class="network-sites-section">Pinned pages</p>${pinned.map((site) => card(site, true)).join("")}` : ""}${sites.length ? `<p class="network-sites-section">Discovered sites</p>${sites.map((site) => card(site)).join("")}` : ""}`
+  els.networkSitesList.innerHTML = pinned.length || sites.length || hidden.length
+    ? `${pinned.length ? `<p class="network-sites-section">Pinned pages</p>${pinned.map((site) => card(site, true)).join("")}` : ""}${sites.length ? `<p class="network-sites-section">Discovered sites</p>${sites.map((site) => card(site)).join("")}` : ""}${hidden.length ? `<details class="network-sites-hidden"><summary>Hidden sites (${hidden.length})</summary>${hidden.map((site) => card(site, false, true)).join("")}</details>` : ""}`
     : '<p class="network-sites-empty">Pin an agent link or scan the network to save its dashboards here.</p>';
 }
 
@@ -2603,11 +2603,19 @@ async function pinNetworkSite(event) {
   }
 }
 
-async function unpinNetworkSite(event) {
-  const button = event.target.closest("[data-network-site-unpin]");
-  if (!button) return;
+async function manageNetworkSite(event) {
+  const unpin = event.target.closest("[data-network-site-unpin]");
+  const hide = event.target.closest("[data-network-site-hide]");
+  const show = event.target.closest("[data-network-site-show]");
+  const rename = event.target.closest("[data-network-site-rename]");
   try {
-    renderNetworkSites(await api("/api/network-sites/pin", { method: "DELETE", body: JSON.stringify({ url: button.dataset.networkSiteUnpin }) }));
+    if (unpin) return renderNetworkSites(await api("/api/network-sites/pin", { method: "DELETE", body: JSON.stringify({ url: unpin.dataset.networkSiteUnpin }) }));
+    if (hide) return renderNetworkSites(await api("/api/network-sites/site", { method: "PATCH", body: JSON.stringify({ url: hide.dataset.networkSiteHide, hidden: true }) }));
+    if (show) return renderNetworkSites(await api("/api/network-sites/site", { method: "PATCH", body: JSON.stringify({ url: show.dataset.networkSiteShow, hidden: false }) }));
+    if (!rename) return;
+    const name = window.prompt("Name this site", rename.dataset.networkSiteName || "");
+    if (name === null) return;
+    return renderNetworkSites(await api("/api/network-sites/site", { method: "PATCH", body: JSON.stringify({ url: rename.dataset.networkSiteRename, name }) }));
   } catch (error) {
     els.networkSitesStatus.textContent = error.message;
     els.networkSitesStatus.dataset.state = "error";
