@@ -918,6 +918,13 @@ async function testCodexControlPrompts() {
   assert(!capture.pending_control, "answered input prompt remained pending");
 
   await runLocal("tmux", ["respawn-pane", "-k", "-t", tmuxName, "bash"]);
+  await tmuxSendLine(tmuxName, `bash ${JSON.stringify(path.resolve("test/fixtures/controls/menu-harness.sh"))} safety`);
+  await wait('!document.querySelector("#control-sheet").hidden && document.querySelector("#control-kind").textContent === "input" && document.querySelectorAll("#control-body [data-command]").length === 2');
+  assert(await js('return document.querySelector("#control-prompt").textContent.includes("Additional safety checks") && document.querySelector("#control-body").textContent.includes("Keep waiting") && document.querySelector("#control-body").textContent.includes("Learn more");'), "Codex safety-check prompt was not shown in the GUI");
+  await js('document.querySelector("#control-body [data-command=\\"1\\"]").click(); return true;');
+  await waitForTerminalLogText(disposableSession.id, "safety:1");
+
+  await runLocal("tmux", ["respawn-pane", "-k", "-t", tmuxName, "bash"]);
   await tmuxSendLine(tmuxName, `bash ${JSON.stringify(path.resolve("test/fixtures/controls/menu-harness.sh"))}`);
   await wait('!document.querySelector("#control-sheet").hidden && document.querySelector("#control-kind").textContent === "model" && document.querySelectorAll("#control-body [data-command]").length === 7');
   assert(await js('return [...document.querySelectorAll("#control-body [data-command] .control-choice-title")].map((item) => item.textContent.replace(/Current|Default/g, "").trim()).join("|");') === "1gpt-5.5|2gpt-5.6-sol|3gpt-5.6-terra|4gpt-5.6-luna|5gpt-5.4|6gpt-5.4-mini|7gpt-5.3-codex-spark", "model picker lost or mangled options");
