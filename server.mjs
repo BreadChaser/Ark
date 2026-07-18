@@ -150,6 +150,12 @@ async function route(req, res) {
   if (req.method === "POST" && pathname === "/api/network-sites/scan") {
     return json(res, 200, await scanNetworkSites());
   }
+  if (req.method === "POST" && pathname === "/api/network-sites/pin") {
+    return json(res, 200, await pinNetworkSite(await readJson(req)));
+  }
+  if (req.method === "DELETE" && pathname === "/api/network-sites/pin") {
+    return json(res, 200, await unpinNetworkSite(await readJson(req)));
+  }
   if (req.method === "GET" && pathname === "/api/devices") {
     return json(res, 200, { devices: await loadDevices() });
   }
@@ -2867,10 +2873,11 @@ async function readNetworkSites() {
     return {
       scanned_at: String(data.scanned_at || ""),
       hosts: Number(data.hosts) || 0,
-      sites: Array.isArray(data.sites) ? data.sites : [],
+      sites: (Array.isArray(data.sites) ? data.sites : []).filter((site) => !isArkNetworkSite(site)),
+      pinned: (Array.isArray(data.pinned) ? data.pinned : []).filter((site) => networkSiteUrlAllowed(site?.url)),
     };
   } catch (error) {
-    if (error?.code === "ENOENT") return { scanned_at: "", hosts: 0, sites: [] };
+    if (error?.code === "ENOENT") return { scanned_at: "", hosts: 0, sites: [], pinned: [] };
     throw dataReadError("network-sites.json", error);
   }
 }
@@ -2881,6 +2888,47 @@ async function writeNetworkSites(data) {
   await writeFile(tmp, JSON.stringify(data, null, 2) + "\n");
   await rename(tmp, NETWORK_SITES);
   return data;
+}
+
+function isArkNetworkSite(site) {
+  try {
+    return networkSitePort(site.url) === PORT;
+  } catch {
+    return false;
+  }
+}
+
+function networkSiteBookmarkName(url) {
+  const target = new URL(url);
+  const leaf = decodeURIComponent(target.pathname).split("/").filter(Boolean).at(-1)?.replace(/\.[a-z0-9]+$/i, "") || target.hostname;
+  return leaf.replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()).slice(0, 120);
+}
+
+async function pinNetworkSite(data) {
+  let target;
+  try {
+    target = new URL(String(data?.url || "").trim());
+  } catch {
+    throw Object.assign(new Error("Paste a complete http:// or https:// URL."), { status: 400 });
+  }
+  if (!networkSiteUrlAllowed(target.toString())) throw Object.assign(new Error("Pin a private LAN or Tailscale URL."), { status: 400 });
+  const stored = await readNetworkSites();
+  const url = target.toString();
+  const label = String(data?.name || "").trim().slice(0, 120);
+  const pinned = {
+    url,
+    name: label || networkSiteBookmarkName(url),
+    kind: target.pathname !== "/" || target.search || target.hash ? "Pinned page" : "Pinned site",
+    pinned: true,
+  };
+  const existing = stored.pinned.filter((site) => site.url !== url);
+  return writeNetworkSites({ ...stored, pinned: [...existing, pinned].sort((a, b) => a.name.localeCompare(b.name)) });
+}
+
+async function unpinNetworkSite(data) {
+  const url = String(data?.url || "");
+  const stored = await readNetworkSites();
+  return writeNetworkSites({ ...stored, pinned: stored.pinned.filter((site) => site.url !== url) });
 }
 
 function privateNetworkHosts(interfaces = os.networkInterfaces()) {
@@ -3024,6 +3072,7 @@ function pageTitle(text) {
 async function scanNetworkSites() {
   if (NETWORK_SITE_SCAN) return NETWORK_SITE_SCAN;
   const scan = (async () => {
+    const stored = await readNetworkSites();
     const devices = await loadDevices();
     const hosts = new Set(privateNetworkHosts());
     const deviceNames = new Map();
@@ -3037,11 +3086,11 @@ async function scanNetworkSites() {
     const sites = [];
     for (let index = 0; index < targets.length; index += NETWORK_SITE_CONCURRENCY) {
       const batch = await Promise.all(targets.slice(index, index + NETWORK_SITE_CONCURRENCY).map(([host, port]) => probeNetworkSite(host, port)));
-      sites.push(...batch.filter(Boolean).map((site) => ({ ...site, device: deviceNames.get(networkSiteHost(new URL(site.url).hostname)) || "" })));
+      sites.push(...batch.filter(Boolean).filter((site) => !isArkNetworkSite(site)).map((site) => ({ ...site, device: deviceNames.get(networkSiteHost(new URL(site.url).hostname)) || "" })));
     }
     const deduped = dedupeNetworkSites(sites)
       .sort((a, b) => String(a.name || a.title || a.url).localeCompare(String(b.name || b.title || b.url)));
-    return writeNetworkSites({ scanned_at: new Date().toISOString(), hosts: hosts.size, sites: deduped });
+    return writeNetworkSites({ scanned_at: new Date().toISOString(), hosts: hosts.size, sites: deduped, pinned: stored.pinned });
   })();
   NETWORK_SITE_SCAN = scan;
   try {
@@ -3538,7 +3587,7 @@ function selfCheckCore() {
   if (!privateNetworkSiteHost("100.64.0.8") || privateNetworkSiteHost("example.com")) throw new Error("network site discovery accepted a public target");
   const arkSite = networkSiteDetails("http://192.168.7.4:4873/", 200, "<title>Ark</title>", {});
   const dedupedSites = dedupeNetworkSites([{ url: "http://192.168.7.1/", name: "Network gateway", kind: "Router / network management" }, { url: "https://192.168.7.1/", name: "Network gateway", kind: "Router / network management" }]);
-  if (arkSite.name !== "Ark" || arkSite.kind !== "Ark hub" || networkSiteDetails("http://192.168.7.1/", 200, "", {}).name !== "Network gateway" || dedupedSites.length !== 1 || !dedupedSites[0].url.startsWith("https:") || networkSiteUrlAllowed("https://example.com/")) throw new Error("network site identity was not classified safely");
+  if (arkSite.name !== "Ark" || arkSite.kind !== "Ark hub" || networkSiteBookmarkName("http://100.94.206.66:8787/picard-cleanup-status.html") !== "Picard Cleanup Status" || networkSiteDetails("http://192.168.7.1/", 200, "", {}).name !== "Network gateway" || dedupedSites.length !== 1 || !dedupedSites[0].url.startsWith("https:") || networkSiteUrlAllowed("https://example.com/")) throw new Error("network site identity was not classified safely");
   const uploadHeader = multipartUploadHeader(Buffer.from("--Ark\r\nContent-Disposition: form-data; name=\"file\"; filename=\"large.iso\"\r\nContent-Type: application/octet-stream\r\n\r\npayload"), "Ark");
   if (uploadHeader?.filename !== "large.iso" || uploadHeader.type !== "application/octet-stream" || uploadHeader.dataStart < 1) throw new Error("multipart upload header was not parsed");
   if (folderName("Ark project") !== "Ark project") throw new Error("folder name was not preserved");

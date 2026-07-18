@@ -193,6 +193,9 @@ const els = {
   networkSitesStatus: document.querySelector("#network-sites-status"),
   networkSitesList: document.querySelector("#network-sites-list"),
   networkSitesScan: document.querySelector("#network-sites-scan"),
+  networkSitesPinForm: document.querySelector("#network-sites-pin-form"),
+  networkSitesPinUrl: document.querySelector("#network-sites-pin-url"),
+  networkSitesPinName: document.querySelector("#network-sites-pin-name"),
   settingsToggle: document.querySelector("#settings-toggle"),
   settingsMenu: document.querySelector("#settings-menu"),
   defaultTool: document.querySelector("#default-tool"),
@@ -278,6 +281,8 @@ async function init() {
   els.networkSitesToggle.addEventListener("click", openNetworkSites);
   els.networkSitesClose.addEventListener("click", () => els.networkSitesDialog.close());
   els.networkSitesScan.addEventListener("click", scanNetworkSites);
+  els.networkSitesPinForm.addEventListener("submit", pinNetworkSite);
+  els.networkSitesList.addEventListener("click", unpinNetworkSite);
   els.networkSitesDialog.addEventListener("click", (event) => {
     if (event.target === els.networkSitesDialog) els.networkSitesDialog.close();
   });
@@ -2564,23 +2569,49 @@ async function openNetworkSites() {
 
 function renderNetworkSites(data) {
   const sites = data.sites || [];
+  const pinned = data.pinned || [];
   const scanned = data.scanned_at
     ? `Last scan ${new Date(data.scanned_at).toLocaleString()} · ${Number(data.hosts || 0)} hosts`
     : "No network scan saved yet.";
   els.networkSitesStatus.textContent = sites.length
-    ? `${sites.length} site${sites.length === 1 ? "" : "s"} · ${scanned}`
-    : scanned;
-  els.networkSitesStatus.dataset.state = sites.length ? "running" : "stopped";
+    ? `${pinned.length ? `${pinned.length} pinned · ` : ""}${sites.length} discovered · ${scanned}`
+    : pinned.length ? `${pinned.length} pinned · ${scanned}` : scanned;
+  els.networkSitesStatus.dataset.state = sites.length || pinned.length ? "running" : "stopped";
   els.networkSitesScan.disabled = false;
-  els.networkSitesList.innerHTML = sites.length ? sites.map((site) => `
+  const card = (site, isPinned = false) => `
     <article class="network-site">
       <div class="network-site-copy">
         <strong>${escapeHtml(networkSiteName(site))}</strong>
         <small><span>${escapeHtml(site.kind || "Web site")}</span>${site.device ? `<span>${escapeHtml(site.device)}</span>` : ""}<code>${escapeHtml(networkSiteAddress(site.url))}</code></small>
       </div>
-      <div class="network-site-actions"><small>HTTP ${escapeHtml(String(site.status || "?"))}</small><a href="${escapeHtml(site.url)}" target="_blank" rel="noopener noreferrer">Open ↗</a></div>
+      <div class="network-site-actions"><small>${isPinned ? "Pinned" : `HTTP ${escapeHtml(String(site.status || "?"))}`}</small><div>${isPinned ? `<button type="button" class="network-site-unpin" data-network-site-unpin="${escapeHtml(site.url)}" aria-label="Unpin ${escapeHtml(networkSiteName(site))}">×</button>` : ""}<a href="${escapeHtml(site.url)}" target="_blank" rel="noopener noreferrer">Open ↗</a></div></div>
     </article>
-  `).join("") : '<p class="network-sites-empty">Scan the network to save its web dashboards here.</p>';
+  `;
+  els.networkSitesList.innerHTML = pinned.length || sites.length
+    ? `${pinned.length ? `<p class="network-sites-section">Pinned pages</p>${pinned.map((site) => card(site, true)).join("")}` : ""}${sites.length ? `<p class="network-sites-section">Discovered sites</p>${sites.map((site) => card(site)).join("")}` : ""}`
+    : '<p class="network-sites-empty">Pin an agent link or scan the network to save its dashboards here.</p>';
+}
+
+async function pinNetworkSite(event) {
+  event.preventDefault();
+  try {
+    renderNetworkSites(await api("/api/network-sites/pin", { method: "POST", body: JSON.stringify({ url: els.networkSitesPinUrl.value, name: els.networkSitesPinName.value }) }));
+    els.networkSitesPinForm.reset();
+  } catch (error) {
+    els.networkSitesStatus.textContent = error.message;
+    els.networkSitesStatus.dataset.state = "error";
+  }
+}
+
+async function unpinNetworkSite(event) {
+  const button = event.target.closest("[data-network-site-unpin]");
+  if (!button) return;
+  try {
+    renderNetworkSites(await api("/api/network-sites/pin", { method: "DELETE", body: JSON.stringify({ url: button.dataset.networkSiteUnpin }) }));
+  } catch (error) {
+    els.networkSitesStatus.textContent = error.message;
+    els.networkSitesStatus.dataset.state = "error";
+  }
 }
 
 function networkSiteName(site) {
@@ -2592,7 +2623,7 @@ function networkSiteName(site) {
 function networkSiteAddress(url) {
   try {
     const target = new URL(url);
-    return `${target.hostname}${target.port ? `:${target.port}` : ""}`;
+    return `${target.hostname}${target.port ? `:${target.port}` : ""}${target.pathname === "/" ? "" : target.pathname}${target.search}${target.hash}`;
   } catch {
     return String(url || "unknown host");
   }

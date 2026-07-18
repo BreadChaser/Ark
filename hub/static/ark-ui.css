@@ -1544,6 +1544,19 @@ pre {
   padding-right: 2px;
 }
 
+.network-sites-pin {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(110px, 0.45fr) auto;
+  gap: 8px;
+}
+
+.network-sites-section {
+  margin: 3px 2px -2px;
+  color: var(--muted);
+  font: 700 10px/1.5 var(--mono);
+  text-transform: uppercase;
+}
+
 .network-site {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1594,6 +1607,23 @@ pre {
 .network-site-actions small {
   color: var(--muted);
   font: 700 9px/1 var(--mono);
+}
+
+.network-site-actions > div {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.network-site-unpin {
+  display: inline-grid;
+  width: 30px;
+  min-height: 34px;
+  place-items: center;
+  padding: 0;
+  border-color: transparent;
+  color: var(--muted);
+  background: transparent;
 }
 
 .network-site a {
@@ -3195,6 +3225,10 @@ body.sidebar-collapsed #sidebar-toggle::after {
 
   .network-sites-panel {
     padding: 16px;
+  }
+
+  .network-sites-pin {
+    grid-template-columns: 1fr;
   }
 
   .local-llm-grid {

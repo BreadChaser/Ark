@@ -7,7 +7,7 @@
     <link rel="icon" href="/static/ark-logo.svg?v=3" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
-    <link rel="stylesheet" href="/static/ark-ui.css?v=59" />
+    <link rel="stylesheet" href="/static/ark-ui.css?v=60" />
   </head>
   <body>
     <canvas class="background-flow" aria-hidden="true"></canvas>
@@ -357,6 +357,11 @@
           <button id="network-sites-close" type="button" aria-label="Close network sites">Close</button>
         </header>
         <output id="network-sites-status" class="local-llm-status">Loading saved sites…</output>
+        <form id="network-sites-pin-form" class="network-sites-pin">
+          <input id="network-sites-pin-url" type="url" placeholder="Paste a private site URL" aria-label="Site URL" required />
+          <input id="network-sites-pin-name" type="text" maxlength="120" placeholder="Name (optional)" aria-label="Site name" />
+          <button type="submit">Pin</button>
+        </form>
         <div id="network-sites-list" class="network-sites-list"></div>
         <footer>
           <small>Results stay in Ark. A scan checks your private LAN ranges and configured devices.</small>
@@ -380,6 +385,6 @@
     <script src="/vendor/marked/marked.js"></script>
     <script src="/vendor/dompurify/purify.js"></script>
     <script src="/static/flow-background.js?v=10"></script>
-    <script src="/static/app.js?v=59"></script>
+    <script src="/static/app.js?v=60"></script>
   </body>
 </html>
