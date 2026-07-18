@@ -2871,6 +2871,14 @@ function networkSiteHost(value) {
   return host && host !== "localhost" && /^[a-z0-9.-]+$/i.test(host) ? host : "";
 }
 
+function privateNetworkSiteHost(host) {
+  const octets = host.split(".").map(Number);
+  if (octets.length === 4 && octets.every(Number.isInteger)) {
+    return octets[0] === 10 || (octets[0] === 192 && octets[1] === 168) || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) || (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127);
+  }
+  return host.endsWith(".ts.net") || host.endsWith(".local") || host.endsWith(".home.arpa");
+}
+
 function networkSiteUrl(host, port) {
   const secure = port === 443 || port === 8443;
   const defaultPort = secure ? 443 : 80;
@@ -2924,9 +2932,9 @@ async function scanNetworkSites() {
   const scan = (async () => {
     const devices = await loadDevices();
     const hosts = new Set(privateNetworkHosts());
-    for (const device of devices) {
-      const host = networkSiteHost(device.host);
-      if (host) hosts.add(host);
+    for (const device of devices) for (const candidate of [device.host, device.tailscale_host, ...(device.tailscale_ips || [])]) {
+      const host = networkSiteHost(candidate);
+      if (host && privateNetworkSiteHost(host)) hosts.add(host);
     }
     const targets = [...hosts].flatMap((host) => NETWORK_SITE_PORTS.map((port) => [host, port]));
     const sites = [];
@@ -3430,6 +3438,7 @@ function selfCheckCore() {
   if (contentType("done.mp3") !== "audio/mpeg") throw new Error("MP3 sound effect content type is not playable");
   const lanHosts = privateNetworkHosts({ lan: [{ family: "IPv4", internal: false, address: "192.168.7.42" }] });
   if (lanHosts.length !== 254 || !lanHosts.includes("192.168.7.1") || !lanHosts.includes("192.168.7.254") || networkSiteUrl("192.168.7.4", 8443) !== "https://192.168.7.4:8443/") throw new Error("network site discovery targets were not normalized");
+  if (!privateNetworkSiteHost("100.64.0.8") || privateNetworkSiteHost("example.com")) throw new Error("network site discovery accepted a public target");
   const uploadHeader = multipartUploadHeader(Buffer.from("--Ark\r\nContent-Disposition: form-data; name=\"file\"; filename=\"large.iso\"\r\nContent-Type: application/octet-stream\r\n\r\npayload"), "Ark");
   if (uploadHeader?.filename !== "large.iso" || uploadHeader.type !== "application/octet-stream" || uploadHeader.dataStart < 1) throw new Error("multipart upload header was not parsed");
   if (folderName("Ark project") !== "Ark project") throw new Error("folder name was not preserved");
