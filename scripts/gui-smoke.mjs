@@ -78,12 +78,12 @@ try {
   await js('document.querySelector("#settings-toggle").click(); return true;');
 
   await js(`
-    renderNetworkSites({ scanned_at: "2026-07-18T12:00:00.000Z", hosts: 254, sites: [{ url: "http://192.168.1.50:8096/", title: "Jellyfin", status: 200 }] });
+    renderNetworkSites({ scanned_at: "2026-07-18T12:00:00.000Z", hosts: 254, sites: [{ url: "http://192.168.1.50:8096/", name: "Jellyfin", kind: "Media server", device: "Jelly machine", status: 200 }] });
     document.querySelector("#network-sites-dialog").showModal();
     return true;
   `);
   await wait('document.querySelector("#network-sites-dialog").open');
-  assert(await js('const link = document.querySelector("#network-sites-list a"); return Boolean(document.querySelector("#network-sites-toggle")) && link?.href.includes("192.168.1.50:8096") && link.target === "_blank" && link.rel.includes("noopener");'), "network sites do not provide a safe separate-tab opener");
+  assert(await js('const link = document.querySelector("#network-sites-list a"); const text = document.querySelector("#network-sites-list").textContent; return Boolean(document.querySelector("#network-sites-toggle")) && text.includes("Media server") && text.includes("Jelly machine") && text.includes("192.168.1.50:8096") && link?.href.includes("192.168.1.50:8096") && link.target === "_blank" && link.rel.includes("noopener");'), "network sites do not identify or safely open discovered dashboards");
   await shot("network-sites");
   await js('document.querySelector("#network-sites-dialog").close(); return true;');
 

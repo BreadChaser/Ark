@@ -1555,23 +1555,45 @@ pre {
   background: var(--panel-soft);
 }
 
-.network-site div {
+.network-site-copy {
   display: grid;
   min-width: 0;
   gap: 3px;
 }
 
-.network-site strong,
-.network-site small {
+.network-site-copy strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.network-site small,
+.network-site-copy small {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.network-site-copy code,
 .network-sites-empty {
   color: var(--muted);
   font: 700 10px/1.5 var(--mono);
+}
+
+.network-site-copy code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.network-site-actions {
+  display: grid;
+  justify-items: end;
+  gap: 5px;
+}
+
+.network-site-actions small {
+  color: var(--muted);
+  font: 700 9px/1 var(--mono);
 }
 
 .network-site a {

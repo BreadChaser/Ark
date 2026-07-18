@@ -49,6 +49,13 @@ const CONTROL_MISSES = new Map();
 let DEVICE_ALIAS_SIGNATURE = "";
 const CONTROL_KEYS = new Set(["Enter", "Escape"]);
 const NETWORK_SITE_PORTS = [80, 443, 3000, 3001, 5000, 5173, 8000, 8080, 8081, 8096, 8123, 8443, 9000, 4873];
+const NETWORK_SITE_IDENTITIES = new Map([
+  [4873, { name: "Ark", kind: "Ark hub" }],
+  [8096, { name: "Jellyfin", kind: "Media server" }],
+  [8123, { name: "Home Assistant", kind: "Home automation" }],
+  [3000, { name: "Grafana", kind: "Monitoring dashboard" }],
+  [9000, { name: "Portainer", kind: "Container dashboard" }],
+]);
 const NETWORK_SITE_TIMEOUT = 600;
 let NETWORK_SITE_SCAN = null;
 
@@ -2885,9 +2892,43 @@ function networkSiteUrl(host, port) {
   return `${secure ? "https" : "http"}://${host}${port === defaultPort ? "" : `:${port}`}/`;
 }
 
+function networkSiteUrlAllowed(value) {
+  try {
+    const target = new URL(value);
+    return ["http:", "https:"].includes(target.protocol) && privateNetworkSiteHost(networkSiteHost(target.hostname));
+  } catch {
+    return false;
+  }
+}
+
+function networkSitePort(url) {
+  const target = new URL(url);
+  return Number(target.port || (target.protocol === "https:" ? 443 : 80));
+}
+
+function networkSiteDetails(url, status, text, headers) {
+  const title = pageTitle(text);
+  const known = NETWORK_SITE_IDENTITIES.get(networkSitePort(url));
+  const fingerprint = [headers.server, headers["x-powered-by"], headers["x-emby-server"]].flat().filter(Boolean).join(" ").toLowerCase();
+  const platform = /jellyfin|emby/.test(fingerprint) ? { name: "Jellyfin", kind: "Media server" }
+    : /home assistant/.test(fingerprint) ? { name: "Home Assistant", kind: "Home automation" }
+      : /grafana/.test(fingerprint) ? { name: "Grafana", kind: "Monitoring dashboard" }
+        : /portainer/.test(fingerprint) ? { name: "Portainer", kind: "Container dashboard" }
+          : /nginx/.test(fingerprint) ? { name: "Nginx site", kind: "Nginx web server" }
+            : /caddy/.test(fingerprint) ? { name: "Caddy site", kind: "Caddy web server" }
+              : /apache/.test(fingerprint) ? { name: "Apache site", kind: "Apache web server" }
+                : /express/.test(fingerprint) ? { name: "Node web app", kind: "Express" }
+                  : null;
+  const usefulTitle = title && !/^(?:\d{3}\s+(?:found|error)|found|redirect|untitled)$/i.test(title) && !/^https?:\/\//i.test(title);
+  return { url, status, title, name: usefulTitle ? title : platform?.name || known?.name || "Web site", kind: platform?.kind || known?.kind || "Unidentified web site" };
+}
+
 function probeNetworkSite(host, port) {
+  return probeNetworkSiteUrl(networkSiteUrl(host, port));
+}
+
+function probeNetworkSiteUrl(url, redirects = 0) {
   return new Promise((resolve) => {
-    const url = networkSiteUrl(host, port);
     const client = url.startsWith("https:") ? https : http;
     let settled = false;
     const timer = setTimeout(() => {
@@ -2905,16 +2946,29 @@ function probeNetworkSite(host, port) {
       rejectUnauthorized: false,
       headers: { Range: "bytes=0-8191", "Accept-Encoding": "identity", "User-Agent": "Ark network sites" },
     }, (response) => {
+      const status = Number(response.statusCode) || 0;
+      if (redirects < 2 && status >= 300 && status < 400 && response.headers.location) {
+        try {
+          const target = new URL(response.headers.location, url).toString();
+          if (networkSiteUrlAllowed(target)) {
+            settled = true;
+            clearTimeout(timer);
+            response.resume();
+            resolve(probeNetworkSiteUrl(target, redirects + 1));
+            return;
+          }
+        } catch {}
+      }
       let text = "";
       response.setEncoding("utf8");
       response.on("data", (chunk) => {
         text += chunk;
         if (text.length >= 8192) {
           response.destroy();
-          done({ url, status: Number(response.statusCode) || 0, title: pageTitle(text) });
+          done(networkSiteDetails(url, status, text, response.headers));
         }
       });
-      response.on("end", () => done({ url, status: Number(response.statusCode) || 0, title: pageTitle(text) }));
+      response.on("end", () => done(networkSiteDetails(url, status, text, response.headers)));
       response.on("error", () => done(null));
     });
     request.setTimeout(NETWORK_SITE_TIMEOUT, () => request.destroy());
@@ -2932,18 +2986,21 @@ async function scanNetworkSites() {
   const scan = (async () => {
     const devices = await loadDevices();
     const hosts = new Set(privateNetworkHosts());
-    for (const device of devices) for (const candidate of [device.host, device.tailscale_host, ...(device.tailscale_ips || [])]) {
+    const deviceNames = new Map();
+    for (const device of devices) for (const candidate of [device.host, device.tailscale_host, device.dns_name, ...(device.tailscale_ips || [])]) {
       const host = networkSiteHost(candidate);
-      if (host && privateNetworkSiteHost(host)) hosts.add(host);
+      if (!host || !privateNetworkSiteHost(host)) continue;
+      hosts.add(host);
+      if (device.label) deviceNames.set(host, device.label);
     }
     const targets = [...hosts].flatMap((host) => NETWORK_SITE_PORTS.map((port) => [host, port]));
     const sites = [];
     for (let index = 0; index < targets.length; index += 64) {
       const batch = await Promise.all(targets.slice(index, index + 64).map(([host, port]) => probeNetworkSite(host, port)));
-      sites.push(...batch.filter(Boolean));
+      sites.push(...batch.filter(Boolean).map((site) => ({ ...site, device: deviceNames.get(networkSiteHost(new URL(site.url).hostname)) || "" })));
     }
     const deduped = [...new Map(sites.map((site) => [site.url, site])).values()]
-      .sort((a, b) => String(a.title || a.url).localeCompare(String(b.title || b.url)));
+      .sort((a, b) => String(a.name || a.title || a.url).localeCompare(String(b.name || b.title || b.url)));
     return writeNetworkSites({ scanned_at: new Date().toISOString(), hosts: hosts.size, sites: deduped });
   })();
   NETWORK_SITE_SCAN = scan;
@@ -3439,6 +3496,8 @@ function selfCheckCore() {
   const lanHosts = privateNetworkHosts({ lan: [{ family: "IPv4", internal: false, address: "192.168.7.42" }] });
   if (lanHosts.length !== 254 || !lanHosts.includes("192.168.7.1") || !lanHosts.includes("192.168.7.254") || networkSiteUrl("192.168.7.4", 8443) !== "https://192.168.7.4:8443/") throw new Error("network site discovery targets were not normalized");
   if (!privateNetworkSiteHost("100.64.0.8") || privateNetworkSiteHost("example.com")) throw new Error("network site discovery accepted a public target");
+  const arkSite = networkSiteDetails("http://192.168.7.4:4873/", 200, "<title>Ark</title>", {});
+  if (arkSite.name !== "Ark" || arkSite.kind !== "Ark hub" || networkSiteUrlAllowed("https://example.com/")) throw new Error("network site identity was not classified safely");
   const uploadHeader = multipartUploadHeader(Buffer.from("--Ark\r\nContent-Disposition: form-data; name=\"file\"; filename=\"large.iso\"\r\nContent-Type: application/octet-stream\r\n\r\npayload"), "Ark");
   if (uploadHeader?.filename !== "large.iso" || uploadHeader.type !== "application/octet-stream" || uploadHeader.dataStart < 1) throw new Error("multipart upload header was not parsed");
   if (folderName("Ark project") !== "Ark project") throw new Error("folder name was not preserved");

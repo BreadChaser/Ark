@@ -2574,10 +2574,28 @@ function renderNetworkSites(data) {
   els.networkSitesScan.disabled = false;
   els.networkSitesList.innerHTML = sites.length ? sites.map((site) => `
     <article class="network-site">
-      <div><strong>${escapeHtml(site.title || site.url)}</strong><small>${escapeHtml(site.url)}${site.status ? ` · HTTP ${escapeHtml(String(site.status))}` : ""}</small></div>
-      <a href="${escapeHtml(site.url)}" target="_blank" rel="noopener noreferrer">Open</a>
+      <div class="network-site-copy">
+        <strong>${escapeHtml(networkSiteName(site))}</strong>
+        <small><span>${escapeHtml(site.kind || "Web site")}</span>${site.device ? `<span>${escapeHtml(site.device)}</span>` : ""}<code>${escapeHtml(networkSiteAddress(site.url))}</code></small>
+      </div>
+      <div class="network-site-actions"><small>HTTP ${escapeHtml(String(site.status || "?"))}</small><a href="${escapeHtml(site.url)}" target="_blank" rel="noopener noreferrer">Open ↗</a></div>
     </article>
   `).join("") : '<p class="network-sites-empty">Scan the network to save its web dashboards here.</p>';
+}
+
+function networkSiteName(site) {
+  const title = String(site.name || site.title || "").trim();
+  if (title && !/^(?:\d{3}\s+(?:found|error)|found|redirect)$/i.test(title) && !/^https?:\/\//i.test(title)) return title;
+  return "Web site";
+}
+
+function networkSiteAddress(url) {
+  try {
+    const target = new URL(url);
+    return `${target.hostname}${target.port ? `:${target.port}` : ""}`;
+  } catch {
+    return String(url || "unknown host");
+  }
 }
 
 async function scanNetworkSites() {
