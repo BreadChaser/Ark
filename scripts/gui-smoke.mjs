@@ -256,6 +256,10 @@ try {
   await wait('document.body.classList.contains("sidebar-collapsed")');
   await wait('!document.querySelector("#xterm").hidden && document.querySelector("#xterm .xterm")', 15000);
   await wait('document.querySelector("#status").textContent === "Connected"', 15000);
+  await js('document.querySelector("#session-actions-toggle").click(); document.querySelector("#mobile-keys").click(); return true;');
+  await wait('!document.querySelector("#mobile-keypad").hidden && document.querySelectorAll("#mobile-keypad [data-mobile-key]").length === 8');
+  await js('document.querySelector("#mobile-keypad [data-mobile-key=\\"Enter\\"]").click(); return true;');
+  await wait('document.querySelector("#mobile-keypad").hidden && document.querySelector("#status").textContent === "Connected"');
   await shot("mobile");
   await attachImageInBrowser();
   await shot("mobile-attachment");

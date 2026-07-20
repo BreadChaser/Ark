@@ -7,7 +7,7 @@
     <link rel="icon" href="/static/ark-logo.svg?v=3" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
-    <link rel="stylesheet" href="/static/ark-ui.css?v=61" />
+    <link rel="stylesheet" href="/static/ark-ui.css?v=62" />
   </head>
   <body>
     <canvas class="background-flow" aria-hidden="true"></canvas>
@@ -68,6 +68,7 @@
           <div class="inline-actions">
             <button id="restart" disabled>Restart</button>
             <button id="resume" disabled>Resume</button>
+            <button id="mobile-keys" class="mobile-keys-toggle" type="button" disabled aria-expanded="false">Keys</button>
             <button id="enable-yolo" disabled hidden>YOLO</button>
             <button id="forget" disabled>Forget</button>
             <button id="kill" disabled>Kill</button>
@@ -256,6 +257,17 @@
               <div id="control-body" class="control-body"></div>
             </section>
           </div>
+          <section id="mobile-keypad" class="mobile-keypad" aria-label="Terminal keys" hidden>
+            <header><strong>Terminal keys</strong><button type="button" data-close-mobile-keys aria-label="Close terminal keys">Close</button></header>
+            <button type="button" data-mobile-key="Escape">Esc</button>
+            <button type="button" class="mobile-key-interrupt" data-mobile-key="interrupt">Ctrl-C</button>
+            <button type="button" data-mobile-key="Tab">Tab</button>
+            <button type="button" data-mobile-key="Enter">Enter</button>
+            <button type="button" data-mobile-key="ArrowLeft" aria-label="Left arrow">←</button>
+            <button type="button" data-mobile-key="ArrowUp" aria-label="Up arrow">↑</button>
+            <button type="button" data-mobile-key="ArrowDown" aria-label="Down arrow">↓</button>
+            <button type="button" data-mobile-key="ArrowRight" aria-label="Right arrow">→</button>
+          </section>
           <div class="composer">
             <button id="attach-image" title="Attach files or paste/drop into the box" aria-label="Attach files" disabled>+</button>
             <input id="image-input" type="file" multiple hidden />
@@ -385,6 +397,6 @@
     <script src="/vendor/marked/marked.js"></script>
     <script src="/vendor/dompurify/purify.js"></script>
     <script src="/static/flow-background.js?v=10"></script>
-    <script src="/static/app.js?v=63"></script>
+    <script src="/static/app.js?v=64"></script>
   </body>
 </html>

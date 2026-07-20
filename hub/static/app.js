@@ -171,6 +171,8 @@ const els = {
   sessionActionsToggle: document.querySelector("#session-actions-toggle"),
   viewParsed: document.querySelector("#view-parsed"),
   viewRaw: document.querySelector("#view-raw"),
+  mobileKeys: document.querySelector("#mobile-keys"),
+  mobileKeypad: document.querySelector("#mobile-keypad"),
   theme: document.querySelector("#theme"),
   chillMode: document.querySelector("#chill-mode"),
   localLlmToggle: document.querySelector("#local-llm-toggle"),
@@ -353,6 +355,8 @@ async function init() {
     const open = els.topbar.classList.toggle("session-actions-open");
     els.sessionActionsToggle.setAttribute("aria-expanded", String(open));
   });
+  els.mobileKeys.addEventListener("click", toggleMobileKeys);
+  els.mobileKeypad.addEventListener("click", sendMobileKey);
   els.viewParsed.addEventListener("click", () => setView("parsed"));
   els.viewRaw.addEventListener("click", () => setView("raw"));
   let resizeTimer;
@@ -890,6 +894,8 @@ function renderMain() {
   els.enableYolo.hidden = !session || session.tool !== "codex";
   els.enableYolo.textContent = session?.yolo ? "YOLO on" : "YOLO";
   setSessionControls(Boolean(session), stopped);
+  els.mobileKeys.disabled = !session || stopped;
+  if (!session || stopped) closeMobileKeys();
   setAdding(state.adding);
   renderStartupImages();
   setStatus(session ? stopped ? "Stopped" : "Connecting" : "Idle");
@@ -2041,6 +2047,51 @@ async function sendControlCommand(command, key = "", sessionId = activeSession()
   } catch (error) {
     state.controlFlow = null;
     setStatus("Disconnected");
+    showError(error.message);
+  }
+}
+
+function toggleMobileKeys() {
+  if (!activeSession() || els.mobileKeys.disabled) return;
+  const open = els.mobileKeypad.hidden;
+  els.mobileKeypad.hidden = !open;
+  els.mobileKeys.setAttribute("aria-expanded", String(open));
+  els.topbar.classList.remove("session-actions-open");
+  els.sessionActionsToggle.setAttribute("aria-expanded", "false");
+}
+
+function closeMobileKeys() {
+  els.mobileKeypad.hidden = true;
+  els.mobileKeys.setAttribute("aria-expanded", "false");
+}
+
+async function sendMobileKey(event) {
+  if (event.target.closest("[data-close-mobile-keys]")) return closeMobileKeys();
+  const key = event.target.closest("[data-mobile-key]")?.dataset.mobileKey;
+  const session = activeSession();
+  if (!key || !session) return;
+  setStatus("Sending key");
+  try {
+    if (key === "interrupt") {
+      await api(`/api/sessions/${session.id}/interrupt`, { method: "POST" });
+    } else {
+      const data = {
+        Escape: "\x1b",
+        Tab: "\t",
+        Enter: "\r",
+        ArrowLeft: "\x1b[D",
+        ArrowUp: "\x1b[A",
+        ArrowDown: "\x1b[B",
+        ArrowRight: "\x1b[C",
+      }[key];
+      await api(`/api/sessions/${session.id}/terminal/input`, {
+        method: "POST",
+        body: JSON.stringify({ data }),
+      });
+    }
+    setStatus("Connected");
+    if (["Escape", "interrupt", "Enter"].includes(key)) closeMobileKeys();
+  } catch (error) {
     showError(error.message);
   }
 }

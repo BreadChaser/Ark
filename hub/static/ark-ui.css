@@ -1924,6 +1924,11 @@ pre {
   display: none;
 }
 
+.mobile-keys-toggle,
+.mobile-keypad {
+  display: none;
+}
+
 .parsed-output,
 .xterm-host,
 .terminal-output {
@@ -3317,6 +3322,10 @@ body.sidebar-collapsed #sidebar-toggle::after {
     text-align: left;
   }
 
+  .session-toolbar > .inline-actions .mobile-keys-toggle {
+    display: block;
+  }
+
   .session-actions-toggle {
     display: grid;
     place-items: center;
@@ -3328,6 +3337,52 @@ body.sidebar-collapsed #sidebar-toggle::after {
     color: var(--muted);
     background: transparent;
     font-size: 17px;
+  }
+
+  .mobile-keypad:not([hidden]) {
+    position: fixed;
+    z-index: 60;
+    right: 10px;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    left: 10px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    width: min(390px, calc(100vw - 20px));
+    margin: auto;
+    padding: 9px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-lg);
+    background: var(--panel-solid);
+    box-shadow: var(--shadow);
+  }
+
+  .mobile-keypad header {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1px 2px 4px;
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  .mobile-keypad header button {
+    min-height: 28px;
+    padding: 3px 8px;
+    color: var(--muted);
+    background: transparent;
+  }
+
+  .mobile-keypad > button {
+    min-height: 42px;
+    padding: 6px;
+    font: 800 13px/1 var(--mono);
+  }
+
+  .mobile-keypad .mobile-key-interrupt {
+    color: var(--danger);
+    border-color: color-mix(in srgb, var(--danger) 58%, var(--line));
   }
 
   .parsed-output {
