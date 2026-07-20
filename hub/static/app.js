@@ -2038,15 +2038,16 @@ async function sendControlCommand(command, key = "", sessionId = activeSession()
   if (!sessionId || session.id !== sessionId) return showError("Chat changed before send. Nothing was sent.");
   setStatus("Sending");
   try {
-    await api(`/api/sessions/${session.id}/send`, {
+    const sent = await api(`/api/sessions/${session.id}/send`, {
       method: "POST",
       body: JSON.stringify({ text: command, key, menu_index: menuIndex || undefined, menu_current: menuCurrent || undefined, submit: true, attachments: [], control: true }),
     });
     await capture();
+    if (sent.queued) setStatus("Queued for Codex");
     for (const delay of [350, 900, 1800]) setTimeout(() => capture().catch(() => {}), delay);
   } catch (error) {
     state.controlFlow = null;
-    setStatus("Disconnected");
+    setStatus("Control failed");
     showError(error.message);
   }
 }

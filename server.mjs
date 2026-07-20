@@ -429,7 +429,7 @@ async function route(req, res) {
     if (menuIndex && (!Number.isInteger(menuIndex) || menuIndex < 1 || menuIndex > 50 || body.control !== true)) return json(res, 400, { detail: "invalid menu index" });
     if (menuCurrent && (!Number.isInteger(menuCurrent) || menuCurrent < 1 || menuCurrent > 50 || !menuIndex)) return json(res, 400, { detail: "invalid current menu index" });
     const suppressMessage = body.control === true || await isCodexControlInput(device, session, text);
-    const submitKey = !suppressMessage && body.submit !== false && text && session.tool === "codex"
+    const submitKey = shouldUseCodexSubmitKey(session, body, suppressMessage)
       ? submitKeyForSession(session, (await captureTmuxScreen(device, session.tmux_name)).output)
       : "Enter";
     const result = menuIndex
@@ -1457,6 +1457,11 @@ function textSendCommand(tmuxName, text, submit, key = "Enter", tool = "") {
   // loop may not see that burst until after the old 150 ms delay elapsed.
   const settle = submit && tool === "codex" && text ? "; sleep 0.5" : "";
   return `tmux copy-mode -q -t ${target} 2>/dev/null || true; tmux send-keys -t ${target} -l ${q(text)}${settle}${submitKey}`;
+}
+
+function shouldUseCodexSubmitKey(session, body, suppressMessage) {
+  return body.submit !== false && String(body.text || "") && session.tool === "codex"
+    && (!suppressMessage || body.control === true && !body.key && !body.menu_index);
 }
 
 async function sendText(device, tmuxName, text, submit, key = "Enter", tool = "") {
@@ -3775,6 +3780,8 @@ function selfCheckCore() {
   if (transcriptLines.lines[0] !== "half line" || transcriptLines.remainder !== "next") throw new Error("Codex transcript chunks lost a line boundary");
   if (submitKeyForSession({ tool: "codex" }, "• Working (2s • esc to interrupt)") !== "Tab") throw new Error("working Codex message was not queued");
   if (submitKeyForSession({ tool: "codex" }, "› Write tests") !== "Enter") throw new Error("ready Codex message was not submitted");
+  if (!shouldUseCodexSubmitKey({ tool: "codex" }, { control: true, text: "/model", submit: true }, true)
+    || shouldUseCodexSubmitKey({ tool: "codex" }, { control: true, menu_index: 2, submit: true }, true)) throw new Error("Codex quick controls did not use the normal submit path");
   if (submitKeyForSession({ tool: "codex", agent_state: "working" }, "› Write tests") !== "Enter") throw new Error("stale Codex state queued a ready message");
   if (!textSendCommand("Ark-test", "paste", true, "Enter", "codex").includes("sleep 0.5; tmux send-keys")) throw new Error("Codex paste submit did not settle before Enter");
   if (agentStateFromScreen({ tool: "codex" }, "Would you like to run this command?\n1. Yes\n2. No\nPress enter to confirm") !== "needs_input") throw new Error("Codex input state was not detected");
