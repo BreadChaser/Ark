@@ -1483,12 +1483,11 @@ function applyCapture(sessionId, data) {
 }
 
 async function recoverMissingSession(session) {
-  stopPolling();
+  if (!session) return;
+  if (session.agent_state === "stopped") return;
   stopTerminalStream();
-  const deviceId = session.tmux_device_id || session.device_id;
-  if (Array.isArray(state.tmux[deviceId])) {
-    state.tmux[deviceId] = state.tmux[deviceId].filter((tmux) => tmux.name !== session.tmux_name);
-  }
+  state.sessionStates[session.id] = "stopped";
+  session.agent_state = "stopped";
   showError("This tmux session stopped. Its history is safe; use Resume to continue it.");
   renderSidebar();
   renderMain();

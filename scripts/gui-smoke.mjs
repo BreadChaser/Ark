@@ -748,7 +748,15 @@ async function testStoppedTmuxRestore() {
   assert(ended, "dead tmux session did not return 410");
   const sessions = await api("/api/sessions");
   assert(sessions.sessions.some((session) => session.id === dead.id), "stopped tmux session was not retained for restore");
-  await fetch(`${BASE_URL}/api/sessions/${dead.id}`, { method: "DELETE" });
+  await js(`recoverMissingSession(activeSession()); return true;`);
+  const recovered = await js(`return {
+    state: activeSession().agent_state,
+    captureActive: state.captureSessionId === ${JSON.stringify(dead.id)} && Boolean(state.captureSource || state.poll),
+  };`);
+  assert(recovered.state === "stopped" && recovered.captureActive, `stopped session disabled capture recovery: ${JSON.stringify(recovered)}`);
+  await api(`/api/sessions/${dead.id}/restart`, { method: "POST", body: JSON.stringify({ resume: false }) });
+  await wait(`activeSession().id === ${JSON.stringify(dead.id)} && activeSession().agent_state !== "stopped" && document.querySelector("#error").hidden`, 15000);
+  await fetch(`${BASE_URL}/api/sessions/${dead.id}?kill=true`, { method: "DELETE" });
   await js(`if (localStorage.getItem("ark-active-session") === ${JSON.stringify(dead.id)}) localStorage.removeItem("ark-active-session"); return true;`);
   disposableSession = null;
 }

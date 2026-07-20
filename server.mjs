@@ -1473,11 +1473,10 @@ async function sendKey(device, tmuxName, key) {
   return runOnDevice(device, `tmux copy-mode -q -t ${target} 2>/dev/null || true; tmux send-keys -t ${target} ${key}`, 15000);
 }
 
-async function sendMenuChoice(device, tmuxName, index, current = 1) {
+async function sendMenuChoice(device, tmuxName, index) {
   const target = q(tmuxName);
-  const distance = index - (current || 1);
-  const move = distance ? `tmux send-keys -t ${target} -N ${Math.abs(distance)} ${distance > 0 ? "Down" : "Up"}; sleep 0.15; ` : "";
-  return runOnDevice(device, `tmux copy-mode -q -t ${target} 2>/dev/null || true; ${move}tmux send-keys -t ${target} Enter`, 15000);
+  const move = index > 1 ? `tmux send-keys -t ${target} -N ${index - 1} Down; sleep 0.15; ` : "";
+  return runOnDevice(device, `tmux copy-mode -q -t ${target} 2>/dev/null || true; tmux send-keys -t ${target} -N 50 Up; sleep 0.15; ${move}tmux send-keys -t ${target} Enter`, 15000);
 }
 
 function openEventStream(req, res, clients, close) {
