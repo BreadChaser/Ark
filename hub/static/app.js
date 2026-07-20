@@ -2008,6 +2008,10 @@ async function sendQuickCommand(event) {
     delete state.dismissedControls[owner];
     const pending = activeSession()?.pending_control;
     const requested = command.replace(/^\//, "");
+    if (requested === "model" && state.sessionStates[owner] === "working") {
+      setStatus("Interrupt before changing model");
+      return showError("Codex is working. Interrupt it before changing model or reasoning.");
+    }
     if (pending && (pending.kind === requested || requested === "model" && pending.kind === "reasoning")) {
       renderControlSheet([pending]);
       return;
