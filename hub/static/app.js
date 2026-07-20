@@ -2008,7 +2008,7 @@ async function sendQuickCommand(event) {
     delete state.dismissedControls[owner];
     const pending = activeSession()?.pending_control;
     const requested = command.replace(/^\//, "");
-    if (requested === "model" && state.sessionStates[owner] === "working") {
+    if (requested === "model" && (state.sessionStates[owner] || activeSession()?.agent_state) === "working") {
       setStatus("Interrupt before changing model");
       return showError("Codex is working. Interrupt it before changing model or reasoning.");
     }
@@ -2032,11 +2032,10 @@ async function sendQuickCommand(event) {
     renderControlLoading("Sending choice…");
   }
   const menuIndex = ["approval", "input", "model", "reasoning", "permissions"].includes(controlKind) && /^\d+$/.test(command) ? Number(command) : 0;
-  const menuCurrent = Number(button.closest("#control-body")?.querySelector("[data-menu-selected]")?.dataset.command || 0);
-  await sendControlCommand(menuIndex ? "" : command, key, owner, menuIndex, menuCurrent);
+  await sendControlCommand(menuIndex ? "" : command, key, owner, menuIndex);
 }
 
-async function sendControlCommand(command, key = "", sessionId = activeSession()?.id, menuIndex = 0, menuCurrent = 0) {
+async function sendControlCommand(command, key = "", sessionId = activeSession()?.id, menuIndex = 0) {
   const session = activeSession();
   if (!session) return showError("Select a session first.");
   if (!sessionId || session.id !== sessionId) return showError("Chat changed before send. Nothing was sent.");
@@ -2044,7 +2043,7 @@ async function sendControlCommand(command, key = "", sessionId = activeSession()
   try {
     const sent = await api(`/api/sessions/${session.id}/send`, {
       method: "POST",
-      body: JSON.stringify({ text: command, key, menu_index: menuIndex || undefined, menu_current: menuCurrent || undefined, submit: true, attachments: [], control: true }),
+      body: JSON.stringify({ text: command, key, menu_index: menuIndex || undefined, submit: true, attachments: [], control: true }),
     });
     await capture();
     if (sent.queued) setStatus("Queued for Codex");

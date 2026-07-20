@@ -16,9 +16,9 @@ const cases = {
   "goal-resume.txt": { kind: "input", state: "needs_input", choices: 2, labels: ["Resume goal", "Leave paused"] },
   "ordinary.txt": { kind: null, state: "ready" },
   "diff-control.txt": { kind: null, state: "ready" },
-  "model.txt": { kind: "model", state: "needs_input", choices: 7, labels: ["gpt-5.5", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark"] },
+  "model.txt": { kind: "model", state: "needs_input", choices: 7, labels: ["gpt-5.5", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark"], selected: "2" },
   "model-echoed-command.txt": { kind: "model", state: "needs_input", choices: 4, labels: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark"] },
-  "reasoning.txt": { kind: "reasoning", state: "needs_input", choices: 6, labels: ["Low", "Medium", "High", "Extra high", "Max", "Ultra"] },
+  "reasoning.txt": { kind: "reasoning", state: "needs_input", choices: 6, labels: ["Low", "Medium", "High", "Extra high", "Max", "Ultra"], selected: "3" },
   "permissions.txt": { kind: "permissions", state: "needs_input", choices: 3, labels: ["Ask for approval", "Approve for me", "Full Access"] },
   "permissions-stale.txt": { kind: null, state: "ready" },
 };
@@ -30,6 +30,7 @@ for (const [name, expected] of Object.entries(cases)) {
   assert.equal(agentStateFromScreen({ tool: "codex" }, text, controls), expected.state, `${name} agent state`);
   if (expected.choices) assert.equal(controls[0].choices.length, expected.choices, `${name} choices`);
   if (expected.labels) assert.deepEqual(controls[0].choices.map((choice) => choice.label), expected.labels, `${name} labels`);
+  if (expected.selected) assert.equal(controls[0].choices.find((choice) => choice.selected)?.value, expected.selected, `${name} selected choice`);
   if (expected.kind === "model") {
     assert.doesNotMatch(controls[0].choices[0].description, /gpt-5\.4|\\n2\./, `${name} first description`);
   }

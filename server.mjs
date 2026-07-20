@@ -424,10 +424,23 @@ async function route(req, res) {
     const text = String(body.text || "");
     const key = String(body.key || "");
     const menuIndex = Number(body.menu_index || 0);
-    const menuCurrent = Number(body.menu_current || 0);
     if (key && !CONTROL_KEYS.has(key)) return json(res, 400, { detail: "unsupported control key" });
     if (menuIndex && (!Number.isInteger(menuIndex) || menuIndex < 1 || menuIndex > 50 || body.control !== true)) return json(res, 400, { detail: "invalid menu index" });
-    if (menuCurrent && (!Number.isInteger(menuCurrent) || menuCurrent < 1 || menuCurrent > 50 || !menuIndex)) return json(res, 400, { detail: "invalid current menu index" });
+    let menuCurrent = 0;
+    if (menuIndex) {
+      const screen = await captureTmuxScreen(device, session.tmux_name);
+      if (screen.code !== 0 && isMissingTmux(screen.output)) {
+        return json(res, 410, { detail: "This tmux session is stopped. Use Resume or Restart." });
+      }
+      if (screen.code !== 0) return json(res, 502, { detail: screen.output });
+      const selected = parseAgentControls(session.tool, screen.output)
+        .flatMap((control) => control.choices || [])
+        .find((choice) => choice.selected)?.value;
+      menuCurrent = Number(selected || 0);
+      if (!Number.isInteger(menuCurrent) || menuCurrent < 1 || menuCurrent > 50) {
+        return json(res, 409, { detail: "Ark could not confirm Codex's highlighted menu option. Reopen the picker and try again." });
+      }
+    }
     const suppressMessage = body.control === true || await isCodexControlInput(device, session, text);
     const submitKey = "Enter";
     const result = menuIndex
@@ -1466,10 +1479,11 @@ async function sendKey(device, tmuxName, key) {
   return runOnDevice(device, `tmux copy-mode -q -t ${target} 2>/dev/null || true; tmux send-keys -t ${target} ${key}`, 15000);
 }
 
-async function sendMenuChoice(device, tmuxName, index) {
+async function sendMenuChoice(device, tmuxName, index, current) {
   const target = q(tmuxName);
-  const move = index > 1 ? `tmux send-keys -t ${target} -N ${index - 1} Down; sleep 0.15; ` : "";
-  return runOnDevice(device, `tmux copy-mode -q -t ${target} 2>/dev/null || true; tmux send-keys -t ${target} -N 50 Up; sleep 0.15; ${move}tmux send-keys -t ${target} Enter`, 15000);
+  const distance = index - current;
+  const move = distance ? `tmux send-keys -t ${target} -N ${Math.abs(distance)} ${distance > 0 ? "Down" : "Up"}; sleep 0.15; ` : "";
+  return runOnDevice(device, `tmux copy-mode -q -t ${target} 2>/dev/null || true; ${move}tmux send-keys -t ${target} Enter`, 15000);
 }
 
 function openEventStream(req, res, clients, close) {
