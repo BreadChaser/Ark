@@ -1,0 +1,9 @@
+› Can you document the entire process for another agent
+
+Resume paused goal?
+Goal: Process the active Google Sheet music list to completion.
+
+› 1. Resume goal   Mark it active and continue when idle
+  2. Leave paused  Keep it paused; use /goal resume later
+
+Press enter to confirm or esc to go back

@@ -13,6 +13,7 @@ const cases = {
   "hook-update.txt": { kind: "input", state: "needs_input", choices: 2 },
   "safety-checks.txt": { kind: "input", state: "needs_input", choices: 2, labels: ["Keep waiting", "Learn more"] },
   "codex-update.txt": { kind: "input", state: "needs_input", choices: 3, labels: ["Update now (runs the official installer)", "Skip", "Skip until next version"] },
+  "goal-resume.txt": { kind: "input", state: "needs_input", choices: 2, labels: ["Resume goal", "Leave paused"] },
   "ordinary.txt": { kind: null, state: "ready" },
   "diff-control.txt": { kind: null, state: "ready" },
   "model.txt": { kind: "model", state: "needs_input", choices: 7, labels: ["gpt-5.5", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark"] },

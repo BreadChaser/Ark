@@ -2022,7 +2022,7 @@ async function sendQuickCommand(event) {
     state.controlFlow = { sessionId: owner, expected: "__done__", until: Date.now() + 3000 };
     renderControlLoading("Sending choice…");
   }
-  const menuIndex = ["approval", "model", "reasoning", "permissions"].includes(controlKind) && /^\d+$/.test(command) ? Number(command) : 0;
+  const menuIndex = ["approval", "input", "model", "reasoning", "permissions"].includes(controlKind) && /^\d+$/.test(command) ? Number(command) : 0;
   const menuCurrent = Number(button.closest("#control-body")?.querySelector("[data-menu-selected]")?.dataset.command || 0);
   await sendControlCommand(menuIndex ? "" : command, key, owner, menuIndex, menuCurrent);
 }

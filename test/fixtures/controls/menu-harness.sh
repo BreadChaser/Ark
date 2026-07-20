@@ -44,6 +44,14 @@ if [[ "${1:-}" == "safety" ]]; then
   exit
 fi
 
+if [[ "${1:-}" == "goal" ]]; then
+  printf 'Resume paused goal?\nGoal: Process the active work queue.\n\n› 1. Resume goal   Mark it active and continue when idle\n2. Leave paused  Keep it paused; use /goal resume later\n\nPress enter to confirm or esc to go back\n'
+  answer=$(pick 1)
+  clear
+  printf 'goal:%s\n' "$answer"
+  exit
+fi
+
 printf 'Select Model and Effort\n1. gpt-5.5 (default) Frontier model\n› 2. gpt-5.6-sol (current) Latest frontier agentic coding model.\n3. gpt-5.6-terraBalanced agentic coding model.\n4. gpt-5.6-lunaFast and affordable agentic coding model.\n5. gpt-5.4Strong model for everyday coding.\n6. gpt-5.4-miniSmall, fast model.\n7. gpt-5.3-codex-sparkUltra-fast coding model.\nPress enter to confirm or esc to go back\n'
 model=$(pick 2)
 clear
