@@ -1344,7 +1344,11 @@ function commandForRestart(session, resume, toolCommands) {
   const command = session.tool === "codex"
     ? withYolo(session.runner_command || toolCommands[session.tool] || "", session.yolo)
     : session.runner_command || toolCommands[session.tool] || "";
-  if (!resume || session.tool !== "codex") return session.tool === "opencode" ? withOpenCodeServerPort(command, session.opencode_port) : command;
+  if (session.tool === "opencode") {
+    const prepared = withOpenCodeServerPort(command, session.opencode_port);
+    return resume && session.opencode_session_id ? `${prepared} --session ${q(session.opencode_session_id)}` : prepared;
+  }
+  if (!resume || session.tool !== "codex") return command;
   const selector = session.codex_session_id
     ? q(session.codex_session_id)
     : session.central_runner ? "--all" : "--last";
@@ -3868,6 +3872,7 @@ function selfCheckCore() {
   if (commandForSession("codex", "codex --no-alt-screen", [], true) !== "codex --no-alt-screen --yolo") throw new Error("Codex YOLO flag was not added to new sessions");
   if (commandForSession("opencode", "opencode", [], false, 41721) !== "opencode --port 41721 --hostname 127.0.0.1") throw new Error("OpenCode did not keep its API private to the hub");
   if (commandForSession("opencode", "bash", [], false, 41721) !== "bash") throw new Error("OpenCode API flags leaked into a custom runner");
+  if (commandForRestart({ tool: "opencode", runner_command: "opencode", opencode_port: 41721, opencode_session_id: "ses_123" }, true, {}) !== "opencode --port 41721 --hostname 127.0.0.1 --session 'ses_123'") throw new Error("OpenCode resume lost its exact session id");
   const opencodeMessages = openCodeTranscriptMessages([
     { info: { id: "user", role: "user", time: { created: 1 } }, parts: [{ type: "text", text: "hello" }] },
     { info: { id: "assistant", role: "assistant", time: { created: 2 }, providerID: "openai", modelID: "gpt-5" }, parts: [{ type: "tool", id: "tool-1", tool: "bash", input: { command: "npm run check" }, state: { status: "running" } }, { type: "text", text: "checking" }] },
