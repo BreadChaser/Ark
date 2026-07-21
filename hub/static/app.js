@@ -927,12 +927,12 @@ function renderMain() {
 }
 
 function renderSessionRuntime(session) {
-  const runtime = session?.tool === "codex" ? session.codex_state : null;
+  const runtime = session?.tool === "codex" ? session.codex_state : session?.tool === "opencode" ? session.opencode_state : null;
   els.sessionRuntime.hidden = !runtime?.model;
   if (!runtime?.model) return;
   els.sessionModel.textContent = runtime.model;
-  els.sessionReasoning.textContent = runtime.reasoning_effort ? `${runtime.reasoning_effort} reasoning` : "Reasoning unknown";
-  els.sessionSpeed.textContent = runtime.service_tier === "priority" ? "fast speed" : runtime.service_tier ? "standard speed" : "speed unknown";
+  els.sessionReasoning.textContent = runtime.reasoning_effort ? `${runtime.reasoning_effort} reasoning` : runtime.agent ? `${runtime.agent} agent` : "Reasoning unknown";
+  els.sessionSpeed.textContent = runtime.service_tier === "priority" ? "fast speed" : runtime.service_tier ? "standard speed" : runtime.source === "opencode-api" ? "live API" : "speed unknown";
 }
 
 function renderSessionSummary(session, device) {
@@ -1476,6 +1476,7 @@ function applyCapture(sessionId, data) {
   }
   session.pending_control = data.pending_control || null;
   if (data.codex_state?.model) session.codex_state = data.codex_state;
+  if (data.opencode_state?.model) session.opencode_state = data.opencode_state;
   if (data.codex_usage) session.codex_usage = data.codex_usage;
   session.usage_limited_until = Number(data.usage_limited_until || 0);
   state.captures[session.id] = data;

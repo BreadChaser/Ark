@@ -5,6 +5,7 @@ import { once } from "node:events";
 import { finished } from "node:stream/promises";
 import http from "node:http";
 import https from "node:https";
+import { createServer as createTcpServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -268,7 +269,8 @@ async function route(req, res) {
     const tmuxDevice = centralRunner ? localDevice : device;
     const workspacePath = centralRunner ? await ensureCentralWorkspace(tmuxDevice, device, body.cwd) : "";
     const runner = tool === "terminal" ? terminalRunner() : await selectToolRunner(tmuxDevice, tool, body.profile_id, settings);
-    const launchCommand = withProfileEnv(commandForSession(tool, runner.command, images, yolo), await resolveLaunchEnv(runner.env, runner.env_from_secrets));
+    const opencodePort = tool === "opencode" ? configuredOpenCodePort(runner.command) || await reserveLoopbackPort() : 0;
+    const launchCommand = withProfileEnv(commandForSession(tool, runner.command, images, yolo, opencodePort), await resolveLaunchEnv(runner.env, runner.env_from_secrets));
     const result = await startTmux(tmuxDevice, tmuxName, workspacePath || sessionTmuxCwd({ central_runner: centralRunner, cwd: body.cwd }), launchCommand);
     if (result.code !== 0) return json(res, 502, { detail: result.output });
     const initialTitle = `${tool} - ${path.basename(body.cwd) || body.cwd}`;
@@ -289,6 +291,7 @@ async function route(req, res) {
       runner_account_home: runner.account_home || "",
       runner_device_id: tmuxDevice.id,
       runner_device_label: tmuxDevice.label,
+      opencode_port: opencodePort || undefined,
       tmux_device_id: tmuxDevice.id,
       tmux_device_label: tmuxDevice.label,
       central_runner: centralRunner,
@@ -594,6 +597,7 @@ async function captureSession(id) {
   // panel. Preserve its newest value from scrollback after it has left the screen.
   const payload = capturePayload(result.output, session, storedMessages, controlText, result.output);
   const transcript = await readCodexTranscript(session, device, result.output, storedMessages);
+  const opencode = await readOpenCodeTranscript(session);
   if (transcript !== null) {
     payload.messages = await writeAuthoritativeMessages(session, transcript);
     payload.transcript_source = "codex-rollout";
@@ -601,13 +605,18 @@ async function captureSession(id) {
     if (settings) payload.codex_state = { ...(payload.codex_state || {}), ...settings, source: "codex-rollout" };
     payload.codex_usage = mergeCodexUsage([cachedCodexUsage(session), payload.codex_usage, session.codex_usage]);
     if (payload.agent_state !== "needs_input") payload.agent_state = cachedCodexTaskState(session) || payload.agent_state;
+  } else if (opencode !== null) {
+    payload.messages = await writeAuthoritativeMessages(session, opencode.messages);
+    payload.transcript_source = "opencode-api";
+    payload.opencode_state = opencode.runtime;
+    if (payload.agent_state !== "needs_input") payload.agent_state = opencode.state;
   } else if (payload.mode === "chat") {
     payload.messages = await writeMessagesSnapshot(session, payload.messages);
     payload.transcript_source = "terminal-fallback";
   }
   if (session.tool === "codex") payload.codex_usage = await accountCodexUsage(session, payload.codex_usage);
   const usageLimitedUntil = session.tool === "codex" ? codexUsageLimitUntil(screen.code === 0 ? screen.output : result.output, payload.codex_usage) : 0;
-  session = await syncPendingControl(session.id, payload.controls, payload.agent_state, payload.codex_state, payload.codex_usage, usageLimitedUntil);
+  session = await syncPendingControl(session.id, payload.controls, payload.agent_state, session.tool === "opencode" ? payload.opencode_state : payload.codex_state, payload.codex_usage, usageLimitedUntil);
   payload.pending_control = session.pending_control || null;
   payload.usage_limited_until = session.usage_limited_until || 0;
   if (payload.pending_control && !payload.controls.some(actionableControl)) payload.controls.unshift(payload.pending_control);
@@ -1178,6 +1187,7 @@ async function diagnostics() {
       agent_state_sidebar: true,
       live_commentary_ordering: true,
       exact_codex_resume: true,
+      opencode_structured_api: true,
       central_runner_neutral_workspace: true,
       readable_yaml_config: true,
       readable_device_inventory: true,
@@ -1334,14 +1344,15 @@ function commandForRestart(session, resume, toolCommands) {
   const command = session.tool === "codex"
     ? withYolo(session.runner_command || toolCommands[session.tool] || "", session.yolo)
     : session.runner_command || toolCommands[session.tool] || "";
-  if (!resume || session.tool !== "codex") return command;
+  if (!resume || session.tool !== "codex") return session.tool === "opencode" ? withOpenCodeServerPort(command, session.opencode_port) : command;
   const selector = session.codex_session_id
     ? q(session.codex_session_id)
     : session.central_runner ? "--all" : "--last";
   return `${command || DEFAULT_TOOL_COMMANDS.codex} resume ${selector}`;
 }
 
-function commandForSession(tool, command, images, yolo = false) {
+function commandForSession(tool, command, images, yolo = false, opencodePort = 0) {
+  if (tool === "opencode") return withOpenCodeServerPort(command, opencodePort);
   if (tool !== "codex") return command;
   const imageArgs = images.map((image) => ` --image ${q(image)}`).join("");
   return `${withYolo(command || "codex", yolo)}${imageArgs}`;
@@ -1349,6 +1360,32 @@ function commandForSession(tool, command, images, yolo = false) {
 
 function withYolo(command, yolo) {
   return yolo ? `${command || DEFAULT_TOOL_COMMANDS.codex} --yolo` : command;
+}
+
+function configuredOpenCodePort(command) {
+  const match = String(command || "").match(/(?:^|\s)--port(?:=|\s+)(\d+)\b/);
+  const port = Number(match?.[1] || 0);
+  return Number.isInteger(port) && port >= 1024 && port <= 65535 ? port : 0;
+}
+
+function withOpenCodeServerPort(command, port) {
+  const base = String(command || DEFAULT_TOOL_COMMANDS.opencode).trim();
+  if (!port || path.basename(commandName(base)) !== "opencode") return base;
+  const portArg = /(?:^|\s)--port(?:=|\s+)/.test(base) ? "" : ` --port ${port}`;
+  const hostArg = /(?:^|\s)--hostname(?:=|\s+)/.test(base) ? "" : " --hostname 127.0.0.1";
+  return `${base}${portArg}${hostArg}`;
+}
+
+async function reserveLoopbackPort() {
+  return new Promise((resolve, reject) => {
+    const listener = createTcpServer();
+    listener.unref();
+    listener.once("error", reject);
+    listener.listen(0, "127.0.0.1", () => {
+      const port = listener.address()?.port;
+      listener.close((error) => error ? reject(error) : resolve(port));
+    });
+  });
 }
 
 function sessionTmuxCwd(session) {
@@ -1752,11 +1789,13 @@ async function listAgentStates() {
       if (screen.code !== 0) return { id: session.id, state: isMissingTmux(screen.output) ? "stopped" : "unknown" };
       const controls = parseAgentControls(session.tool, screen.output);
       let state = agentStateFromScreen(session, screen.output, controls);
+      const opencode = await readOpenCodeTranscript(session);
+      if (opencode && state !== "needs_input") state = opencode.state;
       if (session.tool === "codex" && device.local && CODEX_TRANSCRIPTS.has(session.id)) {
         await readCodexTranscript(session, device, screen.output);
         if (state !== "needs_input") state = cachedCodexTaskState(session) || state;
       }
-      const current = await syncPendingControl(session.id, controls, state);
+      const current = await syncPendingControl(session.id, controls, state, opencode?.runtime || null);
       const usageUntil = activeCodexUsageLimitUntil(current.codex_usage, current.usage_limited_until);
       const effectiveState = usageUntil > Math.floor(Date.now() / 1000) ? "usage" : current.pending_control ? "needs_input" : state;
       return { id: session.id, state: effectiveState, pending_control: current.pending_control || null, ready_at: current.ready_at || 0, viewed_at: current.viewed_at || 0, usage_limited_until: usageUntil };
@@ -1819,7 +1858,7 @@ function pendingControl(control, previous) {
   return value;
 }
 
-async function syncPendingControl(id, controls, state, codexState = null, codexUsage = null, usageLimitedUntil = 0) {
+async function syncPendingControl(id, controls, state, runtimeState = null, codexUsage = null, usageLimitedUntil = 0) {
   const control = controls.find(actionableControl);
   const misses = control || state === "working" ? 0 : (CONTROL_MISSES.get(id) || 0) + 1;
   if (misses) CONTROL_MISSES.set(id, misses);
@@ -1829,12 +1868,14 @@ async function syncPendingControl(id, controls, state, codexState = null, codexU
     const session = data.sessions.find((item) => item.id === id);
     if (!session) throw Object.assign(new Error(`Unknown session: ${id}`), { status: 404 });
     const next = control ? pendingControl(control, session.pending_control) : misses >= 2 || state === "working" ? null : session.pending_control || null;
-    const runtime = codexState?.model ? {
-      model: String(codexState.model),
-      reasoning_effort: String(codexState.reasoning_effort || ""),
-      service_tier: String(codexState.service_tier || ""),
-      source: String(codexState.source || ""),
-    } : session.codex_state || null;
+    const runtimeField = session.tool === "opencode" ? "opencode_state" : "codex_state";
+    const runtime = runtimeState?.model ? {
+      model: String(runtimeState.model),
+      reasoning_effort: String(runtimeState.reasoning_effort || ""),
+      service_tier: String(runtimeState.service_tier || ""),
+      agent: String(runtimeState.agent || ""),
+      source: String(runtimeState.source || ""),
+    } : session[runtimeField] || null;
     const usage = codexUsage?.primary || codexUsage?.secondary ? codexUsage : session.codex_usage || null;
     const now = Math.floor(Date.now() / 1000);
     const nextUsageLimitedUntil = codexUsageHasCapacity(usage)
@@ -1843,14 +1884,14 @@ async function syncPendingControl(id, controls, state, codexState = null, codexU
     const stateChanged = state !== session.agent_state;
     const unchanged = next?.id === session.pending_control?.id
       && Boolean(next) === Boolean(session.pending_control)
-      && JSON.stringify(runtime) === JSON.stringify(session.codex_state || null)
+      && JSON.stringify(runtime) === JSON.stringify(session[runtimeField] || null)
       && JSON.stringify(usage) === JSON.stringify(session.codex_usage || null)
       && nextUsageLimitedUntil === Number(session.usage_limited_until || 0)
       && !stateChanged;
     if (unchanged) return session;
     if (next) session.pending_control = next;
     else delete session.pending_control;
-    if (runtime) session.codex_state = runtime;
+    if (runtime) session[runtimeField] = runtime;
     if (usage) session.codex_usage = usage;
     if (nextUsageLimitedUntil) session.usage_limited_until = nextUsageLimitedUntil;
     else delete session.usage_limited_until;
@@ -2288,6 +2329,85 @@ function isStoredChatJunk(message) {
 
 async function readCodexTranscript(session, device, rawText, storedMessages = null) {
   return withMutation(`codex-transcript-read:${session.id}`, () => readCodexTranscriptNow(session, device, rawText, storedMessages));
+}
+
+async function readOpenCodeTranscript(session) {
+  if (session?.tool !== "opencode" || !Number(session.opencode_port)) return null;
+  const sessions = await openCodeApi(session, "/session");
+  if (!Array.isArray(sessions)) return null;
+  const cwd = path.resolve(sessionTmuxCwd(session));
+  const candidates = sessions.filter((item) => {
+    try { return path.resolve(String(item?.directory || "")) === cwd; } catch { return false; }
+  }).sort((a, b) => Number(b?.time?.updated || 0) - Number(a?.time?.updated || 0));
+  const active = candidates.find((item) => item?.id === session.opencode_session_id) || candidates[0];
+  if (!active?.id) return null;
+  if (active.id !== session.opencode_session_id) session = await upsertSession({ ...session, opencode_session_id: active.id });
+  const [rows, statuses] = await Promise.all([
+    openCodeApi(session, `/session/${encodeURIComponent(active.id)}/message`),
+    openCodeApi(session, "/session/status"),
+  ]);
+  if (!Array.isArray(rows)) return null;
+  return {
+    messages: openCodeTranscriptMessages(rows),
+    runtime: openCodeRuntime(rows),
+    state: openCodeAgentState(statuses?.[active.id]),
+  };
+}
+
+async function openCodeApi(session, endpoint) {
+  const port = Number(session?.opencode_port || 0);
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) return null;
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}${endpoint}`, { signal: AbortSignal.timeout(1800) });
+    return response.ok ? await response.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+function openCodeTranscriptMessages(rows) {
+  const messages = [];
+  for (const row of rows) {
+    const info = row?.info || {};
+    const role = info.role === "user" ? "user" : info.role === "assistant" ? "assistant" : "";
+    if (!role) continue;
+    const created_at = new Date(Number(info?.time?.created) || Date.now()).toISOString();
+    const text = (row?.parts || []).filter((part) => part?.type === "text").map((part) => String(part.text || "")).join("").trim();
+    if (text && !/^Ark context target=/i.test(text)) messages.push({ id: `opencode-${info.id}`, created_at, role, text, attachments: [], source: "opencode-api" });
+    for (const [index, part] of (row?.parts || []).entries()) {
+      if (!/tool/i.test(String(part?.type || ""))) continue;
+      const name = String(part.tool?.name || part.tool || part.name || "tool");
+      const detail = codexToolCallText(name, part.input ?? part.args ?? part.state?.input);
+      const rawStatus = String(part.state?.status || part.status || "").toLowerCase();
+      messages.push({
+        id: `opencode-tool-${part.id || `${info.id}-${index}`}`,
+        created_at,
+        role: "tool",
+        text: codexToolCallSummary(name, part.input ?? part.args ?? part.state?.input),
+        tool_detail: detail,
+        tool_name: name,
+        tool_call_id: String(part.callID || part.callId || part.id || `${info.id}-${index}`),
+        tool_status: /(?:fail|error|deny)/.test(rawStatus) ? "failed" : /(?:pending|running)/.test(rawStatus) ? "running" : "completed",
+        attachments: [],
+        source: "opencode-api",
+        phase: "tool",
+      });
+    }
+  }
+  return messages;
+}
+
+function openCodeRuntime(rows) {
+  const info = [...rows].reverse().map((row) => row?.info || {}).find((item) => item?.modelID || item?.model?.modelID);
+  if (!info) return null;
+  const provider = String(info.providerID || info.model?.providerID || "");
+  const model = String(info.modelID || info.model?.modelID || "");
+  return model ? { model: provider ? `${provider}/${model}` : model, reasoning_effort: String(info.variant || ""), agent: String(info.agent || info.mode || ""), source: "opencode-api" } : null;
+}
+
+function openCodeAgentState(status) {
+  const type = String(status?.type || "").toLowerCase();
+  return /^(busy|retry|running)$/.test(type) ? "working" : "ready";
 }
 
 async function readCodexTranscriptNow(session, device, rawText, storedMessages) {
@@ -3746,6 +3866,14 @@ function selfCheckCore() {
   const exactResume = commandForRestart({ tool: "codex", runner_command: "codex --no-alt-screen", codex_session_id: "019f491a-b738-7462-8a3a-418e4532df67" }, true, {});
   if (exactResume !== "codex --no-alt-screen resume '019f491a-b738-7462-8a3a-418e4532df67'") throw new Error("Codex resume lost the exact session id");
   if (commandForSession("codex", "codex --no-alt-screen", [], true) !== "codex --no-alt-screen --yolo") throw new Error("Codex YOLO flag was not added to new sessions");
+  if (commandForSession("opencode", "opencode", [], false, 41721) !== "opencode --port 41721 --hostname 127.0.0.1") throw new Error("OpenCode did not keep its API private to the hub");
+  if (commandForSession("opencode", "bash", [], false, 41721) !== "bash") throw new Error("OpenCode API flags leaked into a custom runner");
+  const opencodeMessages = openCodeTranscriptMessages([
+    { info: { id: "user", role: "user", time: { created: 1 } }, parts: [{ type: "text", text: "hello" }] },
+    { info: { id: "assistant", role: "assistant", time: { created: 2 }, providerID: "openai", modelID: "gpt-5" }, parts: [{ type: "tool", id: "tool-1", tool: "bash", input: { command: "npm run check" }, state: { status: "running" } }, { type: "text", text: "checking" }] },
+  ]);
+  if (opencodeMessages.length !== 3 || opencodeMessages[1]?.role !== "assistant" || opencodeMessages[2]?.tool_status !== "running") throw new Error("OpenCode API messages were not normalized");
+  if (openCodeRuntime([{ info: { providerID: "openai", modelID: "gpt-5", agent: "build" } }])?.model !== "openai/gpt-5" || openCodeAgentState({ type: "busy" }) !== "working") throw new Error("OpenCode API runtime state was not parsed");
   if (commandForRestart({ tool: "codex", yolo: true, runner_command: "codex --no-alt-screen", codex_session_id: "019f491a-b738-7462-8a3a-418e4532df67" }, true, {}) !== "codex --no-alt-screen --yolo resume '019f491a-b738-7462-8a3a-418e4532df67'") throw new Error("Codex YOLO flag was not kept on resume");
   const remotePicker = commandForRestart({ tool: "codex", central_runner: true }, true, { codex: "codex --no-alt-screen" });
   if (!remotePicker.endsWith("resume --all")) throw new Error("remote Codex fallback can select the wrong workspace");
@@ -3803,6 +3931,7 @@ function capturePayload(text, session, storedMessages = [], controlText = text, 
     controls,
     agent_state: mode === "chat" ? agentStateFromScreen(session, controlText, controls) : "terminal",
     codex_state: session?.tool === "codex" ? codexStateFromScreen(controlText) : null,
+    opencode_state: session?.tool === "opencode" ? session.opencode_state || null : null,
     codex_usage: session?.tool === "codex" ? codexUsageFromScreen(usageText) || session.codex_usage || null : null,
     mode,
     tool: session?.tool || "terminal",
