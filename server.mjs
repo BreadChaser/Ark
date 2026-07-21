@@ -1400,6 +1400,7 @@ function centralRunnerContext(device, cwd, tool) {
   if (tool === "terminal" || device.local) return "";
   return [
     "Ark context this session is managed by Ark's private hub. Keep the work and any human-input question in this session; do not manage Ark, other sessions, or shared services unless the user explicitly asks.",
+    ...(tool === "codex" ? ["Ark context on ark-hub, use /home/tony/Development/ark/scripts/ark-opencode \"question\" for a bounded, read-only second opinion from a separate free OpenCode model."] : []),
     `Ark context target=${device.label}`,
     `Ark context cwd=${cwd}`,
     `Ark context ssh=${sshTarget(device)}`,

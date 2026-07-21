@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -eq 0 ]; then
+  echo "Usage: ark-opencode 'consultation question'" >&2
+  exit 64
+fi
+
+model=${ARK_OPENCODE_MODEL:-opencode/north-mini-code-free}
+case "$model" in
+  opencode/*-free) ;;
+  *)
+    echo "ARK_OPENCODE_MODEL must name an OpenCode free model (opencode/*-free)." >&2
+    exit 64
+    ;;
+esac
+
+exec /home/tony/.local/bin/opencode run --agent plan --model "$model" "You are a read-only Ark consultation for another coding agent. Give an independent, concise answer to the request below. Inspect files only when useful. Do not edit files, run commands that change state, start other agents, or alter Ark. Return findings and recommended next steps, not an implementation.
+
+Request: $*"
