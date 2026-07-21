@@ -5,8 +5,8 @@ Ark owns the single llama.cpp slot on `tony-gaming`. Do not call the controller'
 
 ## Agent use
 
-On `ark-hub`, a Codex agent can ask the currently warm local model for a
-read-only second opinion:
+On `ark-hub`, a Codex agent can ask the recommended local model for a read-only
+second opinion:
 
 ```bash
 /home/tony/Development/ark/scripts/ark-opencode "review this approach"
@@ -24,6 +24,25 @@ Ark discovers every controller `/config.models` entry at request time. Its ID is
 the GGUF filename without `.gguf`, lowercased with non-alphanumeric runs
 changed to hyphens; colliding filenames gain a stable short hash of their
 controller key. `GET /api/local-gpu` exposes the current catalog.
+
+## Recommendation policy
+
+`/config.selected` is Ark's durable recommendation source. It must be the
+exact controller key from `/config.models`; Ark never keeps a static ranking or
+hardcoded default model.
+
+The Local_LLM maintainer decides the recommendation from current benchmark and
+quality evidence, then changes the controller's normal selected model/preset
+through its own model-control workflow. No Ark code change or deployment is
+needed. Agents using Ark must not call the controller's `/apply` or `/toggle`
+endpoints themselves.
+
+The recommendation affects new no-argument `ark-opencode` consultations only.
+It never interrupts an existing GPU lease. Use `--model active` to prefer the
+currently loaded GGUF, or an explicit generated model ID with `--wait` to
+request another model. Confirm the chosen recommendation in
+`GET /api/local-gpu` as `recommended_model`; `loaded` remains the physical
+runtime truth and can differ during a benchmark or model transition.
 
 ## Backend rules
 
