@@ -78,6 +78,7 @@ try {
   assert.equal(loaded.selected, config.selected);
   assert(loaded.models.some((model) => model.name === "TomorrowBest-42B-Q3_K_M.gguf"));
   assert.equal(loaded.gpu.loaded_model_id, "ternary-bonsai-27b-q2-0");
+  assert.equal(loaded.gpu.recommended_model_id, "ternary-bonsai-27b-q2-0");
   assert(loaded.gpu.models.some((model) => model.id === "tomorrowbest-42b-q3-k-m"));
   const collisionIds = localGpuIds(loaded.gpu.models).filter(([key]) => key.startsWith("future/Same"));
   assert.equal(new Set(collisionIds.map(([, id]) => id)).size, 2);
@@ -95,11 +96,15 @@ try {
   assert.equal(form.get("model"), config.selected);
   assert.equal(form.get("context"), "131072");
   assert.equal(form.get("mlock"), "off");
-  const first = await requestStatus(arkPort, "/api/local-gpu/leases", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "active", owner: { tmux_name: "first" } }) }, 202);
+  const first = await requestStatus(arkPort, "/api/local-gpu/leases", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ owner: { tmux_name: "first" } }) }, 202);
   assert.equal(first.lease.state, "active");
   assert.equal(first.lease.model.id, "ternary-bonsai-27b-q2-0");
   assert.equal(first.lease.model.context, 131072);
   assert.equal(first.lease.model.reasoning, "high");
+  config.selected = "future/TomorrowBest-42B-Q3_K_M.gguf";
+  const recommendedBusy = await requestStatus(arkPort, "/api/local-gpu/leases", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ owner: { tmux_name: "recommended" } }) }, 409);
+  assert.deepEqual(recommendedBusy.choices, ["use active model", "wait", "use hosted model"]);
+  config.selected = "qwen/Ternary-Bonsai-27B-Q2_0.gguf";
   const second = await requestStatus(arkPort, "/api/local-gpu/leases", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "active", owner: { tmux_name: "second" } }) }, 202);
   assert.equal(second.lease.state, "queued");
   const busy = await requestStatus(arkPort, "/api/local-gpu/leases", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "tomorrowbest-42b-q3-k-m" }) }, 409);

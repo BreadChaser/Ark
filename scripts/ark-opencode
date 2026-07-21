@@ -6,7 +6,7 @@ import path from "node:path";
 const ARK_URL = process.env.ARK_URL || "http://127.0.0.1:4873";
 const OPENCODE = process.env.ARK_OPENCODE_BIN || path.join(os.homedir(), ".local", "bin", "opencode");
 const args = process.argv.slice(2);
-let model = "active";
+let model = "recommended";
 let wait = false;
 
 while (args[0] === "--model" || args[0] === "--wait") {
@@ -96,6 +96,6 @@ function tmuxName() {
 function delay(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
 function usage() {
-  console.error("Usage: ark-opencode [--model active|model-id] [--wait] 'consultation question'");
+  console.error("Usage: ark-opencode [--model active|recommended|model-id] [--wait] 'consultation question'");
   process.exit(64);
 }

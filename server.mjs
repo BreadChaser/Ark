@@ -1415,7 +1415,7 @@ function centralRunnerContext(device, cwd, tool) {
   if (tool === "terminal" || device.local) return "";
   return [
     "Ark context this session is managed by Ark's private hub. Keep the work and any human-input question in this session; do not manage Ark, other sessions, or shared services unless the user explicitly asks.",
-    ...(tool === "codex" ? ["Ark context on ark-hub, use /home/tony/Development/ark/scripts/ark-opencode \"question\" for a bounded, read-only second opinion from Ark's shared local llama.cpp GPU. It defaults to the active warm model; use --model model-id --wait only when needed. Never call the controller /apply or /toggle endpoints yourself."] : []),
+    ...(tool === "codex" ? ["Ark context on ark-hub, use /home/tony/Development/ark/scripts/ark-opencode \"question\" for a bounded, read-only second opinion from Ark's shared local llama.cpp GPU. It defaults to the controller's recommended model; use --model active for the warm model or --model model-id --wait for another model. Never call the controller /apply or /toggle endpoints yourself."] : []),
     `Ark context target=${device.label}`,
     `Ark context cwd=${cwd}`,
     `Ark context ssh=${sshTarget(device)}`,
@@ -3643,11 +3643,14 @@ async function localGpuStatus() {
   const [state, config] = await Promise.all([pruneLocalGpuState(), localLlmConfig().catch(() => null)]);
   const runtime = await localLlmRuntime().catch(() => config ? { running: config.running, loaded: config.loaded } : { running: null, loaded: null });
   const catalog = localGpuCatalog(config);
+  const recommended = catalog.find((model) => model.key === String(config?.selected || "")) || null;
   const current = state.current ? publicLocalGpuLease(state.current) : null;
   const queue = state.queue.map(publicLocalGpuLease);
   return {
     loaded: runtime.loaded || null,
     loaded_model_id: localGpuLoadedModel(catalog, runtime.loaded)?.id || "",
+    recommended_model_id: recommended?.id || "",
+    recommended_model: recommended ? { id: recommended.id, name: recommended.name, key: recommended.key, context: recommended.context, reasoning: recommended.reasoning } : null,
     switch_in_progress: current?.state === "switching",
     busy: current ? 1 : 0,
     queue: queue.length,
@@ -3659,7 +3662,7 @@ async function localGpuStatus() {
 }
 
 async function acquireLocalGpuLease(body) {
-  const requested = String(body?.model || "active").trim() || "active";
+  const requested = String(body?.model || "recommended").trim() || "recommended";
   const wait = body?.wait === true;
   const owner = localGpuOwner(body?.owner);
   const [config, runtime] = await Promise.all([localLlmConfig(), localLlmRuntime()]);
@@ -3896,8 +3899,9 @@ function localGpuSelection(requested, config, runtime) {
   const catalog = localGpuCatalog(config);
   const active = localGpuLoadedModel(catalog, runtime.loaded);
   if (!active) throw httpError(503, `Ark cannot map the loaded GGUF ${runtime.loaded.name} to an OpenCode model ID.`);
-  const selected = requested === "active" ? active : catalog.find((model) => model.id === requested);
-  if (!selected) throw httpError(400, `Unknown local model ${requested}. Available: active, ${catalog.map((model) => model.id).join(", ")}.`);
+  const recommended = catalog.find((model) => model.key === String(config?.selected || ""));
+  const selected = requested === "active" ? active : requested === "recommended" ? recommended : catalog.find((model) => model.id === requested);
+  if (!selected) throw httpError(400, `Unknown local model ${requested}. Available: active, recommended, ${catalog.map((model) => model.id).join(", ")}.`);
   return {
     ...selected,
     output: LOCAL_GPU_OUTPUT_LIMIT,

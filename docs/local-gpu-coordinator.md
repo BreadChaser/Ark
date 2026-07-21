@@ -12,8 +12,9 @@ read-only second opinion:
 /home/tony/Development/ark/scripts/ark-opencode "review this approach"
 ```
 
-It defaults to `active`, which means the GGUF reported by controller
-`/status.loaded`. To request a different model, the agent must opt into waiting:
+It defaults to `recommended`, the controller's saved `/config.selected` model.
+Use `--model active` to keep the currently warm GGUF. To request a different
+model, the agent must opt into waiting:
 
 ```bash
 /home/tony/Development/ark/scripts/ark-opencode --model ternary-bonsai-27b-q2-0 --wait "compare these two implementations"

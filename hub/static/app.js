@@ -2721,11 +2721,12 @@ function renderLocalLlm(config) {
   const busy = Number(gpu?.busy || 0) > 0 || gpu?.switch_in_progress === true;
   const localModel = gpu?.current?.model || gpu?.models?.find((model) => model.id === gpu?.loaded_model_id) || null;
   const modelName = localModel?.name || loaded?.name || "model loading";
+  const recommendedName = gpu?.recommended_model?.name || "not set";
   const context = localModel?.context || loaded?.ctx;
   const reasoning = localModel?.reasoning || loaded?.reasoning || "off";
   const queue = Number(gpu?.queue || 0);
   els.localLlmStatus.textContent = config.running
-    ? `Local GPU: ${modelName} · reasoning ${reasoning}${context ? ` · ${Number(context).toLocaleString()} ctx` : ""} · busy: ${Number(gpu?.busy || 0)} · queue: ${queue}${busy ? " · choose active, wait, or hosted for a different model" : ""}`
+    ? `Local GPU: ${modelName} · reasoning ${reasoning}${context ? ` · ${Number(context).toLocaleString()} ctx` : ""} · recommended: ${recommendedName} · busy: ${Number(gpu?.busy || 0)} · queue: ${queue}${busy ? " · choose active, wait, or hosted for a different model" : ""}`
     : "llama.cpp is stopped";
   els.localLlmStatus.dataset.state = busy ? "loading" : config.running ? "running" : "stopped";
   els.localLlmToggle.title = els.localLlmStatus.textContent;
