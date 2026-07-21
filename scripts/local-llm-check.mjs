@@ -98,6 +98,8 @@ try {
   const first = await requestStatus(arkPort, "/api/local-gpu/leases", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "active", owner: { tmux_name: "first" } }) }, 202);
   assert.equal(first.lease.state, "active");
   assert.equal(first.lease.model.id, "ternary-bonsai-27b-q2-0");
+  assert.equal(first.lease.model.context, 131072);
+  assert.equal(first.lease.model.reasoning, "high");
   const second = await requestStatus(arkPort, "/api/local-gpu/leases", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "active", owner: { tmux_name: "second" } }) }, 202);
   assert.equal(second.lease.state, "queued");
   const busy = await requestStatus(arkPort, "/api/local-gpu/leases", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "tomorrowbest-42b-q3-k-m" }) }, 409);

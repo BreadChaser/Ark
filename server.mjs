@@ -3898,12 +3898,8 @@ function localGpuSelection(requested, config, runtime) {
   if (!active) throw httpError(503, `Ark cannot map the loaded GGUF ${runtime.loaded.name} to an OpenCode model ID.`);
   const selected = requested === "active" ? active : catalog.find((model) => model.id === requested);
   if (!selected) throw httpError(400, `Unknown local model ${requested}. Available: active, ${catalog.map((model) => model.id).join(", ")}.`);
-  const isActive = selected.id === active.id;
   return {
     ...selected,
-    context: isActive ? Number(runtime.loaded.ctx || selected.context) : selected.context,
-    reasoning: isActive ? String(runtime.loaded.reasoning || selected.reasoning) : selected.reasoning,
-    loaded_name: isActive ? String(runtime.loaded.name) : selected.loaded_name,
     output: LOCAL_GPU_OUTPUT_LIMIT,
   };
 }
