@@ -46,15 +46,6 @@ const LOCAL_GPU_STORE = path.join(DATA, "local-gpu.json");
 const LOCAL_GPU_JOBS = path.join(DATA, "local-gpu");
 const LOCAL_GPU_LEASE_MS = Number(process.env.ARK_LOCAL_GPU_LEASE_MS || 90_000);
 const LOCAL_GPU_OUTPUT_LIMIT = 4096;
-const LOCAL_GPU_MODELS = [
-  ["bonsai-27b", ["bonsai-27b-q1_0"]],
-  ["qwen36-35b", ["qwen3.6-35b-a3b"]],
-  ["qwen3-coder", ["qwen3-coder-30b-a3b"]],
-  ["coder-7b", ["qwen2.5-coder-7b"]],
-  ["ornith-35b", ["ornith-35b"]],
-  ["ornith-9b", ["ornith-9b"]],
-  ["tiny260k", ["stories260k"]],
-];
 const TERMINAL_STREAMS = new Map();
 const CAPTURE_STREAMS = new Map();
 const STATE_STREAM = { clients: new Set(), timer: null, busy: false, last: "" };
@@ -3854,26 +3845,50 @@ async function localLlmRuntime() {
 
 function localGpuCatalog(config) {
   const models = Array.isArray(config?.models) ? config.models : [];
-  return LOCAL_GPU_MODELS.flatMap(([id, patterns]) => {
-    const item = models.find((model) => patterns.some((pattern) => String(model?.name || model?.key || "").toLowerCase().includes(pattern)));
-    if (!item) return [];
+  const entries = models.map((item) => ({
+    item,
+    key: String(item?.key || ""),
+    slug: localGpuModelSlug(item?.name || item?.key),
+  }));
+  const slugCounts = new Map();
+  for (const entry of entries) slugCounts.set(entry.slug, (slugCounts.get(entry.slug) || 0) + 1);
+  const ids = new Map();
+  const used = new Set();
+  for (const entry of [...entries].sort((a, b) => a.key.localeCompare(b.key))) {
+    const base = slugCounts.get(entry.slug) > 1
+      ? `${entry.slug}-${crypto.createHash("sha256").update(entry.key).digest("hex").slice(0, 8)}`
+      : entry.slug;
+    let id = base;
+    for (let suffix = 2; used.has(id); suffix++) id = `${base}-${suffix}`;
+    used.add(id);
+    ids.set(entry.key, id);
+  }
+  return entries.map(({ item, key }) => {
     const preset = item.preset || {};
-    return [{
-      id,
-      key: String(item.key || ""),
-      name: String(preset.label || item.name || id),
+    return {
+      id: ids.get(key),
+      key,
+      name: String(preset.label || item.name || ids.get(key)),
       loaded_name: String(item.name || ""),
       context: Number(preset.ctx || config?.settings?.context || 32768),
       kv: String(preset.kv || config?.settings?.kv || "q4_0"),
       ngl: Number(preset.ngl ?? config?.settings?.ngl ?? 99),
       reasoning: String(preset.reasoning || config?.settings?.reasoning || "off"),
-    }];
+    };
   });
 }
 
+function localGpuModelSlug(value) {
+  return String(value || "model")
+    .replace(/\.gguf$/i, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "model";
+}
+
 function localGpuLoadedModel(catalog, loaded) {
-  const name = String(loaded?.name || "").toLowerCase();
-  return catalog.find((model) => model.loaded_name.toLowerCase() === name) || null;
+  const name = String(loaded?.name || "");
+  return catalog.find((model) => model.loaded_name === name) || null;
 }
 
 function localGpuSelection(requested, config, runtime) {
@@ -3894,7 +3909,7 @@ function localGpuSelection(requested, config, runtime) {
 }
 
 function localGpuMatchesRuntime(model, runtime) {
-  return String(model?.loaded_name || "").toLowerCase() === String(runtime?.loaded?.name || "").toLowerCase();
+  return String(model?.loaded_name || "") === String(runtime?.loaded?.name || "");
 }
 
 function localGpuOwner(value) {
@@ -3916,7 +3931,7 @@ function publicLocalGpuLease(lease) {
   return {
     id: lease.id,
     state: lease.state,
-    model: { id: lease.model.id, name: lease.model.name, full_id: `llamacpp/${lease.model.id}`, context: lease.model.context, output: lease.model.output, reasoning: lease.model.reasoning, loaded_name: lease.model.loaded_name },
+    model: { id: lease.model.id, key: lease.model.key, name: lease.model.name, full_id: `llamacpp/${lease.model.id}`, context: lease.model.context, kv: lease.model.kv, ngl: lease.model.ngl, output: lease.model.output, reasoning: lease.model.reasoning, loaded_name: lease.model.loaded_name },
     owner: lease.owner,
     created_at: lease.created_at,
     heartbeat_at: lease.heartbeat_at,

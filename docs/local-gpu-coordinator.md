@@ -16,11 +16,13 @@ It defaults to `active`, which means the GGUF reported by controller
 `/status.loaded`. To request a different model, the agent must opt into waiting:
 
 ```bash
-/home/tony/Development/ark/scripts/ark-opencode --model qwen3-coder --wait "compare these two implementations"
+/home/tony/Development/ark/scripts/ark-opencode --model ternary-bonsai-27b-q2-0 --wait "compare these two implementations"
 ```
 
-Known IDs are `ornith-9b`, `ornith-35b`, `bonsai-27b`, `qwen36-35b`,
-`qwen3-coder`, `coder-7b`, and `tiny260k` when installed.
+Ark discovers every controller `/config.models` entry at request time. Its ID is
+the GGUF filename without `.gguf`, lowercased with non-alphanumeric runs
+changed to hyphens; colliding filenames gain a stable short hash of their
+controller key. `GET /api/local-gpu` exposes the current catalog.
 
 ## Backend rules
 

@@ -8,13 +8,14 @@ import path from "node:path";
 
 const config = {
   running: true,
-  loaded: { name: "Bonsai-27B-Q1_0.gguf", ctx: "65536", reasoning: "on" },
-  selected: "models/Bonsai-27B-Q1_0.gguf",
-  settings: { context: 65536, kv: "q4_0", ngl: 99, reasoning: "medium", mlock: false },
+  loaded: { name: "Ternary-Bonsai-27B-Q2_0.gguf", ctx: "131072", ngl: "40", reasoning: "high" },
+  selected: "qwen/Ternary-Bonsai-27B-Q2_0.gguf",
+  settings: { context: 131072, kv: "q4_0", ngl: 40, reasoning: "high", mlock: false },
   models: [
-    { key: "models/Bonsai-27B-Q1_0.gguf", name: "Bonsai-27B-Q1_0.gguf", size: "3.5G", preset: { label: "Bonsai 27B", ctx: 65536, kv: "q4_0", ngl: 99, reasoning: "high" } },
-    { key: "models/ornith-9b-q4_k_m.gguf", name: "ornith-9b-q4_k_m.gguf", size: "5.2G", preset: { label: "Ornith 9B", ctx: 32768, kv: "q4_0", ngl: 99, reasoning: "high" } },
-    { key: "models/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf", name: "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf", size: "4.4G", preset: { label: "Coder 7B", ctx: 32768, kv: "q4_0", ngl: 99, reasoning: "off" } },
+    { key: "qwen/Ternary-Bonsai-27B-Q2_0.gguf", name: "Ternary-Bonsai-27B-Q2_0.gguf", size: "6.7G", preset: { label: "Ternary Bonsai 27B 2-bit", ctx: 131072, kv: "q4_0", ngl: 40, reasoning: "high" } },
+    { key: "future/TomorrowBest-42B-Q3_K_M.gguf", name: "TomorrowBest-42B-Q3_K_M.gguf", size: "18G", preset: { label: "TomorrowBest 42B", ctx: 49152, kv: "q8_0", ngl: 77, reasoning: "medium" } },
+    { key: "future/Same Model.gguf", name: "Same Model.gguf", size: "1G", preset: { label: "Same Model One", ctx: 8192, kv: "q4_0", ngl: 1, reasoning: "off" } },
+    { key: "future/Same-Model.gguf", name: "Same-Model.gguf", size: "1G", preset: { label: "Same Model Two", ctx: 8192, kv: "q4_0", ngl: 1, reasoning: "off" } },
   ],
 };
 const applied = [];
@@ -30,7 +31,7 @@ const controller = http.createServer(async (req, res) => {
     applied.push(form);
     const selected = config.models.find((model) => model.key === form.get("model"));
     config.running = true;
-    config.loaded = selected ? { name: selected.name, ctx: form.get("context"), reasoning: form.get("reasoning") === "off" ? "off" : "on" } : null;
+    config.loaded = selected ? { name: selected.name, ctx: form.get("context"), ngl: form.get("ngl"), reasoning: form.get("reasoning") } : null;
     res.writeHead(303, { location: "/" });
     return res.end();
   }
@@ -41,7 +42,7 @@ const controller = http.createServer(async (req, res) => {
   if (req.method === "GET" && req.url === "/health") return res.writeHead(config.running ? 200 : 503).end();
   if (req.method === "POST" && req.url === "/toggle") {
     config.running = !config.running;
-    config.loaded = config.running ? { name: "Bonsai-27B-Q1_0.gguf", ctx: "65536", reasoning: "on" } : null;
+    config.loaded = config.running ? { name: "Ternary-Bonsai-27B-Q2_0.gguf", ctx: "131072", ngl: "40", reasoning: "high" } : null;
     res.writeHead(200, { "content-type": "application/json" });
     return res.end("{}");
   }
@@ -75,6 +76,16 @@ try {
   await waitForArk(arkPort);
   const loaded = await request(arkPort, "/api/local-llm");
   assert.equal(loaded.selected, config.selected);
+  assert(loaded.models.some((model) => model.name === "TomorrowBest-42B-Q3_K_M.gguf"));
+  assert.equal(loaded.gpu.loaded_model_id, "ternary-bonsai-27b-q2-0");
+  assert(loaded.gpu.models.some((model) => model.id === "tomorrowbest-42b-q3-k-m"));
+  const collisionIds = localGpuIds(loaded.gpu.models).filter(([key]) => key.startsWith("future/Same"));
+  assert.equal(new Set(collisionIds.map(([, id]) => id)).size, 2);
+  assert(collisionIds.every(([, id]) => /^same-model-[a-f0-9]{8}$/.test(id)));
+  config.models.reverse();
+  const reordered = await request(arkPort, "/api/local-gpu");
+  assert.deepEqual(localGpuIds(reordered.models), localGpuIds(loaded.gpu.models));
+  config.models.reverse();
   await request(arkPort, "/api/local-llm", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -82,16 +93,16 @@ try {
   });
   const form = applied.at(-1);
   assert.equal(form.get("model"), config.selected);
-  assert.equal(form.get("context"), "65536");
+  assert.equal(form.get("context"), "131072");
   assert.equal(form.get("mlock"), "off");
   const first = await requestStatus(arkPort, "/api/local-gpu/leases", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "active", owner: { tmux_name: "first" } }) }, 202);
   assert.equal(first.lease.state, "active");
-  assert.equal(first.lease.model.id, "bonsai-27b");
+  assert.equal(first.lease.model.id, "ternary-bonsai-27b-q2-0");
   const second = await requestStatus(arkPort, "/api/local-gpu/leases", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "active", owner: { tmux_name: "second" } }) }, 202);
   assert.equal(second.lease.state, "queued");
-  const busy = await requestStatus(arkPort, "/api/local-gpu/leases", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "ornith-9b" }) }, 409);
+  const busy = await requestStatus(arkPort, "/api/local-gpu/leases", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "tomorrowbest-42b-q3-k-m" }) }, 409);
   assert.deepEqual(busy.choices, ["use active model", "wait", "use hosted model"]);
-  const waiting = await requestStatus(arkPort, "/api/local-gpu/leases", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "ornith-9b", wait: true, owner: { tmux_name: "third" } }) }, 202);
+  const waiting = await requestStatus(arkPort, "/api/local-gpu/leases", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "tomorrowbest-42b-q3-k-m", wait: true, owner: { tmux_name: "third" } }) }, 202);
   assert.equal(waiting.lease.state, "queued");
   await request(arkPort, `/api/local-gpu/leases/${first.lease.id}`, { method: "DELETE" });
   const secondActive = await request(arkPort, `/api/local-gpu/leases/${second.lease.id}`);
@@ -99,21 +110,30 @@ try {
   assert.equal(applied.length, 1);
   await request(arkPort, `/api/local-gpu/leases/${second.lease.id}`, { method: "DELETE" });
   const thirdActive = await request(arkPort, `/api/local-gpu/leases/${waiting.lease.id}`);
-  assert.equal(thirdActive.lease.model.id, "ornith-9b");
+  assert.equal(thirdActive.lease.model.id, "tomorrowbest-42b-q3-k-m");
   assert.equal(thirdActive.lease.state, "active");
-  assert.equal(config.loaded.name, "ornith-9b-q4_k_m.gguf");
+  assert.equal(thirdActive.lease.model.key, "future/TomorrowBest-42B-Q3_K_M.gguf");
+  assert.equal(thirdActive.lease.model.kv, "q8_0");
+  assert.equal(thirdActive.lease.model.ngl, 77);
+  assert.equal(config.loaded.name, "TomorrowBest-42B-Q3_K_M.gguf");
+  assert.equal(applied.at(-1).get("model"), "future/TomorrowBest-42B-Q3_K_M.gguf");
+  assert.equal(applied.at(-1).get("context"), "49152");
+  assert.equal(applied.at(-1).get("kv"), "q8_0");
+  assert.equal(applied.at(-1).get("ngl"), "77");
+  assert.equal(applied.at(-1).get("reasoning"), "medium");
   const isolated = JSON.parse(await readFile(path.join(thirdActive.lease.opencode.config_home, "opencode", "opencode.json"), "utf8"));
-  assert.deepEqual(Object.keys(isolated.provider.llamacpp.models), ["ornith-9b"]);
+  assert.deepEqual(Object.keys(isolated.provider.llamacpp.models), ["tomorrowbest-42b-q3-k-m"]);
+  assert.equal(isolated.provider.llamacpp.models["tomorrowbest-42b-q3-k-m"].name, "TomorrowBest 42B (TomorrowBest-42B-Q3_K_M.gguf)");
   assert.deepEqual(isolated.compaction, { auto: true, prune: true, reserved: 4096 });
   const expired = await requestStatus(arkPort, "/api/local-gpu/leases", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "active", owner: { tmux_name: "expired" } }) }, 202);
   await request(arkPort, `/api/local-gpu/leases/${thirdActive.lease.id}`, { method: "DELETE" });
-  const afterExpiry = await requestStatus(arkPort, "/api/local-gpu/leases", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "coder-7b", wait: true, owner: { tmux_name: "after-expiry" } }) }, 202);
+  const afterExpiry = await requestStatus(arkPort, "/api/local-gpu/leases", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "ternary-bonsai-27b-q2-0", wait: true, owner: { tmux_name: "after-expiry" } }) }, 202);
   await new Promise((resolve) => setTimeout(resolve, 60));
   await request(arkPort, `/api/local-gpu/leases/${afterExpiry.lease.id}/heartbeat`, { method: "POST" });
   await new Promise((resolve) => setTimeout(resolve, 60));
   const recovered = await request(arkPort, `/api/local-gpu/leases/${afterExpiry.lease.id}`);
   assert.equal(recovered.lease.state, "active");
-  assert.equal(recovered.lease.model.id, "coder-7b");
+  assert.equal(recovered.lease.model.id, "ternary-bonsai-27b-q2-0");
   await request(arkPort, `/api/local-gpu/leases/${afterExpiry.lease.id}`, { method: "DELETE" });
   const toggled = await request(arkPort, "/api/local-llm/toggle", { method: "POST" });
   assert.equal(toggled.running, false);
@@ -141,6 +161,10 @@ function freePort() {
       server.close(() => resolve(port));
     });
   });
+}
+
+function localGpuIds(models) {
+  return models.map((model) => [model.key, model.id]).sort(([a], [b]) => a.localeCompare(b));
 }
 
 async function waitForArk(port) {
