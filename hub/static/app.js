@@ -2716,16 +2716,24 @@ function renderLocalLlm(config) {
   els.localLlmNgl.value = String(config.settings?.ngl ?? 99);
   els.localLlmReasoning.value = config.settings?.reasoning || "off";
   els.localLlmMlock.checked = config.settings?.mlock === true;
-  const loaded = config.loaded;
+  const gpu = config.gpu || null;
+  const loaded = gpu?.loaded || config.loaded;
+  const busy = Number(gpu?.busy || 0) > 0 || gpu?.switch_in_progress === true;
+  const localModel = gpu?.current?.model || gpu?.models?.find((model) => model.id === gpu?.loaded_model_id) || null;
+  const modelName = localModel?.name || loaded?.name || "model loading";
+  const context = localModel?.context || loaded?.ctx;
+  const reasoning = localModel?.reasoning || loaded?.reasoning || "off";
+  const queue = Number(gpu?.queue || 0);
   els.localLlmStatus.textContent = config.running
-    ? `Running · ${loaded?.name || "model loading"}${loaded?.ctx ? ` · ${Number(loaded.ctx).toLocaleString()} ctx` : ""}`
+    ? `Local GPU: ${modelName} · reasoning ${reasoning}${context ? ` · ${Number(context).toLocaleString()} ctx` : ""} · busy: ${Number(gpu?.busy || 0)} · queue: ${queue}${busy ? " · choose active, wait, or hosted for a different model" : ""}`
     : "llama.cpp is stopped";
-  els.localLlmStatus.dataset.state = config.running ? "running" : "stopped";
+  els.localLlmStatus.dataset.state = busy ? "loading" : config.running ? "running" : "stopped";
+  els.localLlmToggle.title = els.localLlmStatus.textContent;
   els.localLlmServerToggle.textContent = config.running ? "Stop server" : "Start server";
   els.localLlmServerToggle.dataset.running = String(config.running === true);
-  els.localLlmServerToggle.disabled = false;
+  els.localLlmServerToggle.disabled = busy;
   renderLocalLlmPreset();
-  els.localLlmApply.disabled = !(config.models || []).length;
+  els.localLlmApply.disabled = !(config.models || []).length || busy;
 }
 
 function setSelectValue(select, value) {

@@ -39,7 +39,22 @@ const CODEX_IMAGE_DATA_LIMIT = Math.ceil(CODEX_IMAGE_LIMIT * 4 / 3) + 128;
 const PORT = Number(process.env.PORT || 4873);
 const HOST = process.env.HOST || "0.0.0.0";
 const LOCAL_LLM_URL = String(process.env.ARK_LOCAL_LLM_URL || "http://100.114.148.108:8090").replace(/\/$/, "");
+const LOCAL_LLM_OPENAI_URL = String(process.env.ARK_LOCAL_LLM_OPENAI_URL || "http://100.114.148.108:8080/v1").replace(/\/$/, "");
+const LOCAL_LLM_HEALTH_URL = String(process.env.ARK_LOCAL_LLM_HEALTH_URL || "http://100.114.148.108:8080/health").replace(/\/$/, "");
 const LOCAL_LLM_BENCHMARKS = process.env.ARK_LOCAL_LLM_BENCHMARKS || path.join(DATA, "workspaces", "ts-tony-gaming", "home-tony-development-local_llm", "benchmark-results");
+const LOCAL_GPU_STORE = path.join(DATA, "local-gpu.json");
+const LOCAL_GPU_JOBS = path.join(DATA, "local-gpu");
+const LOCAL_GPU_LEASE_MS = Number(process.env.ARK_LOCAL_GPU_LEASE_MS || 90_000);
+const LOCAL_GPU_OUTPUT_LIMIT = 4096;
+const LOCAL_GPU_MODELS = [
+  ["bonsai-27b", ["bonsai-27b-q1_0"]],
+  ["qwen36-35b", ["qwen3.6-35b-a3b"]],
+  ["qwen3-coder", ["qwen3-coder-30b-a3b"]],
+  ["coder-7b", ["qwen2.5-coder-7b"]],
+  ["ornith-35b", ["ornith-35b"]],
+  ["ornith-9b", ["ornith-9b"]],
+  ["tiny260k", ["stories260k"]],
+];
 const TERMINAL_STREAMS = new Map();
 const CAPTURE_STREAMS = new Map();
 const STATE_STREAM = { clients: new Set(), timer: null, busy: false, last: "" };
@@ -48,6 +63,7 @@ const CODEX_ROLLOUTS = new Map();
 const CODEX_TRANSCRIPTS = new Map();
 const CONTROL_MISSES = new Map();
 let DEVICE_ALIAS_SIGNATURE = "";
+let LOCAL_GPU_ADVANCE = null;
 const CONTROL_KEYS = new Set(["Enter", "Escape"]);
 const NETWORK_SITE_PORTS = [80, 81, 88, 443, 2283, 3000, 3001, 3333, 4000, 5000, 5055, 5173, 5601, 5678, 6000, 7000, 7080, 7120, 7331, 7575, 7860, 7878, 8000, 8001, 8006, 8080, 8081, 8090, 8091, 8096, 8123, 8181, 8443, 8581, 8765, 8787, 8888, 8989, 9000, 9001, 9090, 9091, 9443, 9696, 10000, 10200, 11434, 19999, 32400];
 const NETWORK_SITE_IDENTITIES = new Map([
@@ -112,7 +128,7 @@ const server = http.createServer(async (req, res) => {
     }
     await route(req, res);
   } catch (error) {
-    json(res, error?.status || 500, { detail: error?.message || String(error) });
+    json(res, error?.status || 500, { detail: error?.message || String(error), ...(error?.payload || {}) });
   }
 });
 
@@ -124,6 +140,7 @@ if (process.env.ARK_SELF_CHECK === "trusted-remote") {
   server.listen(PORT, HOST, () => {
     console.log(`Ark listening on http://${HOST}:${PORT}`);
   });
+  setInterval(() => advanceLocalGpuQueue().catch(() => {}), 10_000).unref();
 }
 
 async function route(req, res) {
@@ -192,8 +209,15 @@ async function route(req, res) {
     return json(res, 200, await readSettings());
   }
   if (req.method === "GET" && pathname === "/api/local-llm") {
-    return json(res, 200, await localLlmConfig());
+    return json(res, 200, { ...(await localLlmConfig()), gpu: await localGpuStatus() });
   }
+  if (req.method === "GET" && pathname === "/api/local-gpu") return json(res, 200, await localGpuStatus());
+  if (req.method === "POST" && pathname === "/api/local-gpu/leases") return json(res, 202, await acquireLocalGpuLease(await readJson(req)));
+  const localGpuLeaseMatch = pathname.match(/^\/api\/local-gpu\/leases\/([^/]+)$/);
+  if (localGpuLeaseMatch && req.method === "GET") return json(res, 200, await localGpuLease(localGpuLeaseMatch[1]));
+  if (localGpuLeaseMatch && req.method === "DELETE") return json(res, 200, await releaseLocalGpuLease(localGpuLeaseMatch[1]));
+  const localGpuHeartbeatMatch = pathname.match(/^\/api\/local-gpu\/leases\/([^/]+)\/heartbeat$/);
+  if (localGpuHeartbeatMatch && req.method === "POST") return json(res, 200, await heartbeatLocalGpuLease(localGpuHeartbeatMatch[1]));
   if (req.method === "GET" && pathname === "/local-llm/benchmarks") {
     return localLlmBenchmarkIndex(res);
   }
@@ -1400,7 +1424,7 @@ function centralRunnerContext(device, cwd, tool) {
   if (tool === "terminal" || device.local) return "";
   return [
     "Ark context this session is managed by Ark's private hub. Keep the work and any human-input question in this session; do not manage Ark, other sessions, or shared services unless the user explicitly asks.",
-    ...(tool === "codex" ? ["Ark context on ark-hub, use /home/tony/Development/ark/scripts/ark-opencode \"question\" for a bounded, read-only second opinion from a separate free OpenCode model."] : []),
+    ...(tool === "codex" ? ["Ark context on ark-hub, use /home/tony/Development/ark/scripts/ark-opencode \"question\" for a bounded, read-only second opinion from Ark's shared local llama.cpp GPU. It defaults to the active warm model; use --model model-id --wait only when needed. Never call the controller /apply or /toggle endpoints yourself."] : []),
     `Ark context target=${device.label}`,
     `Ark context cwd=${cwd}`,
     `Ark context ssh=${sshTarget(device)}`,
@@ -3501,6 +3525,13 @@ async function writeYamlAtomic(filePath, data, mode) {
   await rename(tmp, filePath);
 }
 
+async function writeJsonAtomic(filePath, data) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  const tmp = `${filePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  await writeFile(tmp, JSON.stringify(data, null, 2) + "\n");
+  await rename(tmp, filePath);
+}
+
 function dataReadError(label, error) {
   return Object.assign(new Error(`${label} is unreadable; Ark will not overwrite it: ${error?.message || error}`), { status: 500 });
 }
@@ -3593,6 +3624,7 @@ async function localLlmBenchmarkIndex(res) {
 }
 
 async function applyLocalLlm(body) {
+  await assertLocalGpuIdle("switch the local model");
   const form = new URLSearchParams({
     model: String(body.model || ""),
     context: String(body.context || ""),
@@ -3611,8 +3643,380 @@ async function applyLocalLlm(body) {
 }
 
 async function toggleLocalLlm() {
+  await assertLocalGpuIdle("stop or start llama.cpp");
   await localLlmFetch("/toggle", { method: "POST" });
   return localLlmConfig();
+}
+
+async function localGpuStatus() {
+  const [state, config] = await Promise.all([pruneLocalGpuState(), localLlmConfig().catch(() => null)]);
+  const runtime = await localLlmRuntime().catch(() => config ? { running: config.running, loaded: config.loaded } : { running: null, loaded: null });
+  const catalog = localGpuCatalog(config);
+  const current = state.current ? publicLocalGpuLease(state.current) : null;
+  const queue = state.queue.map(publicLocalGpuLease);
+  return {
+    loaded: runtime.loaded || null,
+    loaded_model_id: localGpuLoadedModel(catalog, runtime.loaded)?.id || "",
+    switch_in_progress: current?.state === "switching",
+    busy: current ? 1 : 0,
+    queue: queue.length,
+    holder: current?.owner || null,
+    current,
+    queued: queue,
+    models: catalog.map((model) => ({ id: model.id, name: model.name, key: model.key, context: model.context, reasoning: model.reasoning })),
+  };
+}
+
+async function acquireLocalGpuLease(body) {
+  const requested = String(body?.model || "active").trim() || "active";
+  const wait = body?.wait === true;
+  const owner = localGpuOwner(body?.owner);
+  const [config, runtime] = await Promise.all([localLlmConfig(), localLlmRuntime()]);
+  const selection = localGpuSelection(requested, config, runtime);
+  const outcome = await withMutation("local-gpu", async () => {
+    const state = await readLocalGpuState();
+    pruneLocalGpuStateNow(state);
+    const busy = state.current || state.queue.length;
+    if (busy) {
+      const queuedModel = state.current?.model?.id || state.queue.at(-1)?.model?.id || "";
+      const compatible = selection.id === queuedModel;
+      if (requested !== "active" && !compatible && !wait) {
+        await writeLocalGpuState(state);
+        throw localGpuBusyError(state, runtime);
+      }
+      const lease = newLocalGpuLease(selection, owner);
+      lease.state = "queued";
+      state.queue.push(lease);
+      await writeLocalGpuState(state);
+      return { lease, advance: !state.current };
+    }
+    const lease = newLocalGpuLease(selection, owner);
+    state.current = lease;
+    lease.state = localGpuMatchesRuntime(lease.model, runtime) ? "active" : "switching";
+    if (lease.state === "active") await prepareLocalGpuOpenCode(lease);
+    await writeLocalGpuState(state);
+    return { lease, advance: lease.state === "switching" };
+  });
+  if (outcome.advance) await advanceLocalGpuQueue();
+  const lease = await localGpuLeaseRecord(outcome.lease.id);
+  await recordLocalGpuSession(lease);
+  return { lease };
+}
+
+async function localGpuLease(id) {
+  await advanceLocalGpuQueue();
+  return { lease: await localGpuLeaseRecord(id) };
+}
+
+async function heartbeatLocalGpuLease(id) {
+  const lease = await withMutation("local-gpu", async () => {
+    const state = await readLocalGpuState();
+    const found = [state.current, ...state.queue].find((item) => item?.id === id);
+    if (!found) throw httpError(404, "Local GPU lease not found.");
+    refreshLocalGpuLease(found);
+    await writeLocalGpuState(state);
+    return found;
+  });
+  return { lease: publicLocalGpuLease(lease) };
+}
+
+async function releaseLocalGpuLease(id) {
+  let released = null;
+  await withMutation("local-gpu", async () => {
+    const state = await readLocalGpuState();
+    if (state.current?.id === id) released = publicLocalGpuLease(state.current);
+    const queued = state.queue.find((item) => item.id === id);
+    if (queued) released = publicLocalGpuLease(queued);
+    if (state.current?.id === id) state.current = null;
+    state.queue = state.queue.filter((item) => item.id !== id);
+    await writeLocalGpuState(state);
+  });
+  if (released) await recordLocalGpuSession({ ...released, state: "released" });
+  void advanceLocalGpuQueue().catch(() => {});
+  return { ok: true };
+}
+
+async function advanceLocalGpuQueue() {
+  if (LOCAL_GPU_ADVANCE) return LOCAL_GPU_ADVANCE;
+  LOCAL_GPU_ADVANCE = (async () => {
+    const next = await withMutation("local-gpu", async () => {
+      const state = await readLocalGpuState();
+      const changed = pruneLocalGpuStateNow(state);
+      if (state.current) {
+        if (changed) await writeLocalGpuState(state);
+        return state.current.state === "switching" ? state.current : null;
+      }
+      if (!state.queue.length) {
+        if (changed) await writeLocalGpuState(state);
+        return null;
+      }
+      const lease = state.queue.shift();
+      lease.state = "switching";
+      refreshLocalGpuLease(lease);
+      state.current = lease;
+      await writeLocalGpuState(state);
+      return lease;
+    });
+    if (!next) return;
+    try {
+      const runtime = await localLlmRuntime();
+      if (localGpuMatchesRuntime(next.model, runtime)) {
+        await activateLocalGpuLease(next.id, runtime);
+        return;
+      }
+      await applyLocalGpuModel(next.model);
+      await activateLocalGpuLease(next.id, await waitForLocalGpuModel(next.model));
+    } catch (error) {
+      await failLocalGpuLease(next.id, error.message || String(error));
+    }
+  })();
+  try {
+    return await LOCAL_GPU_ADVANCE;
+  } finally {
+    LOCAL_GPU_ADVANCE = null;
+  }
+}
+
+async function activateLocalGpuLease(id, runtime) {
+  const lease = await withMutation("local-gpu", async () => {
+    const state = await readLocalGpuState();
+    const lease = state.current?.id === id ? state.current : null;
+    if (!lease) return null;
+    lease.state = "active";
+    lease.runtime = runtime.loaded || null;
+    refreshLocalGpuLease(lease);
+    await prepareLocalGpuOpenCode(lease);
+    await writeLocalGpuState(state);
+    return lease;
+  });
+  if (lease) await recordLocalGpuSession(publicLocalGpuLease(lease));
+  return lease;
+}
+
+async function failLocalGpuLease(id, detail) {
+  await withMutation("local-gpu", async () => {
+    const state = await readLocalGpuState();
+    if (state.current?.id !== id) return;
+    state.current.state = "failed";
+    state.current.error = String(detail || "Local GPU switch failed.").slice(0, 500);
+    state.current.expires_at = Date.now() + 5_000;
+    await writeLocalGpuState(state);
+  });
+}
+
+async function localGpuLeaseRecord(id) {
+  const state = await readLocalGpuState();
+  const lease = [state.current, ...state.queue].find((item) => item?.id === id);
+  if (!lease) throw httpError(404, "Local GPU lease not found.");
+  if (lease.state === "failed") throw httpError(502, lease.error || "Local GPU switch failed.");
+  return publicLocalGpuLease(lease);
+}
+
+async function assertLocalGpuIdle(action) {
+  const state = await pruneLocalGpuState();
+  if (!state.current && !state.queue.length) return;
+  throw localGpuBusyError(state, null, `Cannot ${action} while Ark has a local GPU lease.`);
+}
+
+async function applyLocalGpuModel(model) {
+  const form = new URLSearchParams({
+    model: model.key,
+    context: String(model.context),
+    kv: model.kv,
+    ngl: String(model.ngl),
+    reasoning: model.reasoning,
+    mlock: "off",
+  });
+  await localLlmFetch("/apply", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: form, redirect: "manual" });
+}
+
+async function waitForLocalGpuModel(model) {
+  const deadline = Date.now() + 120_000;
+  let last = "";
+  while (Date.now() < deadline) {
+    try {
+      const runtime = await localLlmRuntime();
+      const health = await fetch(LOCAL_LLM_HEALTH_URL, { signal: AbortSignal.timeout(4_000) });
+      if (health.ok && localGpuMatchesRuntime(model, runtime)) return runtime;
+      last = runtime.loaded?.name || `health ${health.status}`;
+    } catch (error) {
+      last = error.message || String(error);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+  throw new Error(`Timed out waiting for ${model.name} to become ready${last ? ` (${last})` : ""}.`);
+}
+
+async function localLlmRuntime() {
+  const response = await localLlmFetch("/status");
+  return response.json();
+}
+
+function localGpuCatalog(config) {
+  const models = Array.isArray(config?.models) ? config.models : [];
+  return LOCAL_GPU_MODELS.flatMap(([id, patterns]) => {
+    const item = models.find((model) => patterns.some((pattern) => String(model?.name || model?.key || "").toLowerCase().includes(pattern)));
+    if (!item) return [];
+    const preset = item.preset || {};
+    return [{
+      id,
+      key: String(item.key || ""),
+      name: String(preset.label || item.name || id),
+      loaded_name: String(item.name || ""),
+      context: Number(preset.ctx || config?.settings?.context || 32768),
+      kv: String(preset.kv || config?.settings?.kv || "q4_0"),
+      ngl: Number(preset.ngl ?? config?.settings?.ngl ?? 99),
+      reasoning: String(preset.reasoning || config?.settings?.reasoning || "off"),
+    }];
+  });
+}
+
+function localGpuLoadedModel(catalog, loaded) {
+  const name = String(loaded?.name || "").toLowerCase();
+  return catalog.find((model) => model.loaded_name.toLowerCase() === name) || null;
+}
+
+function localGpuSelection(requested, config, runtime) {
+  if (runtime?.running !== true || !runtime?.loaded?.name) throw httpError(503, "The local llama.cpp server has no ready model.");
+  const catalog = localGpuCatalog(config);
+  const active = localGpuLoadedModel(catalog, runtime.loaded);
+  if (!active) throw httpError(503, `Ark cannot map the loaded GGUF ${runtime.loaded.name} to an OpenCode model ID.`);
+  const selected = requested === "active" ? active : catalog.find((model) => model.id === requested);
+  if (!selected) throw httpError(400, `Unknown local model ${requested}. Available: active, ${catalog.map((model) => model.id).join(", ")}.`);
+  const isActive = selected.id === active.id;
+  return {
+    ...selected,
+    context: isActive ? Number(runtime.loaded.ctx || selected.context) : selected.context,
+    reasoning: isActive ? String(runtime.loaded.reasoning || selected.reasoning) : selected.reasoning,
+    loaded_name: isActive ? String(runtime.loaded.name) : selected.loaded_name,
+    output: LOCAL_GPU_OUTPUT_LIMIT,
+  };
+}
+
+function localGpuMatchesRuntime(model, runtime) {
+  return String(model?.loaded_name || "").toLowerCase() === String(runtime?.loaded?.name || "").toLowerCase();
+}
+
+function localGpuOwner(value) {
+  const clean = (item) => String(item || "").trim().slice(0, 240);
+  return { tmux_name: clean(value?.tmux_name), cwd: clean(value?.cwd) };
+}
+
+function newLocalGpuLease(model, owner) {
+  const now = Date.now();
+  return { id: crypto.randomUUID(), state: "queued", model, owner, created_at: now, heartbeat_at: now, expires_at: now + LOCAL_GPU_LEASE_MS };
+}
+
+function refreshLocalGpuLease(lease) {
+  lease.heartbeat_at = Date.now();
+  lease.expires_at = lease.heartbeat_at + LOCAL_GPU_LEASE_MS;
+}
+
+function publicLocalGpuLease(lease) {
+  return {
+    id: lease.id,
+    state: lease.state,
+    model: { id: lease.model.id, name: lease.model.name, full_id: `llamacpp/${lease.model.id}`, context: lease.model.context, output: lease.model.output, reasoning: lease.model.reasoning, loaded_name: lease.model.loaded_name },
+    owner: lease.owner,
+    created_at: lease.created_at,
+    heartbeat_at: lease.heartbeat_at,
+    expires_at: lease.expires_at,
+    error: lease.error || "",
+    opencode: lease.opencode || null,
+  };
+}
+
+async function recordLocalGpuSession(lease) {
+  const tmuxName = String(lease?.owner?.tmux_name || "");
+  if (!tmuxName) return;
+  const session = (await readStore()).sessions.find((item) => item.tmux_name === tmuxName);
+  if (!session) return;
+  await upsertSession({
+    ...session,
+    local_gpu: {
+      lease_id: lease.id,
+      state: lease.state,
+      model_id: lease.model?.id || "",
+      loaded_gguf: lease.model?.loaded_name || "",
+      context: lease.model?.context || 0,
+      output: lease.model?.output || 0,
+      reasoning: lease.model?.reasoning || "",
+      updated_at: Date.now(),
+    },
+  });
+}
+
+function localGpuBusyError(state, runtime, message) {
+  const current = state.current || state.queue[0];
+  const loaded = runtime?.loaded?.name || current?.model?.loaded_name || "the active model";
+  const error = httpError(409, message || `Local GPU is busy with ${loaded}.`);
+  error.payload = { choices: ["use active model", "wait", "use hosted model"], loaded };
+  return error;
+}
+
+async function readLocalGpuState() {
+  try {
+    const data = JSON.parse(await readFile(LOCAL_GPU_STORE, "utf8"));
+    return { current: data?.current && typeof data.current === "object" ? data.current : null, queue: Array.isArray(data?.queue) ? data.queue.filter((item) => item?.id && item?.model) : [] };
+  } catch (error) {
+    if (error?.code === "ENOENT") return { current: null, queue: [] };
+    throw dataReadError("local-gpu.json", error);
+  }
+}
+
+async function writeLocalGpuState(state) {
+  await writeJsonAtomic(LOCAL_GPU_STORE, { current: state.current || null, queue: state.queue || [] });
+}
+
+async function pruneLocalGpuState() {
+  return withMutation("local-gpu", async () => {
+    const state = await readLocalGpuState();
+    if (pruneLocalGpuStateNow(state)) await writeLocalGpuState(state);
+    return state;
+  });
+}
+
+function pruneLocalGpuStateNow(state) {
+  const now = Date.now();
+  let changed = false;
+  if (state.current && Number(state.current.expires_at || 0) <= now) {
+    state.current = null;
+    changed = true;
+  }
+  const queue = state.queue.filter((lease) => Number(lease.expires_at || 0) > now);
+  if (queue.length !== state.queue.length) {
+    state.queue = queue;
+    changed = true;
+  }
+  return changed;
+}
+
+async function prepareLocalGpuOpenCode(lease) {
+  const root = path.join(LOCAL_GPU_JOBS, lease.id);
+  const configHome = path.join(root, "config");
+  const dataHome = path.join(root, "data");
+  const cacheHome = path.join(root, "cache");
+  const config = {
+    $schema: "https://opencode.ai/config.json",
+    model: `llamacpp/${lease.model.id}`,
+    compaction: { auto: true, prune: true, reserved: 4096 },
+    provider: {
+      llamacpp: {
+        npm: "@ai-sdk/openai-compatible",
+        name: "Ark local llama.cpp",
+        options: { baseURL: LOCAL_LLM_OPENAI_URL },
+        models: {
+          [lease.model.id]: {
+            name: `${lease.model.name} (${lease.model.loaded_name})`,
+            limit: { context: lease.model.context, output: lease.model.output },
+          },
+        },
+      },
+    },
+  };
+  await writeJsonAtomic(path.join(configHome, "opencode", "opencode.json"), config);
+  lease.opencode = { config_home: configHome, data_home: dataHome, cache_home: cacheHome };
+  await writeJsonAtomic(path.join(root, "lease.json"), publicLocalGpuLease(lease));
 }
 
 async function readFileUpload(req, dir) {

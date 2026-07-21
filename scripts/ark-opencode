@@ -1,20 +1,101 @@
-#!/bin/sh
-set -eu
+#!/usr/bin/env node
+import { spawn, spawnSync } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
 
-if [ "$#" -eq 0 ]; then
-  echo "Usage: ark-opencode 'consultation question'" >&2
-  exit 64
-fi
+const ARK_URL = process.env.ARK_URL || "http://127.0.0.1:4873";
+const OPENCODE = process.env.ARK_OPENCODE_BIN || path.join(os.homedir(), ".local", "bin", "opencode");
+const args = process.argv.slice(2);
+let model = "active";
+let wait = false;
 
-model=${ARK_OPENCODE_MODEL:-opencode/north-mini-code-free}
-case "$model" in
-  opencode/*-free) ;;
-  *)
-    echo "ARK_OPENCODE_MODEL must name an OpenCode free model (opencode/*-free)." >&2
-    exit 64
-    ;;
-esac
+while (args[0] === "--model" || args[0] === "--wait") {
+  if (args.shift() === "--wait") {
+    wait = true;
+  } else {
+    model = String(args.shift() || "");
+    if (!model) usage();
+  }
+}
+if (!args.length) usage();
 
-exec /home/tony/.local/bin/opencode run --agent plan --model "$model" "You are a read-only Ark consultation for another coding agent. Give an independent, concise answer to the request below. Inspect files only when useful. Do not edit files, run commands that change state, start other agents, or alter Ark. Return findings and recommended next steps, not an implementation.
+const owner = { cwd: process.cwd(), tmux_name: tmuxName() };
+let lease = null;
+let child = null;
+let stopping = false;
 
-Request: $*"
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.once(signal, async () => {
+    if (stopping) return;
+    stopping = true;
+    child?.kill(signal);
+    await release();
+    process.exit(signal === "SIGINT" ? 130 : 143);
+  });
+}
+
+try {
+  lease = await acquire();
+  const heartbeat = setInterval(() => request(`/api/local-gpu/leases/${encodeURIComponent(lease.id)}/heartbeat`, { method: "POST" }).catch(() => {}), 20_000);
+  try {
+    child = spawn(OPENCODE, [
+      "run", "--agent", "plan", "--model", lease.model.full_id,
+      "You are a read-only Ark consultation for another coding agent. Give an independent, concise answer to the request below. Inspect files only when useful. Do not edit files, run commands that change state, start other agents, or alter Ark. Return findings and recommended next steps, not an implementation.\n\nRequest: " + args.join(" "),
+    ], {
+      cwd: process.cwd(),
+      env: { ...process.env, XDG_CONFIG_HOME: lease.opencode.config_home, XDG_DATA_HOME: lease.opencode.data_home, XDG_CACHE_HOME: lease.opencode.cache_home },
+      stdio: "inherit",
+    });
+    await new Promise((resolve, reject) => child.once("error", reject).once("exit", (code, signal) => code === 0 ? resolve() : reject(new Error(signal ? `OpenCode stopped by ${signal}` : `OpenCode exited ${code}`))));
+  } finally {
+    clearInterval(heartbeat);
+    await release();
+  }
+} catch (error) {
+  console.error(error.message || String(error));
+  process.exitCode = 1;
+}
+
+async function acquire() {
+  let result = await request("/api/local-gpu/leases", { method: "POST", body: { model, wait, owner } });
+  if (result.response.status === 409) throw new Error(`${result.data.detail || "Local GPU is busy."} Choices: ${(result.data.choices || []).join(", ")}.`);
+  if (!result.response.ok) throw new Error(result.data.detail || `Local GPU request failed (${result.response.status}).`);
+  while (result.data.lease?.state !== "active") {
+    const label = result.data.lease?.state === "switching" ? "switching model" : "queued";
+    process.stderr.write(`Ark local GPU: ${label}…\n`);
+    await delay(2000);
+    result = await request(`/api/local-gpu/leases/${encodeURIComponent(result.data.lease.id)}`);
+    if (!result.response.ok) throw new Error(result.data.detail || "Local GPU lease ended before it was admitted.");
+  }
+  return result.data.lease;
+}
+
+async function release() {
+  if (!lease) return;
+  const current = lease;
+  lease = null;
+  await request(`/api/local-gpu/leases/${encodeURIComponent(current.id)}`, { method: "DELETE" }).catch(() => {});
+}
+
+async function request(route, options = {}) {
+  const response = await fetch(`${ARK_URL}${route}`, {
+    method: options.method || "GET",
+    headers: options.body ? { "content-type": "application/json" } : undefined,
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+  let data = {};
+  try { data = await response.json(); } catch {}
+  return { response, data };
+}
+
+function tmuxName() {
+  const result = spawnSync("tmux", ["display-message", "-p", "#S"], { encoding: "utf8" });
+  return result.status === 0 ? result.stdout.trim().slice(0, 120) : "";
+}
+
+function delay(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
+function usage() {
+  console.error("Usage: ark-opencode [--model active|model-id] [--wait] 'consultation question'");
+  process.exit(64);
+}
