@@ -84,6 +84,7 @@ const state = {
   attachmentUploadItems: {},
   imageViewerImages: [],
   imageViewerIndex: -1,
+  imageViewerZoom: 1,
   adding: false,
   sidebarCollapsed: storedSidebarCollapsed === null
     ? window.matchMedia("(max-width: 760px)").matches
@@ -227,11 +228,16 @@ const els = {
   imageInput: document.querySelector("#image-input"),
   attachmentQueue: document.querySelector("#attachment-queue"),
   imageViewer: document.querySelector("#image-viewer"),
+  imageViewerStage: document.querySelector("#image-viewer-stage"),
+  imageViewerCanvas: document.querySelector("#image-viewer-canvas"),
   imageViewerImage: document.querySelector("#image-viewer-image"),
   imageViewerClose: document.querySelector("#image-viewer-close"),
   imageViewerPrevious: document.querySelector("#image-viewer-previous"),
   imageViewerNext: document.querySelector("#image-viewer-next"),
   imageViewerPosition: document.querySelector("#image-viewer-position"),
+  imageViewerZoomIn: document.querySelector("#image-viewer-zoom-in"),
+  imageViewerZoomOut: document.querySelector("#image-viewer-zoom-out"),
+  imageViewerZoomReset: document.querySelector("#image-viewer-zoom-reset"),
   error: document.querySelector("#error"),
 };
 
@@ -252,6 +258,7 @@ async function init() {
   els.theme.addEventListener("change", () => setTheme(els.theme.value));
   els.chillMode.addEventListener("click", () => setChillMode(!document.body.classList.contains("chill-mode")));
   document.addEventListener("keydown", (event) => {
+    if (els.imageViewer.open && handleImageViewerKey(event)) return;
     if (event.key !== "Escape" || !document.body.classList.contains("chill-mode")) return;
     event.preventDefault();
     setChillMode(false);
@@ -336,6 +343,18 @@ async function init() {
   els.imageViewerClose.addEventListener("click", () => els.imageViewer.close());
   els.imageViewerPrevious.addEventListener("click", () => showImageViewerImage(state.imageViewerIndex - 1));
   els.imageViewerNext.addEventListener("click", () => showImageViewerImage(state.imageViewerIndex + 1));
+  els.imageViewerZoomIn.addEventListener("click", () => setImageViewerZoom(state.imageViewerZoom + 1));
+  els.imageViewerZoomOut.addEventListener("click", () => setImageViewerZoom(state.imageViewerZoom - 1));
+  els.imageViewerZoomReset.addEventListener("click", () => setImageViewerZoom(1));
+  els.imageViewerImage.addEventListener("load", renderImageViewerZoom);
+  els.imageViewerStage.addEventListener("dblclick", (event) => {
+    if (!event.target.closest("button")) setImageViewerZoom(state.imageViewerZoom > 1 ? 1 : 2);
+  });
+  els.imageViewerStage.addEventListener("wheel", (event) => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    setImageViewerZoom(state.imageViewerZoom + (event.deltaY < 0 ? 1 : -1));
+  }, { passive: false });
   els.imageViewer.addEventListener("click", (event) => {
     if (event.target === els.imageViewer) els.imageViewer.close();
   });
@@ -343,6 +362,10 @@ async function init() {
     els.imageViewerImage.removeAttribute("src");
     state.imageViewerImages = [];
     state.imageViewerIndex = -1;
+    state.imageViewerZoom = 1;
+    els.imageViewer.dataset.zoom = "1";
+    els.imageViewerCanvas.removeAttribute("style");
+    els.imageViewerImage.removeAttribute("style");
   });
   els.attachImage.addEventListener("click", () => els.imageInput.click());
   els.imageInput.addEventListener("change", attachImages);
@@ -363,6 +386,7 @@ async function init() {
   els.viewRaw.addEventListener("click", () => setView("raw"));
   let resizeTimer;
   window.addEventListener("resize", () => {
+    if (els.imageViewer.open) requestAnimationFrame(renderImageViewerZoom);
     const sessionId = activeSession()?.id;
     const keepBottom = isNearBottom(els.parsed);
     clearTimeout(resizeTimer);
@@ -3019,7 +3043,11 @@ function openImageViewer(event) {
   state.imageViewerImages = event.currentTarget === els.attachmentQueue ? [image] : [...els.parsed.querySelectorAll("img.message-image")];
   if (!state.imageViewerImages.length) state.imageViewerImages = [image];
   showImageViewerImage(Math.max(0, state.imageViewerImages.indexOf(image)));
-  if (!els.imageViewer.open) els.imageViewer.showModal();
+  if (!els.imageViewer.open) {
+    els.imageViewer.showModal();
+    els.imageViewerStage.focus({ preventScroll: true });
+  }
+  requestAnimationFrame(renderImageViewerZoom);
 }
 
 function showImageViewerImage(index) {
@@ -3027,11 +3055,64 @@ function showImageViewerImage(index) {
   if (!images.length) return;
   state.imageViewerIndex = Math.max(0, Math.min(index, images.length - 1));
   const image = images[state.imageViewerIndex];
+  state.imageViewerZoom = 1;
+  els.imageViewer.dataset.zoom = "1";
+  els.imageViewerCanvas.removeAttribute("style");
+  els.imageViewerImage.removeAttribute("style");
+  els.imageViewerStage.scrollTo({ left: 0, top: 0 });
   els.imageViewerImage.src = image.src;
   els.imageViewerImage.alt = image.alt || "Full-size image";
   els.imageViewerPrevious.disabled = state.imageViewerIndex === 0;
   els.imageViewerNext.disabled = state.imageViewerIndex === images.length - 1;
   els.imageViewerPosition.textContent = `${state.imageViewerIndex + 1} / ${images.length}`;
+  els.imageViewerZoomOut.disabled = true;
+  els.imageViewerZoomIn.disabled = false;
+  els.imageViewerZoomReset.textContent = "100%";
+}
+
+function setImageViewerZoom(value) {
+  const zoom = Math.max(1, Math.min(8, Math.round(Number(value) * 100) / 100));
+  if (zoom === state.imageViewerZoom || !els.imageViewerImage.naturalWidth) return;
+  const stage = els.imageViewerStage;
+  const centerX = (stage.scrollLeft + stage.clientWidth / 2) / Math.max(1, stage.scrollWidth);
+  const centerY = (stage.scrollTop + stage.clientHeight / 2) / Math.max(1, stage.scrollHeight);
+  state.imageViewerZoom = zoom;
+  renderImageViewerZoom();
+  stage.scrollLeft = Math.max(0, centerX * stage.scrollWidth - stage.clientWidth / 2);
+  stage.scrollTop = Math.max(0, centerY * stage.scrollHeight - stage.clientHeight / 2);
+}
+
+function renderImageViewerZoom() {
+  const image = els.imageViewerImage;
+  const stage = els.imageViewerStage;
+  if (!image.naturalWidth || !stage.clientWidth || !stage.clientHeight) return;
+  const fit = Math.min(stage.clientWidth / image.naturalWidth, stage.clientHeight / image.naturalHeight);
+  const width = Math.max(1, Math.round(image.naturalWidth * fit * state.imageViewerZoom));
+  const height = Math.max(1, Math.round(image.naturalHeight * fit * state.imageViewerZoom));
+  els.imageViewer.dataset.zoom = String(state.imageViewerZoom);
+  els.imageViewerCanvas.style.width = `${Math.max(stage.clientWidth, width)}px`;
+  els.imageViewerCanvas.style.height = `${Math.max(stage.clientHeight, height)}px`;
+  image.style.width = `${width}px`;
+  image.style.height = `${height}px`;
+  els.imageViewerZoomOut.disabled = state.imageViewerZoom <= 1;
+  els.imageViewerZoomIn.disabled = state.imageViewerZoom >= 8;
+  els.imageViewerZoomReset.textContent = `${Math.round(state.imageViewerZoom * 100)}%`;
+}
+
+function handleImageViewerKey(event) {
+  if (event.key === "Escape") els.imageViewer.close();
+  else if (event.key === "ArrowLeft" && state.imageViewerIndex > 0) showImageViewerImage(state.imageViewerIndex - 1);
+  else if (event.key === "ArrowRight" && state.imageViewerIndex < state.imageViewerImages.length - 1) showImageViewerImage(state.imageViewerIndex + 1);
+  else if (["ArrowLeft", "ArrowRight"].includes(event.key)) {
+    event.preventDefault();
+    return true;
+  }
+  else if (event.key === "+" || event.key === "=") setImageViewerZoom(state.imageViewerZoom + 1);
+  else if (event.key === "-") setImageViewerZoom(state.imageViewerZoom - 1);
+  else if (event.key === "0") setImageViewerZoom(1);
+  else return false;
+  event.preventDefault();
+  return true;
 }
 
 function isImageAttachment(attachment) {

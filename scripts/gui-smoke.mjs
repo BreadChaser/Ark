@@ -181,8 +181,28 @@ try {
   await wait('document.querySelector("#attachment-queue img")?.complete && document.querySelector("#attachment-queue img").naturalWidth > 0');
   const queuedPreview = await js('return { name: document.querySelector("#attachment-queue .attachment-preview span")?.textContent, close: document.querySelector("#attachment-queue .attachment-preview button")?.textContent, text: document.querySelector("#attachment-queue .attachment-preview")?.innerText };');
   assert(queuedPreview.name === "gui-smoke.svg" && queuedPreview.close === "×" && !queuedPreview.text.includes("remove"), "image preview still uses the old remove label");
-  const queuedImageViewer = await js('document.querySelector("#attachment-queue img").click(); return { open: document.querySelector("#image-viewer").open, position: document.querySelector("#image-viewer-position").textContent, previous: document.querySelector("#image-viewer-previous").disabled, next: document.querySelector("#image-viewer-next").disabled };');
-  assert(queuedImageViewer.open && queuedImageViewer.position === "1 / 1" && queuedImageViewer.previous && queuedImageViewer.next, "queued attachment opened the chat image gallery");
+  await js('document.querySelector("#attachment-queue img").click(); return true;');
+  await wait('document.querySelector("#image-viewer").open && document.querySelector("#image-viewer-image").complete && document.querySelector("#image-viewer-image").naturalWidth > 0');
+  const queuedImageViewer = await js(`
+    const viewer = document.querySelector("#image-viewer");
+    const key = new KeyboardEvent("keydown", { key: "+", bubbles: true, cancelable: true });
+    document.dispatchEvent(key);
+    const stage = document.querySelector("#image-viewer-stage");
+    return {
+      open: viewer.open,
+      position: document.querySelector("#image-viewer-position").textContent,
+      previous: document.querySelector("#image-viewer-previous").disabled,
+      next: document.querySelector("#image-viewer-next").disabled,
+      zoom: viewer.dataset.zoom,
+      scrollable: stage.scrollWidth > stage.clientWidth || stage.scrollHeight > stage.clientHeight,
+      keyHandled: key.defaultPrevented,
+      border: getComputedStyle(viewer).borderTopWidth,
+      closePosition: getComputedStyle(document.querySelector("#image-viewer-close")).position,
+      closeTransition: getComputedStyle(document.querySelector("#image-viewer-close")).transitionProperty,
+    };
+  `);
+  assert(queuedImageViewer.open && queuedImageViewer.position === "1 / 1" && queuedImageViewer.previous && queuedImageViewer.next && queuedImageViewer.zoom === "2" && queuedImageViewer.scrollable && queuedImageViewer.keyHandled && queuedImageViewer.border === "0px" && queuedImageViewer.closePosition === "absolute" && queuedImageViewer.closeTransition.includes("opacity"), `image viewer is not zoomable or overlay-based: ${JSON.stringify(queuedImageViewer)}`);
+  await shot("image-viewer-zoomed");
   await js('document.querySelector("#image-viewer-close").click(); return true;');
   await assertSessionFiles(disposableSession.id, { attachment: true });
   await shot("attachment-queued");
@@ -1034,7 +1054,7 @@ async function testChatLayout() {
   assert(!thumbnail.target, "chat image still targets a new tab");
   await js('document.querySelector(".message-image").click(); return true;');
   await wait('document.querySelector("#image-viewer").open && document.querySelector("#image-viewer-image").complete && document.querySelector("#image-viewer-image").naturalWidth > 0');
-  await js('document.querySelector("#image-viewer-next").click(); return true;');
+  await js('document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true })); return true;');
   await wait(`document.querySelector("#image-viewer-image").src.endsWith(${JSON.stringify(nextImageUpload.url)}) && document.querySelector("#image-viewer-position").textContent === "2 / 2"`);
   await shot("chat-image-open");
   await js('document.querySelector("#image-viewer-close").click(); return true;');
