@@ -2467,6 +2467,8 @@ pre {
 }
 
 .image-viewer {
+  position: fixed;
+  inset: 0;
   width: 100vw;
   max-width: none;
   height: 100dvh;

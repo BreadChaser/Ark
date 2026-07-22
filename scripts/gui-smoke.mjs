@@ -185,9 +185,11 @@ try {
   await wait('document.querySelector("#image-viewer").open && document.querySelector("#image-viewer-image").complete && document.querySelector("#image-viewer-image").naturalWidth > 0');
   const queuedImageViewer = await js(`
     const viewer = document.querySelector("#image-viewer");
-    const key = new KeyboardEvent("keydown", { key: "+", bubbles: true, cancelable: true });
-    document.dispatchEvent(key);
     const stage = document.querySelector("#image-viewer-stage");
+    const wheel = new WheelEvent("wheel", { deltaY: -120, bubbles: true, cancelable: true });
+    stage.dispatchEvent(wheel);
+    const pan = new WheelEvent("wheel", { deltaY: 120, bubbles: true, cancelable: true });
+    stage.dispatchEvent(pan);
     return {
       open: viewer.open,
       position: document.querySelector("#image-viewer-position").textContent,
@@ -195,13 +197,15 @@ try {
       next: document.querySelector("#image-viewer-next").disabled,
       zoom: viewer.dataset.zoom,
       scrollable: stage.scrollWidth > stage.clientWidth || stage.scrollHeight > stage.clientHeight,
-      keyHandled: key.defaultPrevented,
+      wheelHandled: wheel.defaultPrevented,
+      panAllowed: !pan.defaultPrevented,
       border: getComputedStyle(viewer).borderTopWidth,
       closePosition: getComputedStyle(document.querySelector("#image-viewer-close")).position,
       closeTransition: getComputedStyle(document.querySelector("#image-viewer-close")).transitionProperty,
+      closeParent: document.querySelector("#image-viewer-close").parentElement.id,
     };
   `);
-  assert(queuedImageViewer.open && queuedImageViewer.position === "1 / 1" && queuedImageViewer.previous && queuedImageViewer.next && queuedImageViewer.zoom === "2" && queuedImageViewer.scrollable && queuedImageViewer.keyHandled && queuedImageViewer.border === "0px" && queuedImageViewer.closePosition === "absolute" && queuedImageViewer.closeTransition.includes("opacity"), `image viewer is not zoomable or overlay-based: ${JSON.stringify(queuedImageViewer)}`);
+  assert(queuedImageViewer.open && queuedImageViewer.position === "1 / 1" && queuedImageViewer.previous && queuedImageViewer.next && queuedImageViewer.zoom === "2" && queuedImageViewer.scrollable && queuedImageViewer.wheelHandled && queuedImageViewer.panAllowed && queuedImageViewer.border === "0px" && queuedImageViewer.closePosition === "absolute" && queuedImageViewer.closeTransition.includes("opacity") && queuedImageViewer.closeParent === "image-viewer", `image viewer is not zoomable or overlay-based: ${JSON.stringify(queuedImageViewer)}`);
   await shot("image-viewer-zoomed");
   await js('document.querySelector("#image-viewer-close").click(); return true;');
   await assertSessionFiles(disposableSession.id, { attachment: true });

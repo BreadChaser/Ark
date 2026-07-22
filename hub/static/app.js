@@ -351,7 +351,7 @@ async function init() {
     if (!event.target.closest("button")) setImageViewerZoom(state.imageViewerZoom > 1 ? 1 : 2);
   });
   els.imageViewerStage.addEventListener("wheel", (event) => {
-    if (!event.ctrlKey && !event.metaKey) return;
+    if (state.imageViewerZoom > 1 && !event.ctrlKey && !event.metaKey) return;
     event.preventDefault();
     setImageViewerZoom(state.imageViewerZoom + (event.deltaY < 0 ? 1 : -1));
   }, { passive: false });
