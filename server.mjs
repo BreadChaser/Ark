@@ -187,7 +187,10 @@ async function route(req, res) {
   }
   const sessionMetaMatch = pathname.match(/^\/api\/sessions\/([^/]+)$/);
   if (req.method === "PATCH" && sessionMetaMatch) {
-    const updated = await renameSession(sessionMetaMatch[1], (await readJson(req)).title);
+    const body = await readJson(req);
+    const updated = Object.hasOwn(body, "hidden")
+      ? await setSessionHidden(sessionMetaMatch[1], body.hidden)
+      : await renameSession(sessionMetaMatch[1], body.title);
     return json(res, 200, { session: publicSession(updated) });
   }
   if (req.method === "GET" && pathname === "/api/session-states") {
@@ -1956,6 +1959,20 @@ async function renameSession(id, value) {
     if (!found) throw httpError(404, `Unknown session: ${id}`);
     found.title = title;
     found.title_overridden = true;
+    await writeStore(data);
+    return found;
+  });
+  await writeSessionFiles(session);
+  return session;
+}
+
+async function setSessionHidden(id, value) {
+  if (typeof value !== "boolean") throw httpError(400, "hidden must be true or false");
+  const session = await withMutation("store", async () => {
+    const data = await readStore();
+    const found = data.sessions.find((item) => item.id === id);
+    if (!found) throw httpError(404, `Unknown session: ${id}`);
+    found.hidden = value;
     await writeStore(data);
     return found;
   });

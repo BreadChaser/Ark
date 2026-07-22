@@ -1300,6 +1300,55 @@ pre {
   font-size: 12px;
 }
 
+.hidden-sessions > summary {
+  cursor: pointer;
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.hidden-sessions-list {
+  display: grid;
+  gap: 2px;
+  margin: 5px 4px 0 31px;
+}
+
+.hidden-session {
+  width: 100%;
+  min-height: 31px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  padding: 5px 8px;
+  border-color: transparent;
+  color: var(--muted);
+  background: transparent;
+  text-align: left;
+}
+
+.hidden-session > span {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.hidden-session > span > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hidden-session small {
+  flex: 0 0 auto;
+  color: var(--faint);
+}
+
+.hidden-session:hover {
+  color: var(--text);
+  background: var(--panel-soft);
+}
+
 .main {
   position: relative;
   z-index: 1;

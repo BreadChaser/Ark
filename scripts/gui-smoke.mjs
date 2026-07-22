@@ -807,6 +807,15 @@ async function testSessionOrganization() {
     assert(editSwap.background === "rgba(0, 0, 0, 0)" && editSwap.icon === "hidden" && editSwap.offset < 2 && editSwap.state > 0, `rename did not replace the tool icon cleanly: ${JSON.stringify(editSwap)}`);
     await shot("session-edit-hover");
 
+    await js('document.querySelector("#hide").click(); return true;');
+    await wait(`document.querySelector('[data-hidden-session-id="${sessions[0].id}"]') && !document.querySelector('[data-session-id="${sessions[0].id}"]')`);
+    const hidden = (await api("/api/sessions")).sessions.find((session) => session.id === sessions[0].id);
+    assert(hidden?.hidden === true, "hidden session was not persisted");
+    await js(`document.querySelector('.hidden-sessions').open = true; document.querySelector('[data-hidden-session-id="${sessions[0].id}"]').click(); return true;`);
+    await wait(`document.querySelector('[data-session-id="${sessions[0].id}"]') && !document.querySelector('[data-hidden-session-id="${sessions[0].id}"]')`);
+    const restored = (await api("/api/sessions")).sessions.find((session) => session.id === sessions[0].id);
+    assert(restored?.hidden !== true, "restored session stayed hidden");
+
     const before = (await api("/api/sessions")).sessions.filter((session) => session.device_id === "local");
     const alphabetical = [...before].sort((a, b) => String(a.title || a.tmux_name).replace(/^(codex|terminal|opencode|claude)\s*-\s*/i, "").localeCompare(String(b.title || b.tmux_name).replace(/^(codex|terminal|opencode|claude)\s*-\s*/i, ""), undefined, { sensitivity: "base" }));
     assert(before.length >= 2 && before.map((session) => session.id).join() === alphabetical.map((session) => session.id).join(), "sessions are not alphabetical by default");

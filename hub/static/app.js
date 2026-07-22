@@ -166,6 +166,7 @@ const els = {
   restart: document.querySelector("#restart"),
   resume: document.querySelector("#resume"),
   enableYolo: document.querySelector("#enable-yolo"),
+  hide: document.querySelector("#hide"),
   forget: document.querySelector("#forget"),
   kill: document.querySelector("#kill"),
   sessionActionsToggle: document.querySelector("#session-actions-toggle"),
@@ -349,6 +350,7 @@ async function init() {
   els.restart.addEventListener("click", () => confirmRestart(false));
   els.resume.addEventListener("click", () => confirmRestart(true));
   els.enableYolo.addEventListener("click", enableYolo);
+  els.hide.addEventListener("click", () => setSessionHidden(activeSession(), true));
   els.forget.addEventListener("click", () => deleteSession(false));
   els.kill.addEventListener("click", () => deleteSession(true));
   els.sessionActionsToggle.addEventListener("click", () => {
@@ -399,11 +401,12 @@ async function refresh() {
     state.activeDeviceId = state.devices[0]?.id || "local";
   }
   state.expandedDevices.add(state.activeDeviceId);
-  if (state.activeSessionId && !state.sessions.some((session) => session.id === state.activeSessionId)) {
+  if (state.activeSessionId && !visibleSessions().some((session) => session.id === state.activeSessionId)) {
     state.activeSessionId = null;
+    localStorage.removeItem(ACTIVE_SESSION_KEY);
   }
-  if (!state.activeSessionId && state.sessions.length) {
-    state.activeSessionId = state.sessions[0].id;
+  if (!state.activeSessionId && visibleSessions().length) {
+    state.activeSessionId = visibleSessions()[0].id;
     localStorage.setItem(ACTIVE_SESSION_KEY, state.activeSessionId);
   }
   const active = activeSession();
@@ -416,12 +419,12 @@ async function refresh() {
   loadRememberedRepo();
   await loadTmux(state.activeDeviceId);
   state.sessions = (await api("/api/sessions")).sessions;
-  if (state.activeSessionId && !state.sessions.some((session) => session.id === state.activeSessionId)) {
+  if (state.activeSessionId && !visibleSessions().some((session) => session.id === state.activeSessionId)) {
     state.activeSessionId = null;
     localStorage.removeItem(ACTIVE_SESSION_KEY);
   }
-  if (!state.activeSessionId && state.sessions.length) {
-    state.activeSessionId = state.sessions[0].id;
+  if (!state.activeSessionId && visibleSessions().length) {
+    state.activeSessionId = visibleSessions()[0].id;
     localStorage.setItem(ACTIVE_SESSION_KEY, state.activeSessionId);
   }
   const activeAfterTmux = activeSession();
@@ -632,15 +635,44 @@ function renderSidebar() {
   renderDeviceSection("Offline", offline, "offline", state.offlineExpanded, () => {
     state.offlineExpanded = !state.offlineExpanded;
   });
+  renderHiddenSessions();
   renderCodexFooter();
+}
+
+function visibleSessions() {
+  return state.sessions.filter((session) => !session.hidden);
 }
 
 function sidebarDeviceHasSession(deviceId, sessions, tmuxSessions) {
   const ownedTmux = new Set(sessions
     .filter((session) => (session.tmux_device_id || session.device_id) === deviceId)
     .map((session) => session.tmux_name));
-  return sessions.some((session) => session.device_id === deviceId)
+  return sessions.some((session) => session.device_id === deviceId && !session.hidden)
     || tmuxSessions.some((tmux) => !ownedTmux.has(tmux.name));
+}
+
+function renderHiddenSessions() {
+  const hidden = state.sessions.filter((session) => session.hidden);
+  if (!hidden.length) return;
+  const section = document.createElement("details");
+  section.className = "device-section hidden-sessions";
+  const summary = document.createElement("summary");
+  summary.textContent = `Hidden chats (${hidden.length})`;
+  section.append(summary);
+  const list = document.createElement("div");
+  list.className = "hidden-sessions-list";
+  for (const session of hidden) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "hidden-session";
+    button.dataset.hiddenSessionId = session.id;
+    button.innerHTML = `<span>${toolIcon(session.tool)}<span>${escapeHtml(sessionDisplayName(session))}</span></span><small>Restore</small>`;
+    button.title = `Restore ${sessionDisplayName(session)}`;
+    button.onclick = () => setSessionHidden(session, false, true);
+    list.append(button);
+  }
+  section.append(list);
+  els.devices.append(section);
 }
 
 function renderCodexFooter() {
@@ -742,7 +774,7 @@ function renderDeviceSection(label, devices, kind, expanded, toggleExpanded) {
 }
 
 function renderDeviceGroup(device, target = els.devices) {
-  const owned = state.sessions.filter((session) => session.device_id === device.id);
+  const owned = state.sessions.filter((session) => session.device_id === device.id && !session.hidden);
   const tmuxSessions = state.tmux[device.id] || [];
   const ownedTmuxNames = new Set(state.sessions
     .filter((session) => (session.tmux_device_id || session.device_id) === device.id)
@@ -2387,7 +2419,7 @@ async function deleteSession(kill) {
   if (!confirm(`${verb} ${session.tmux_name}?`)) return;
   await api(`/api/sessions/${session.id}?kill=${kill ? "true" : "false"}`, { method: "DELETE" });
   state.sessions = (await api("/api/sessions")).sessions;
-  state.activeSessionId = state.sessions[0]?.id || null;
+  state.activeSessionId = visibleSessions()[0]?.id || null;
   if (state.activeSessionId) localStorage.setItem(ACTIVE_SESSION_KEY, state.activeSessionId);
   else localStorage.removeItem(ACTIVE_SESSION_KEY);
   await refreshTmux();
@@ -2517,7 +2549,7 @@ function setSessionControls(enabled, stopped = false) {
   if (!enabled || stopped) state.quickActionsOpen = false;
   els.workspace.classList.toggle("has-session", enabled);
   els.sessionPanel.classList.toggle("has-session", enabled);
-  for (const control of [els.input, els.send, els.attachImage, els.agentControls, els.restart, els.resume, els.enableYolo, els.forget, els.kill, els.sessionActionsToggle]) {
+  for (const control of [els.input, els.send, els.attachImage, els.agentControls, els.restart, els.resume, els.enableYolo, els.hide, els.forget, els.kill, els.sessionActionsToggle]) {
     control.disabled = !enabled;
   }
   for (const control of [els.input, els.send, els.attachImage, els.agentControls]) control.disabled = !enabled || stopped;
@@ -3023,6 +3055,29 @@ async function renameSession(session) {
       body: JSON.stringify({ title: title.trim() }),
     });
     Object.assign(session, data.session);
+    renderSidebar();
+    renderMain();
+  } catch (error) {
+    showError(error.message);
+  }
+}
+
+async function setSessionHidden(session, hidden, open = false) {
+  if (!session) return;
+  try {
+    const data = await api(`/api/sessions/${encodeURIComponent(session.id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ hidden }),
+    });
+    Object.assign(session, data.session);
+    if (hidden && state.activeSessionId === session.id) {
+      state.activeSessionId = visibleSessions()[0]?.id || null;
+      state.lastCapture = null;
+      state.forceBottomSessionId = null;
+      if (state.activeSessionId) localStorage.setItem(ACTIVE_SESSION_KEY, state.activeSessionId);
+      else localStorage.removeItem(ACTIVE_SESSION_KEY);
+    }
+    if (open) return openSession(session.id);
     renderSidebar();
     renderMain();
   } catch (error) {
