@@ -64,23 +64,23 @@
             <button id="view-parsed" class="active">Terminal</button>
             <button id="view-raw">Raw debug</button>
           </div>
-          <button id="session-actions-toggle" class="session-actions-toggle" type="button" aria-label="More session actions" aria-expanded="false">•••</button>
+          <button id="session-actions-toggle" class="session-actions-toggle" type="button" aria-label="More session actions" title="Session actions" aria-expanded="false">⋯</button>
           <div class="inline-actions">
-            <button id="restart" disabled>Restart</button>
-            <button id="resume" disabled>Resume</button>
-            <button id="mobile-keys" class="mobile-keys-toggle" type="button" disabled aria-expanded="false">Keys</button>
-            <button id="enable-yolo" disabled hidden>YOLO</button>
-            <button id="hide" disabled>Hide</button>
-            <button id="forget" disabled>Forget</button>
-            <button id="kill" disabled>Kill</button>
+            <button id="restart" disabled>↻ Restart</button>
+            <button id="resume" disabled>▶ Resume</button>
+            <button id="mobile-keys" class="mobile-keys-toggle" type="button" disabled aria-expanded="false">⌨ Keys</button>
+            <button id="enable-yolo" disabled hidden>⚡ YOLO</button>
+            <button id="hide" disabled>◌ Hide</button>
+            <button id="forget" disabled>⌁ Forget</button>
+            <button id="kill" disabled>× Kill</button>
           </div>
         </div>
         <div class="top-actions">
           <span id="status" class="status-pill">Idle</span>
-          <button id="chill-mode" class="chill-toggle" type="button" aria-pressed="false" title="Show only the theme background">Chill</button>
-          <button id="local-llm-toggle" class="local-llm-toggle" type="button">Models</button>
-          <button id="network-sites-toggle" class="network-sites-toggle" type="button">Sites</button>
-          <button id="settings-toggle" class="settings-toggle" aria-expanded="false">Settings</button>
+          <button id="chill-mode" class="chill-toggle" type="button" aria-label="Chill mode" aria-pressed="false" title="Show only the theme background">◌</button>
+          <button id="local-llm-toggle" class="local-llm-toggle" type="button" aria-label="Local models" title="Local models">◉</button>
+          <button id="network-sites-toggle" class="network-sites-toggle" type="button" aria-label="Network sites" title="Network sites">⌁</button>
+          <button id="settings-toggle" class="settings-toggle" aria-label="Settings" title="Settings" aria-expanded="false">⚙</button>
           <div id="settings-menu" class="settings-menu" hidden>
             <div class="settings-head">
               <strong>Settings</strong>

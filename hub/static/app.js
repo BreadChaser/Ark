@@ -922,9 +922,9 @@ function renderMain() {
   renderSessionSummary(session, device);
   renderSessionRuntime(session);
   els.resume.hidden = !session || session.tool !== "codex";
-  els.resume.textContent = session?.codex_session_id ? "Resume" : session?.central_runner ? "Choose resume" : "Resume last";
+  els.resume.textContent = session?.codex_session_id ? "▶ Resume" : session?.central_runner ? "▶ Choose resume" : "▶ Resume last";
   els.enableYolo.hidden = !session || session.tool !== "codex";
-  els.enableYolo.textContent = session?.yolo ? "YOLO on" : "YOLO";
+  els.enableYolo.textContent = session?.yolo ? "⚡ YOLO on" : "⚡ YOLO";
   setSessionControls(Boolean(session), stopped);
   els.mobileKeys.disabled = !session || stopped;
   if (!session || stopped) closeMobileKeys();
@@ -2615,7 +2615,9 @@ function setTheme(theme) {
 function setChillMode(enabled) {
   document.body.classList.toggle("chill-mode", enabled);
   els.chillMode.setAttribute("aria-pressed", String(enabled));
-  els.chillMode.textContent = enabled ? "Return to Ark" : "Chill mode";
+  els.chillMode.textContent = enabled ? "↩" : "◌";
+  els.chillMode.setAttribute("aria-label", enabled ? "Return to Ark" : "Chill mode");
+  els.chillMode.title = enabled ? "Return to Ark" : "Show only the theme background";
   if (enabled) {
     els.settingsMenu.hidden = true;
     els.settingsToggle.setAttribute("aria-expanded", "false");

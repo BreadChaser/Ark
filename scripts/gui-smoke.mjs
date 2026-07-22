@@ -422,6 +422,10 @@ async function assertSelectedSessionChrome() {
       metaCenter: Math.round((document.querySelector("#meta").getBoundingClientRect().top + document.querySelector("#meta").getBoundingClientRect().bottom) / 2),
       toolbarMerged: Boolean(document.querySelector(".topbar > .session-toolbar")) && !document.querySelector("#session-panel > .session-toolbar"),
       machineHeight: Math.max(...[...document.querySelectorAll(".device-toggle")].map((item) => item.getBoundingClientRect().height)),
+      sessionActionsVisible: getComputedStyle(document.querySelector("#session-actions-toggle")).display !== "none",
+      sessionMenuHidden: getComputedStyle(document.querySelector(".session-toolbar > .inline-actions")).display === "none",
+      sessionMenuText: document.querySelector(".session-toolbar > .inline-actions").textContent,
+      utilityIcons: ["#chill-mode", "#local-llm-toggle", "#network-sites-toggle", "#settings-toggle"].map((selector) => document.querySelector(selector).textContent),
     };
   `);
   const displayName = (disposableSession.title || disposableSession.tmux_name).replace(/^(codex|terminal|opencode|claude)\s*-\s*/i, "");
@@ -435,6 +439,11 @@ async function assertSelectedSessionChrome() {
   assert(chrome.headerHeight <= 46 && Math.abs(chrome.titleCenter - chrome.metaCenter) <= 2, "session header is not compacted to one row");
   assert(chrome.toolbarMerged, "session toolbar is still separated from the session header");
   assert(chrome.machineHeight <= 42, `machine rows are still oversized: ${chrome.machineHeight}px`);
+  assert(chrome.sessionActionsVisible && chrome.sessionMenuHidden && chrome.sessionMenuText.includes("↻ Restart") && chrome.sessionMenuText.includes("◌ Hide") && chrome.utilityIcons.join("") === "◌◉⌁⚙", "session actions were not consolidated into the compact toolbar");
+  await js('document.querySelector("#session-actions-toggle").click(); return true;');
+  await wait('getComputedStyle(document.querySelector(".session-toolbar > .inline-actions")).display === "grid"');
+  await shot("session-actions");
+  await js('document.querySelector("#session-actions-toggle").click(); return true;');
 }
 
 async function assertThemeContrast(theme) {

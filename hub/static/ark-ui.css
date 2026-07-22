@@ -1469,9 +1469,15 @@ pre {
 .local-llm-toggle,
 .network-sites-toggle,
 .chill-toggle {
+  display: inline-grid;
+  min-width: 30px;
+  min-height: 30px;
+  place-items: center;
+  padding: 0;
   border-color: transparent;
   color: var(--muted);
   background: transparent;
+  font-size: 17px;
 }
 
 .local-llm-dialog {
@@ -1903,6 +1909,7 @@ pre {
 }
 
 .session-toolbar {
+  position: relative;
   min-height: 0;
   flex: 0 0 auto;
   display: flex;
@@ -1957,20 +1964,44 @@ pre {
 }
 
 .session-toolbar > .inline-actions {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 6px);
+  right: 0;
+  display: none;
+  min-width: 142px;
+  padding: 5px;
   overflow: visible;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--panel-solid);
+  box-shadow: var(--shadow);
 }
 
+.topbar.session-actions-open .session-toolbar > .inline-actions { display: grid; }
+
 .session-toolbar > .inline-actions button {
+  width: 100%;
   min-height: 30px;
   padding: 5px 9px;
   color: var(--muted);
   background: transparent;
   font-size: 11px;
+  text-align: left;
   white-space: nowrap;
 }
 
 .session-actions-toggle {
-  display: none;
+  display: grid;
+  min-width: 30px;
+  min-height: 30px;
+  place-items: center;
+  padding: 0;
+  border-color: transparent;
+  color: var(--muted);
+  background: transparent;
+  font-size: 21px;
+  line-height: 1;
 }
 
 .mobile-keys-toggle,
@@ -3262,27 +3293,7 @@ body.sidebar-collapsed #sidebar-toggle::after {
   .chill-toggle {
     min-width: 36px;
     padding: 0;
-    font-size: 0;
-  }
-
-  .local-llm-toggle::before {
-    content: "◉";
     font-size: 18px;
-  }
-
-  .network-sites-toggle::before {
-    content: "⌁";
-    font-size: 20px;
-  }
-
-  .settings-toggle::before {
-    content: "⚙";
-    font-size: 18px;
-  }
-
-  .chill-toggle::before {
-    content: "◌";
-    font-size: 22px;
   }
 
   .local-llm-dialog form {
@@ -3347,24 +3358,6 @@ body.sidebar-collapsed #sidebar-toggle::after {
     padding-inline: 7px;
   }
 
-  .session-toolbar > .inline-actions {
-    position: absolute;
-    z-index: 30;
-    top: calc(100% + 6px);
-    right: 6px;
-    display: none;
-    min-width: 132px;
-    padding: 5px;
-    border: 1px solid var(--line-strong);
-    border-radius: var(--radius-md);
-    background: var(--panel-solid);
-    box-shadow: var(--shadow);
-  }
-
-  .topbar.session-actions-open .session-toolbar > .inline-actions {
-    display: grid;
-  }
-
   .session-toolbar > .inline-actions button {
     min-height: 36px;
     padding-inline: 10px;
@@ -3376,16 +3369,9 @@ body.sidebar-collapsed #sidebar-toggle::after {
   }
 
   .session-actions-toggle {
-    display: grid;
-    place-items: center;
     min-width: 34px;
     min-height: 34px;
     margin-left: auto;
-    padding: 0;
-    border-color: transparent;
-    color: var(--muted);
-    background: transparent;
-    font-size: 17px;
   }
 
   .mobile-keypad:not([hidden]) {
