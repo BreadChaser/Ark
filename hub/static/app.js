@@ -355,8 +355,8 @@ async function init() {
     event.preventDefault();
     setImageViewerZoom(state.imageViewerZoom + (event.deltaY < 0 ? 1 : -1));
   }, { passive: false });
-  els.imageViewer.addEventListener("click", (event) => {
-    if (event.target === els.imageViewer) els.imageViewer.close();
+  els.imageViewerStage.addEventListener("click", (event) => {
+    if (event.target !== els.imageViewerImage) els.imageViewer.close();
   });
   els.imageViewer.addEventListener("close", () => {
     els.imageViewerImage.removeAttribute("src");

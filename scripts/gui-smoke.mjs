@@ -207,7 +207,8 @@ try {
   `);
   assert(queuedImageViewer.open && queuedImageViewer.position === "1 / 1" && queuedImageViewer.previous && queuedImageViewer.next && queuedImageViewer.zoom === "2" && queuedImageViewer.scrollable && queuedImageViewer.wheelHandled && queuedImageViewer.panAllowed && queuedImageViewer.border === "0px" && queuedImageViewer.closePosition === "absolute" && queuedImageViewer.closeTransition.includes("opacity") && queuedImageViewer.closeParent === "image-viewer", `image viewer is not zoomable or overlay-based: ${JSON.stringify(queuedImageViewer)}`);
   await shot("image-viewer-zoomed");
-  await js('document.querySelector("#image-viewer-close").click(); return true;');
+  await js('document.querySelector("#image-viewer-canvas").click(); return true;');
+  await wait('!document.querySelector("#image-viewer").open');
   await assertSessionFiles(disposableSession.id, { attachment: true });
   await shot("attachment-queued");
   const dropped = await dropFileInBrowser();
