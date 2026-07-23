@@ -2130,6 +2130,9 @@ pre {
 
 .message-role {
   padding: 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: var(--faint);
   font-size: 10px;
   font-weight: 800;
@@ -2143,7 +2146,15 @@ pre {
 }
 
 .chat-message.user .message-role {
+  justify-content: flex-end;
   text-align: right;
+}
+
+.message-timestamp {
+  color: var(--faint);
+  font: 700 9px/1 var(--mono);
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .message-text {

@@ -1650,7 +1650,7 @@ function renderChatCapture(data, session, keepBottom) {
   const start = chatRenderStart(allMessages, limit);
   const messages = allMessages.slice(start);
   const hidden = Math.max(0, Number(state.chatHistoryStarts[session?.id] || 0)) + start;
-  const signature = `${hidden}\u0000${messages.map((message) => `${message.id || ""}\u0000${message.role}\u0000${message.phase || ""}\u0000${message.pending ? "1" : ""}\u0000${message.tool_status || ""}\u0000${message.tool_detail || ""}\u0000${message.text}\u0000${JSON.stringify(message.attachments || [])}`).join("\u0001")}`;
+  const signature = `${hidden}\u0000${messages.map((message) => `${message.id || ""}\u0000${message.created_at || ""}\u0000${message.role}\u0000${message.phase || ""}\u0000${message.pending ? "1" : ""}\u0000${message.tool_status || ""}\u0000${message.tool_detail || ""}\u0000${message.text}\u0000${JSON.stringify(message.attachments || [])}`).join("\u0001")}`;
   const currentStream = els.parsed.querySelector(":scope > .chat-stream");
   if (state.renderedChatSignatures[session?.id] === signature && currentStream?.dataset.sessionId === session?.id) {
     if (keepBottom) scrollToBottom(els.parsed);
@@ -1847,14 +1847,34 @@ function renderAssistantUpdateGroup(updates, session) {
 function renderMessageRole(message, session, hidden = false) {
   const role = document.createElement("div");
   role.className = "message-role";
+  const label = document.createElement("span");
+  label.className = "message-role-label";
   if (message.role === "user" || message.role === "system") {
-    role.textContent = message.role === "user" ? "You" : "System";
+    label.textContent = message.role === "user" ? "You" : "System";
   } else {
-    role.innerHTML = toolIcon(session?.tool || "terminal");
+    label.innerHTML = toolIcon(session?.tool || "terminal");
     role.title = toolLabel(session?.tool || "assistant");
+  }
+  role.append(label);
+  const timestamp = messageTimestamp(message.created_at);
+  if (timestamp) {
+    const time = document.createElement("time");
+    time.className = "message-timestamp";
+    time.dateTime = timestamp.iso;
+    time.title = timestamp.exact;
+    time.textContent = timestamp.relative;
+    role.append(time);
   }
   role.hidden = hidden;
   return role;
+}
+
+function messageTimestamp(value) {
+  const date = new Date(value || "");
+  if (!Number.isFinite(date.getTime())) return null;
+  const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+  const relative = seconds < 60 ? "now" : seconds < 3600 ? `${Math.floor(seconds / 60)}m ago` : seconds < 86400 ? `${Math.floor(seconds / 3600)}h ago` : `${Math.floor(seconds / 86400)}d ago`;
+  return { iso: date.toISOString(), relative, exact: date.toLocaleString() };
 }
 
 function renderMessageText(value) {
@@ -2004,7 +2024,7 @@ async function sendInput() {
   clearAttachmentQueue(session.id);
   const pendingId = `pending-${Date.now()}`;
   if (session.tool !== "terminal") {
-    (state.sentChat[session.id] ||= []).push({ id: pendingId, role: "user", text, attachments, pending: true });
+    (state.sentChat[session.id] ||= []).push({ id: pendingId, created_at: new Date().toISOString(), role: "user", text, attachments, pending: true });
     renderCapture();
   }
   setStatus("Sending");

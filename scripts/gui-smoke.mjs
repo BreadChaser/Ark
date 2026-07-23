@@ -175,6 +175,18 @@ try {
   assert(terminalViewSwitch.hidden, "terminal session still exposes the raw debug switch");
   assert(terminalViewSwitch.rawHidden, "terminal session rendered the duplicate raw debug view");
 
+  const messageTimestamps = await js(`
+    const ago = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    renderChatCapture({ messages: [
+      { role: "user", created_at: ago, text: "timestamp user" },
+      { role: "assistant", created_at: ago, text: "timestamp agent" },
+    ] }, { id: "timestamp-smoke", tool: "codex" }, false);
+    const times = [...document.querySelectorAll(".message-timestamp")];
+    return { labels: [...document.querySelectorAll(".message-role")].map((role) => role.textContent), times: times.map((time) => ({ text: time.textContent, datetime: time.dateTime, title: time.title })) };
+  `);
+  assert(messageTimestamps.labels[0].includes("You") && messageTimestamps.labels[1].includes("2m ago") && messageTimestamps.times.length === 2 && messageTimestamps.times.every((time) => time.text === "2m ago" && time.datetime && time.title), `message timestamps are missing: ${JSON.stringify(messageTimestamps)}`);
+  await js('renderCapture(); return true;');
+
   const inserted = await attachImageInBrowser();
   assert(inserted.queue.includes("gui-smoke.svg"), "attached file did not queue");
   assert(!inserted.input.includes("# Attached file:"), "attached file should not write directly to composer");
