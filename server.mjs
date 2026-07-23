@@ -288,7 +288,8 @@ async function route(req, res) {
     const workspacePath = centralRunner ? await ensureCentralWorkspace(tmuxDevice, device, body.cwd) : "";
     const runner = tool === "terminal" ? terminalRunner() : await selectToolRunner(tmuxDevice, tool, body.profile_id, settings);
     const opencodePort = tool === "opencode" ? configuredOpenCodePort(runner.command) || await reserveLoopbackPort() : 0;
-    const launchCommand = withProfileEnv(commandForSession(tool, runner.command, images, yolo, opencodePort), await resolveLaunchEnv(runner.env, runner.env_from_secrets));
+    const launchEnv = codexLaunchEnv(tool, await resolveLaunchEnv(runner.env, runner.env_from_secrets));
+    const launchCommand = withProfileEnv(commandForSession(tool, runner.command, images, yolo, opencodePort), launchEnv);
     const result = await startTmux(tmuxDevice, tmuxName, workspacePath || sessionTmuxCwd({ central_runner: centralRunner, cwd: body.cwd }), launchCommand);
     if (result.code !== 0) return json(res, 502, { detail: result.output });
     const initialTitle = `${tool} - ${path.basename(body.cwd) || body.cwd}`;
@@ -537,7 +538,8 @@ async function route(req, res) {
     const command = commandForRestart(session, Boolean(body.resume), toolCommands);
     const resolved = await resolveToolCommand(device, session.tool, command);
     await runOnDevice(previousDevice, `tmux kill-session -t ${q(session.tmux_name)} 2>/dev/null || true`, 10000);
-    const result = await startTmux(device, session.tmux_name, sessionTmuxCwd(session), withProfileEnv(resolved.command, await resolveLaunchEnv(session.runner_env, session.runner_env_from_secrets)));
+    const launchEnv = codexLaunchEnv(session.tool, await resolveLaunchEnv(session.runner_env, session.runner_env_from_secrets));
+    const result = await startTmux(device, session.tmux_name, sessionTmuxCwd(session), withProfileEnv(resolved.command, launchEnv));
     if (result.code !== 0) return json(res, 502, { detail: result.output });
     await clearPendingControl(session.id);
     await enableTmuxPipeLog(device, session);
@@ -1017,10 +1019,18 @@ function profileAccountHome(profile) {
   return profileEnv(profile.env).CODEX_HOME || "";
 }
 
+function codexLaunchEnv(tool, env) {
+  if (tool !== "codex" || env.TMPDIR) return env;
+  // The VM's /tmp is intentionally memory-backed and can fill during builds.
+  // Keep Codex's self-updater on the persistent home-volume instead.
+  return { ...env, TMPDIR: path.join(os.homedir(), ".cache", "ark", "codex-update") };
+}
+
 function withProfileEnv(command, env) {
   const clean = profileEnv(env);
   const exports = Object.entries(clean).map(([key, value]) => `export ${key}=${q(value)};`).join(" ");
-  const setup = clean.CODEX_HOME ? `mkdir -p ${q(clean.CODEX_HOME)} && ` : "";
+  const setupDirs = [...new Set([clean.CODEX_HOME, clean.TMPDIR].filter(Boolean))];
+  const setup = setupDirs.length ? `mkdir -p ${setupDirs.map(q).join(" ")} && ` : "";
   return exports ? `${setup}${exports} ${command}` : command;
 }
 
@@ -4308,6 +4318,8 @@ function selfCheckCore() {
   const exactResume = commandForRestart({ tool: "codex", runner_command: "codex --no-alt-screen", codex_session_id: "019f491a-b738-7462-8a3a-418e4532df67" }, true, {});
   if (exactResume !== "codex --no-alt-screen resume '019f491a-b738-7462-8a3a-418e4532df67'") throw new Error("Codex resume lost the exact session id");
   if (commandForSession("codex", "codex --no-alt-screen", [], true) !== "codex --no-alt-screen --yolo") throw new Error("Codex YOLO flag was not added to new sessions");
+  const codexTmp = path.join(os.homedir(), ".cache", "ark", "codex-update");
+  if (codexLaunchEnv("codex", {}).TMPDIR !== codexTmp || codexLaunchEnv("opencode", {}).TMPDIR || codexLaunchEnv("codex", { TMPDIR: "/custom/tmp" }).TMPDIR !== "/custom/tmp") throw new Error("Codex updater temporary directory was not preserved");
   if (commandForSession("opencode", "opencode", [], false, 41721) !== "opencode --port 41721 --hostname 127.0.0.1") throw new Error("OpenCode did not keep its API private to the hub");
   if (commandForSession("opencode", "bash", [], false, 41721) !== "bash") throw new Error("OpenCode API flags leaked into a custom runner");
   if (commandForRestart({ tool: "opencode", runner_command: "opencode", opencode_port: 41721, opencode_session_id: "ses_123" }, true, {}) !== "opencode --port 41721 --hostname 127.0.0.1 --session 'ses_123'") throw new Error("OpenCode resume lost its exact session id");
