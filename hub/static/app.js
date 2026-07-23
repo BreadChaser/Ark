@@ -3283,7 +3283,12 @@ function startTerminalStream(session) {
       }).catch((error) => showError(error.message));
     });
     const source = new EventSource(`/api/sessions/${session.id}/terminal/stream`);
-    source.onopen = () => setStatus("Connected");
+    let terminalConnected = false;
+    source.onopen = () => {
+      if (terminalConnected) terminal.reset();
+      terminalConnected = true;
+      setStatus("Connected");
+    };
     source.onmessage = (event) => terminal.write(JSON.parse(event.data));
     source.onerror = () => setStatus("Terminal stream retrying");
     state.terminal = terminal;

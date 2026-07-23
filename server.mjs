@@ -1646,7 +1646,7 @@ async function streamTerminal(req, res, session, device) {
     "content-type": "text/event-stream; charset=utf-8",
     "x-accel-buffering": "no",
   });
-  const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+  const send = terminalStreamClient(res);
   stream.clients.add(send);
   if (stream.buffer) send(stream.buffer);
   req.on("close", () => {
@@ -1680,11 +1680,21 @@ function getTerminalStream(session, device) {
     for (const client of stream.clients) client(data);
   });
   term.onExit(() => {
-    for (const client of stream.clients) client("\r\n[terminal detached]\r\n");
+    for (const client of stream.clients) client.close();
     TERMINAL_STREAMS.delete(session.id);
   });
   TERMINAL_STREAMS.set(session.id, stream);
   return stream;
+}
+
+function terminalStreamClient(res) {
+  const send = (data) => {
+    if (!res.writableEnded) res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+  send.close = () => {
+    if (!res.writableEnded) res.end();
+  };
+  return send;
 }
 
 async function appendTerminalLog(session, data) {
@@ -4217,6 +4227,12 @@ function selfCheckTrustedRemote() {
 function selfCheckCore() {
   if (contentType("ark-logo.svg") !== "image/svg+xml") throw new Error("SVG content type is not renderable");
   if (contentType("done.mp3") !== "audio/mpeg") throw new Error("MP3 sound effect content type is not playable");
+  const terminalResponse = { writableEnded: false, writes: [], ends: 0, write(data) { this.writes.push(data); }, end() { this.writableEnded = true; this.ends += 1; } };
+  const terminalClient = terminalStreamClient(terminalResponse);
+  terminalClient("screen");
+  terminalClient.close();
+  terminalClient.close();
+  if (terminalResponse.writes.length !== 1 || terminalResponse.ends !== 1) throw new Error("terminal reconnect client did not close safely");
   const lanHosts = privateNetworkHosts({ lan: [{ family: "IPv4", internal: false, address: "192.168.7.42" }] });
   if (lanHosts.length !== 254 || !lanHosts.includes("192.168.7.1") || !lanHosts.includes("192.168.7.254") || !NETWORK_SITE_PORTS.includes(8006) || !NETWORK_SITE_PORTS.includes(8090) || !NETWORK_SITE_PORTS.includes(8765) || !NETWORK_SITE_PORTS.includes(8787) || networkSiteUrl("192.168.7.4", 8443) !== "https://192.168.7.4:8443/") throw new Error("network site discovery targets were not normalized");
   if (!privateNetworkSiteHost("100.64.0.8") || privateNetworkSiteHost("example.com")) throw new Error("network site discovery accepted a public target");
